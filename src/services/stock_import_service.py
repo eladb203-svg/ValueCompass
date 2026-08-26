@@ -9,24 +9,30 @@ class StockImportService:
         self.fmp_client = FMPClient()
         self.company_repository = CompanyRepository()
 
-    def import_company(self, symbol: str):
-        # נרמול הסימול
+    def ensure_company_exists(self, symbol: str):
+        # נרמול סימול המניה
         symbol = symbol.strip().upper()
 
         # משיכת פרופיל החברה מ-FMP
         profiles = self.fmp_client.get_company_profile(symbol)
 
-        # בדיקה שהתקבל מידע
+        # בדיקה שהתקבל פרופיל תקין
         if not profiles:
             raise ValueError(f"No company profile found for symbol: {symbol}")
 
         # FMP מחזיר רשימה, לכן לוקחים את הרשומה הראשונה
         profile = profiles[0]
 
-        # מיפוי מבנה FMP למבנה של טבלת companies
+        # מיפוי פרופיל FMP למבנה של טבלת companies
         company_data = map_fmp_profile_to_company(profile)
 
-        # שמירה או עדכון של החברה ב-DB
-        saved_company = self.company_repository.upsert_company(company_data)
+        # יצירה או עדכון של החברה וקבלת הרשומה מה-DB
+        company = self.company_repository.upsert_company(company_data)
 
-        return saved_company
+        return company
+
+    def import_company(self, symbol: str):
+        # בשלב זה הייבוא כולל רק וידוא שהחברה קיימת
+        company = self.ensure_company_exists(symbol)
+
+        return company
