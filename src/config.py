@@ -5,4 +5,3 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
-FMP_API_KEY = os.getenv("FMP_API_KEY")

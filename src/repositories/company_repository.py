@@ -8,14 +8,13 @@ class CompanyRepository:
         # יצירת חיבור ל-Supabase
         self.client = get_supabase_client()
 
-    def get_by_symbol_exchange(self, symbol: str, exchange: str):
-        # חיפוש חברה לפי סימול ובורסה
+    def get_by_id(self, company_id: int):
+        # שליפת חברה קנונית לפי ID פנימי
         response = (
             self.client
             .table("companies")
             .select("*")
-            .eq("symbol", symbol)
-            .eq("exchange", exchange)
+            .eq("id", company_id)
             .limit(1)
             .execute()
         )
@@ -25,8 +24,23 @@ class CompanyRepository:
 
         return None
 
+    def get_by_name(self, company_name: str):
+        # חיפוש לפי שם עלול להחזיר מספר מועמדים
+        company_name = company_name.strip()
+
+        response = (
+            self.client
+            .table("companies")
+            .select("*")
+            .ilike("company_name", company_name)
+            .eq("is_active", True)
+            .execute()
+        )
+
+        return response.data
+
     def insert(self, company_data: dict):
-        # הכנסת חברה חדשה לטבלה
+        # יצירת חברה קנונית חדשה
         response = (
             self.client
             .table("companies")
@@ -34,36 +48,25 @@ class CompanyRepository:
             .execute()
         )
 
-        return response.data[0]
+        if response.data:
+            return response.data[0]
+
+        return None
 
     def update(self, company_id: int, company_data: dict):
-        # עדכון זמן השינוי האחרון
-        company_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        # עדכון שדות בחברה קיימת
+        update_data = dict(company_data)
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-        # עדכון חברה קיימת
         response = (
             self.client
             .table("companies")
-            .update(company_data)
+            .update(update_data)
             .eq("id", company_id)
             .execute()
         )
 
-        return response.data[0]
+        if response.data:
+            return response.data[0]
 
-    def upsert_company(self, company_data: dict):
-        # בדיקה האם החברה כבר קיימת
-        existing_company = self.get_by_symbol_exchange(
-            company_data["symbol"],
-            company_data["exchange"]
-        )
-
-        if existing_company:
-            # אם קיימת - מעדכנים
-            return self.update(
-                existing_company["id"],
-                company_data
-            )
-
-        # אם לא קיימת - מוסיפים
-        return self.insert(company_data)
+        return None
