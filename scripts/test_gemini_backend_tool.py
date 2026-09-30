@@ -54,7 +54,22 @@ def get_company_context(company_id: int) -> dict:
 
     return capabilities.get_company_context(company_id)
 
+def get_financial_coverage(company_id: int) -> dict:
+    """Read the existing annual financial-data coverage for a company.
 
+    Args:
+        company_id: The canonical ValueCompass company ID.
+
+    Returns:
+        The fiscal years currently stored for the company in ValueCompass.
+    """
+    print(
+        f"[TOOL] get_financial_coverage called with company_id={company_id}",
+        flush=True,
+    )
+
+    return capabilities.get_financial_coverage(company_id)
+    
 # יוצר לקוח Gemini
 client = genai.Client(
     api_key=api_key,
@@ -80,26 +95,30 @@ chat = client.chats.create(
         thinking_config=types.ThinkingConfig(
             thinking_level="low",
         ),
-        tools=[get_company_context],
+        tools=[
+    get_company_context,
+    get_financial_coverage,
+    ],
     ),
 )
 
 
 response = chat.send_message(
     """
-    Use the approved ValueCompass backend tool to inspect company_id 1.
+Inspect company_id 1 using the approved ValueCompass backend tools.
 
-    Do not use external sources.
+Determine:
+1. which company this is;
+2. which fiscal years are currently stored in ValueCompass;
+3. how many financial years are stored;
+4. based only on the backend state and the Financial Data ETL Skill,
+   whether this company requires an Initial Import, Backfill/Repair,
+   Incremental Update, or no financial-data work.
 
-    Tell me:
-    1. the company name;
-    2. its primary ticker;
-    3. its exchange;
-    4. its reporting currency.
-
-    You must obtain the company information through the backend tool.
-    """
+Do not use external sources.
+"""
 )
 
 print("\nGemini response:")
 print(response.text)
+

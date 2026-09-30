@@ -231,7 +231,7 @@ class CompanySyncService:
             "operation_type": "sync_company",
             "target_table": "financial_yearly",
             "update_scope": work_plan["workflow"],
-            "data_source": "openai_etl_agent",
+            "data_source": "financial_etl_agent",
             "status": "running",
             "years_requested": work_plan["years"],
             "missing_years": audit["missing_years"],
@@ -252,7 +252,7 @@ class CompanySyncService:
         }
 
     def build_etl_request(
-        self,
+       self,
         audit: dict,
         work_plan: dict,
         log_id: int
