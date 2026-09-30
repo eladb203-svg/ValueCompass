@@ -519,6 +519,24 @@ More than one item may exist in one run.
 
 The audit itself must not overwrite financial data.
 
+### Backend Workflow Names
+
+In the current implementation, the ValueCompass backend runs the audit and sends exactly one `workflow` value in the ETL request. The backend value is authoritative. Interpret it as follows:
+
+| Backend `workflow` | Meaning | Skill workflow to follow |
+|---|---|---|
+| `METADATA_REPAIR` | Critical company metadata listed in `metadata_fields` (for example `public_since_date`) is missing, so expected years cannot be computed | Research only the listed metadata fields and submit them through the approved metadata tool. Do not retrieve or submit financial data. |
+| `INITIAL_IMPORT` | No fiscal year is stored for the company | Initial Import for the fiscal years in `years` |
+| `BACKFILL` | Entire expected fiscal years are missing | `BACKFILL_FISCAL_YEAR` for the fiscal years in `years` |
+| `REPAIR` | Fiscal years exist, but required source fields are `NULL` | `BACKFILL_FIELDS` — fill only the fields listed per year in `missing_fields`. This is **not** `REPAIR_EXISTING_DATA`: do not re-examine or overwrite existing non-`NULL` values. |
+| `NO_ACTION` | Nothing to do | `NO_ACTION` |
+
+`REPAIR_EXISTING_DATA`, `CHECK_FOR_NEW_FILING`, and `INCREMENTAL_UPDATE` are not yet triggered by the backend. Do not start them on your own initiative.
+
+The backend accepts financial writes only for fiscal years listed in `years`, and only under `INITIAL_IMPORT`, `BACKFILL`, or `REPAIR`. A rejected write is a signal to stop, not to retry with a different year or workflow.
+
+The same rules apply to every company. Take the company identity only from the ETL request and backend tools, never from assumptions about a specific issuer.
+
 ## Initial Import Workflow
 
 Use when annual history should already exist but ValueCompass does not contain sufficient history.
