@@ -1,5 +1,6 @@
 from datetime import date
 
+from src.constants import FinancialWorkflow
 from src.repositories.update_log_repository import UpdateLogRepository
 from src.repositories.company_repository import CompanyRepository
 from src.repositories.listing_repository import ListingRepository
@@ -40,11 +41,7 @@ class FinancialETLCapabilities:
     }
 
         # workflows שמורשים לכתוב נתונים שנתיים
-    FINANCIAL_WRITE_WORKFLOWS = {
-        "INITIAL_IMPORT",
-        "BACKFILL",
-        "REPAIR",
-    }
+    FINANCIAL_WRITE_WORKFLOWS = FinancialWorkflow.FINANCIAL_WRITE
 
         # סטטוסים מותרים בסיום sync
     FINAL_SYNC_STATUSES = {

@@ -1,3 +1,4 @@
+from src.constants import FinancialWorkflow
 from src.repositories.company_repository import CompanyRepository
 from src.repositories.financial_repository import FinancialRepository
 
@@ -150,50 +151,49 @@ class FinancialAuditService:
         }
 
     def create_work_plan(self, audit: dict):
-    # Critical company metadata must be repaired first
+        # Critical company metadata must be repaired first
         if audit["metadata_missing"]:
             return {
-            "workflow": "METADATA_REPAIR",
-            "metadata_fields": audit["metadata_missing"],
+                "workflow": FinancialWorkflow.METADATA_REPAIR,
+                "metadata_fields": audit["metadata_missing"],
+                "years": [],
+                "missing_fields": {},
+            }
+
+        # No financial history exists yet
+        if not audit["present_years"]:
+            return {
+                "workflow": FinancialWorkflow.INITIAL_IMPORT,
+                "metadata_fields": [],
+                "years": audit["expected_years"],
+                "missing_fields": {},
+            }
+
+        # Entire fiscal years are missing
+        if audit["missing_years"]:
+            return {
+                "workflow": FinancialWorkflow.BACKFILL,
+                "metadata_fields": [],
+                "years": audit["missing_years"],
+                "missing_fields": {},
+            }
+
+        # Fiscal years exist, but some required fields are missing
+        if audit["incomplete_years"]:
+            return {
+                "workflow": FinancialWorkflow.REPAIR,
+                "metadata_fields": [],
+                "years": sorted(audit["incomplete_years"].keys()),
+                "missing_fields": audit["incomplete_years"],
+            }
+
+        # Financial history is complete
+        return {
+            "workflow": FinancialWorkflow.NO_ACTION,
+            "metadata_fields": [],
             "years": [],
             "missing_fields": {},
         }
-
-    # No financial history exists yet
-        if not audit["present_years"]:
-            return {
-            "workflow": "INITIAL_IMPORT",
-            "metadata_fields": [],
-            "years": audit["expected_years"],
-            "missing_fields": {},
-        }
-
-    # Entire fiscal years are missing
-        if audit["missing_years"]:
-            return {
-            "workflow": "BACKFILL",
-            "metadata_fields": [],
-            "years": audit["missing_years"],
-            "missing_fields": {},
-        }
-
-    # Fiscal years exist, but some required fields are missing
-        if audit["incomplete_years"]:
-            return {
-            "workflow": "REPAIR",
-            "metadata_fields": [],
-            "years": sorted(audit["incomplete_years"].keys()),
-            "missing_fields": audit["incomplete_years"],
-        }
-
-    # Financial history is complete
-        return {
-        "workflow": "NO_ACTION",
-        "metadata_fields": [],
-        "years": [],
-        "missing_fields": {},
-    }
-
 
     def audit_year_fields(self, history: list[dict]):
         incomplete_years = {}

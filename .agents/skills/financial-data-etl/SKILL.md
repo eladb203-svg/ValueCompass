@@ -222,7 +222,7 @@ The workflow is:
 3. create missing company/listing records only when safely resolved;
 4. audit existing financial history;
 5. build a targeted work plan;
-6. perform only required Initial Import, Backfill, Repair, or Incremental Update work;
+6. perform only the work required by the backend `workflow`;
 7. persist validated data through approved backend tools;
 8. re-audit the resulting database state;
 9. finalize the synchronization log;
@@ -454,7 +454,7 @@ The audit determines:
 - what expected history is missing;
 - which applicable source fields are unresolved;
 - whether a new annual filing should be checked;
-- whether justified Repair work exists;
+- whether `REPAIR` work (NULL required fields) exists;
 - the targeted work plan.
 
 ### Expected History States
@@ -505,33 +505,34 @@ Do not create external backfill for:
 
 ### Work Plan
 
-The audit may produce:
+The audit produces exactly one workflow per run. Active workflows:
 
+- `METADATA_REPAIR`;
 - `INITIAL_IMPORT`;
-- `BACKFILL_FISCAL_YEAR`;
-- `BACKFILL_FIELDS`;
-- `REPAIR_EXISTING_DATA`;
-- `CHECK_FOR_NEW_FILING`;
-- `INCREMENTAL_UPDATE`;
+- `BACKFILL`;
+- `REPAIR`;
 - `NO_ACTION`.
 
-More than one item may exist in one run.
+Planned, not currently active (the backend does not trigger them; never start them on your own initiative):
+
+- `CHECK_FOR_NEW_FILING`;
+- `INCREMENTAL_UPDATE`.
 
 The audit itself must not overwrite financial data.
 
-### Backend Workflow Names
+### Workflow Names
 
-In the current implementation, the ValueCompass backend runs the audit and sends exactly one `workflow` value in the ETL request. The backend value is authoritative. Interpret it as follows:
+The ValueCompass backend runs the audit and sends exactly one `workflow` value in the ETL request. The names are defined once in `src/constants.py` (`FinancialWorkflow`) and are authoritative:
 
-| Backend `workflow` | Meaning | Skill workflow to follow |
-|---|---|---|
-| `METADATA_REPAIR` | Critical company metadata listed in `metadata_fields` (for example `public_since_date`) is missing, so expected years cannot be computed | Research only the listed metadata fields and submit them through the approved metadata tool. Do not retrieve or submit financial data. |
-| `INITIAL_IMPORT` | No fiscal year is stored for the company | Initial Import for the fiscal years in `years` |
-| `BACKFILL` | Entire expected fiscal years are missing | `BACKFILL_FISCAL_YEAR` for the fiscal years in `years` |
-| `REPAIR` | Fiscal years exist, but required source fields are `NULL` | `BACKFILL_FIELDS` — fill only the fields listed per year in `missing_fields`. This is **not** `REPAIR_EXISTING_DATA`: do not re-examine or overwrite existing non-`NULL` values. |
-| `NO_ACTION` | Nothing to do | `NO_ACTION` |
-
-`REPAIR_EXISTING_DATA`, `CHECK_FOR_NEW_FILING`, and `INCREMENTAL_UPDATE` are not yet triggered by the backend. Do not start them on your own initiative.
+| `workflow` | Status | Meaning | What to do |
+|---|---|---|---|
+| `METADATA_REPAIR` | active | Critical company metadata listed in `metadata_fields` (for example `public_since_date`) is missing, so expected years cannot be computed | Research only the listed metadata fields and submit them through the approved metadata tool. Do not retrieve or submit financial data. |
+| `INITIAL_IMPORT` | active | No fiscal year is stored for the company | Import the fiscal years listed in `years` (see Initial Import Workflow) |
+| `BACKFILL` | active | Entire expected fiscal years are missing | Retrieve and submit each fiscal year listed in `years` |
+| `REPAIR` | active | Fiscal years exist, but required source fields are `NULL` | Fill only the fields listed per year in `missing_fields`. Do not re-examine or overwrite existing non-`NULL` values. |
+| `NO_ACTION` | active | Nothing to do | Do nothing |
+| `CHECK_FOR_NEW_FILING` | planned, not active | Detect a newly published annual filing | Not triggered by the backend. Do not start it. |
+| `INCREMENTAL_UPDATE` | planned, not active | Add newly published annual information to an existing company | Not triggered by the backend. Do not start it. |
 
 The backend accepts financial writes only for fiscal years listed in `years`, and only under `INITIAL_IMPORT`, `BACKFILL`, or `REPAIR`. A rejected write is a signal to stop, not to retry with a different year or workflow.
 
@@ -590,28 +591,28 @@ Backfill and Repair are targeted maintenance operations.
 
 ### Backfill
 
-`BACKFILL` means required information is absent.
+`BACKFILL` means entire expected fiscal years are missing.
 
-Examples:
+For each missing year, retrieve and validate that year only.
 
-- missing fiscal-year record;
-- applicable required source field is `NULL`;
-- previously unresolved source fact.
-
-For a missing year, retrieve and validate that year only.
-
-For missing fields in an existing year:
-
-- preserve existing validated values;
-- search only the unresolved fields;
-- use field-level source fallback;
-- update only the affected fields.
-
-If reasonable sources are exhausted, preserve `NULL` or the absent year and keep it eligible for future backfill.
+If reasonable sources are exhausted, preserve the absent year and keep it eligible for future backfill.
 
 ### Repair
 
-`REPAIR` means an existing canonical value has a justified reason to be reconsidered.
+`REPAIR` means a fiscal year exists but applicable required `SOURCE` fields are `NULL`.
+
+- preserve existing validated values;
+- search only the unresolved fields listed in `missing_fields`;
+- use field-level source fallback;
+- update only the affected fields.
+
+If reasonable sources are exhausted, preserve `NULL` and keep the year eligible for future repair.
+
+### Correction of Existing Values (planned, not active)
+
+Re-examining existing non-`NULL` values is not performed by any active workflow. The guidance below describes how it would work once the backend supports it. Do not apply it on your own initiative.
+
+An existing canonical value may have a justified reason to be reconsidered.
 
 Valid triggers may include:
 
@@ -625,7 +626,7 @@ Valid triggers may include:
 
 A different number from another website is not enough.
 
-Before Repair, compare:
+Before correcting, compare:
 
 - source authority;
 - issuer identity;
@@ -638,7 +639,7 @@ Before Repair, compare:
 
 Do not let weaker supplementary evidence overwrite stronger authoritative data without clear justification.
 
-### Restatements
+### Restatements (planned, not active)
 
 When an authoritative later filing explicitly revises a prior period:
 
@@ -658,9 +659,11 @@ If the existing value remains sufficiently reliable and the conflict cannot be r
 
 If the existing value is determined unreliable and no replacement can be established, the backend may set the affected field to `NULL` according to approved persistence rules.
 
-After Backfill or Repair, re-audit.
+After `BACKFILL` or `REPAIR`, re-audit.
 
-## Incremental Update and New Filing Workflow
+## Incremental Update and New Filing Workflow (planned, not active)
+
+The backend does not trigger `CHECK_FOR_NEW_FILING` or `INCREMENTAL_UPDATE` today. This section is retained as the design for a future version; do not execute it.
 
 Use when Audit determines that an existing company may have newly published annual information.
 
@@ -705,11 +708,11 @@ Review comparative figures only when they indicate:
 - prior-period correction;
 - accounting-policy change affecting prior periods;
 - material reclassification;
-- another justified Repair condition.
+- another justified correction condition.
 
 If comparative values differ without a reliable explanation, preserve existing validated values and log the discrepancy.
 
-When a justified historical revision exists, route only affected fields/years through Repair.
+When a justified historical revision exists, route only affected fields/years through the planned correction workflow.
 
 ### Scheduled Checks
 
@@ -1240,7 +1243,7 @@ into standard canonical fields unless an explicit approved rule permits it.
 
 ## Restated Values
 
-When a later authoritative filing explicitly restates a prior period, store the restated value in the original fiscal year through the Repair workflow.
+When a later authoritative filing explicitly restates a prior period, store the restated value in the original fiscal year once a correction workflow becomes active (planned).
 
 Do not assign the historical restatement to the year in which it was published.
 
@@ -1385,7 +1388,7 @@ When sources conflict, verify issuer, period, currency, units, concept, authorit
 
 Do not average values or choose the value closest to historical trends.
 
-Apply the Source Hierarchy and Repair rules.
+Apply the Source Hierarchy and the correction rules.
 
 ## Applicability
 
@@ -1660,7 +1663,7 @@ Do not require callers to specify:
 - Initial Import;
 - Backfill;
 - Repair;
-- Incremental Update;
+- Incremental Update (planned);
 - New Filing Check.
 
 ## Resolution Before Financial Work
@@ -1696,21 +1699,16 @@ A completed synchronization should return a structured summary conceptually equi
     "mic": "XNAS"
   },
   "work_plan": [
-    "BACKFILL_FISCAL_YEAR",
-    "CHECK_FOR_NEW_FILING"
+    "BACKFILL"
   ],
   "work_performed": [
     {
-      "type": "BACKFILL_FISCAL_YEAR",
+      "type": "BACKFILL",
       "fiscal_year": 2019
-    },
-    {
-      "type": "INCREMENTAL_UPDATE",
-      "fiscal_year": 2025
     }
   ],
-  "years_requested": 2,
-  "years_imported": 2,
+  "years_requested": 1,
+  "years_imported": 1,
   "missing_years": [],
   "missing_fields": [],
   "records_inserted": 2,
