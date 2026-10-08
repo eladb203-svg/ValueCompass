@@ -16,3 +16,4 @@ If an English document and its Hebrew translation differ, the English one wins.
 ## reference/
 
 - `ValueInvestConsult - prompts AIagent.txt` – Reference only: the central prompt and rules of the earlier GPT-based assistant (Hebrew answers, Buffett/Graham analysis).
+  Where this file conflicts with the scorecards (e.g., the Graham Fair Value Min formula), the scorecards win.
