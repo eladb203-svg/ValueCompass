@@ -1,0 +1,23 @@
+### Ambiguities in the spec (interpretation used; nothing invented as a fix)
+
+1. **Implied return / implied ROTCE (two-stage).** The spec does not define them for the two-stage model. Implemented as numerical solves: implied return = the discount rate that makes the two-stage per-share value equal to the price (growth path and ROTCE_norm held); implied ROTCE = the constant ROTCE (with g1 recomputed from it) that does so. Results outside the search range are shown as `below_range` / `above_range`. Please confirm.
+2. **Sensitivity growth path (V3).** Erosion case: ROTCE fades linearly to 10% over 10 years with zero terminal residual income, TCE growth path unchanged from the base case. +/-1pp: ROTCE_norm shifted and g1 recomputed (= ROTCE x (1 - payout)). The spec does not say whether g1 should move with ROTCE.
+3. **Erosion exceeds base when ROTCE_norm < 10%.** For C (ROTCE_norm 7.9%) the "erosion to 10%" case *raises* value (C: 89.4 vs base 68.9). The range is still reported (min-max); the label "erosion" is misleading for sub-10% ROTCE banks.
+4. **Negative ROTCE (FLG).** ROTCE_norm = -1.7% gives a negative residual-income value (fair value -9.87 per share, below zero TCE). Literal formula applied; price score n/a, buy price none. The spec has no floor (e.g. value >= 0 or only liquidation value). Needs a ruling.
+5. **Growth gate on banks** reuses the general gate (revenue, EPS, positive EPS years). It fails for 7 of 12 banks (C, WFC, USB, TFC, KEY, FLG, GS), forcing g1 = 2.5% - for C/WFC/USB/GS this removes most of the stage-1 value even though ROTCE is well above 10% for USB/GS.
+6. **RWA / total capital** (used for stress coverage and TLAC-type items) are taken from the buffer-binding approach (D10); the spec does not say which approach when they differ.
+7. **D10 fallbacks.** USB, TFC, FITB and KEY report only the stress capital buffer in the 10-K, not the total CET1 requirement; the requirement was built as 4.5% + SCB + G-SIB surcharge (if any) from the Federal Reserve table value. These rows are flagged `FALLBACK` in the extraction table. BAC reports one requirement column, applied to both approaches. If a bank's requirement differs by approach, the buffer would change.
+8. **D12 FITB.** The LCR (123%) is a quarter-end figure from the earnings presentation, not a Q4 average; the exemption status (Category IV) is not stated in the 10-K, so the number is scored with flag `lcr_quarter_end_not_q4_average`. **FLG:** no LCR in the 10-K or the earnings presentation and no stated exemption -> `missing` (not N/A), per D12. Please confirm both treatments.
+9. **D11 thresholds.** Nonaccrual-rate and ACL/nonaccrual thresholds are still the NPL-era values (flagged `thresholds_to_recalibrate_D11` / `temporary_thresholds_D11`). The calibration table (section d) shows the new distribution: median nonaccrual rate 0.66%, median ACL/nonaccrual 230%; 10 of 12 banks already exceed the 150% full-score point.
+10. **D13 (FR Y-9C not implemented).** Banks that need FR Y-9C charge-off history: **TFC** (1 year of NCO rate; Graham 3.3 #1 missing, Buffett 3.6 #2 missing, Graham 3.3 invalid), **GS** (5 years; Graham 3.3 #1 missing, Graham 3.3 invalid), and with 6-9 years only the 3-of-5-point cap: **JPM** (8), **WFC** (7), **FITB** (8). These stay as they are.
+11. **D15 funding lines.** Where a bank has no separate repo line (USB, TFC, PNC, FLG) the repo/securities lending is inside short-term or total borrowed funds and counted once there. JPM, BAC, WFC and KEY have separate repo lines, now included. C and GS are path 1b: deposit funding is not applicable. Per-bank lines: section "D15".
+
+### Data problems and open items
+
+- **TFC** NCO history is one year (2025): cause not investigated. Needs FR Y-9C or a 10-K text extraction.
+- **PNC** preferred stock is known only for FY2025, so TCE for earlier years may include preferred stock (ROTCE/TBVPS history less reliable).
+- **JPM** dividends tag may include preferred dividends (`PaymentsOfDividends`), slightly overstating payout and lowering g1.
+- **FLG** has a goodwill impairment-driven loss pattern, negative median net income and no LCR; its Buffett v2 value is negative.
+- **C and GS** (path 1b): deposit funding and deposit stability items are not applicable, so their coverage is based on fewer items (GS Graham coverage 85% because 3.3 is invalid).
+- **Predecessor-history** flags: banks that merged or restructured (TFC, USB, FITB, KEY) have history not checked for predecessor entities.
+- **D14 on banks:** TFC Graham 3.3 and GS Graham 3.3 are invalid (70% rule); ranges for both models satisfy min <= score <= max for all 24 model results.

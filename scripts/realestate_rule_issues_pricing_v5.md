@@ -1,0 +1,14 @@
+**Blocking (reopens the closure, per the rules: "closure is final once the RE29a check shows no price-score change; a change reopens the item"): two Buffett price scores changed.**
+
+1. **O, Buffett price score 4.52 -> 2.68** (value 61.17 -> 55.49, buy price 46.34 -> 38.30; price 54.99). Cause: RE29a removes the unrealized foreign-currency remeasurement of O (XBRL: FY2021 -27.2m, FY2022 -220.9m, FY2023 -37.8m, FY2024 +19.4m, FY2025 -54.9m); the losses are added back to normalized FFO, so the early years' OE rises, the OE growth measured by the general-model G1 (median vs median / R14) falls and the stage-1 growth drops from 3.7% to 2.0%. O's Buffett quality score also moves 78.6 -> 68.5 (normalized-FFO margin stability and OE stability, because the FY2022 add-back of 0.22bn creates a spike in the series).
+2. **PSA, Buffett price score 0.00 -> 0.35** (value 196.81 -> 237.33, buy price 132.02 -> 176.69; price 288.39). Cause: RE29a removes the remeasurement of PSA's euro-denominated notes (XBRL: FY2021 +111.8m, FY2022 +98.3m, FY2023 -51.2m, FY2024 +102.2m, FY2025 -215.6m): the gains of the early years leave and the FY2025 loss is added back, so the OE per share rises across the window and the stage-1 growth goes from 1.4% to 3.5%. PSA's Buffett quality moves 65.6 -> 76.7.
+
+Decision needed: accept RE29a as implemented (the two score changes are the effect of removing FX remeasurement as the rule requires; the scores stay low: O 2.68, PSA 0.35) and close, or revisit the rule (for example apply RE29a only where the remeasurement is large relative to FFO). No Graham price score changed; no other Buffett price score changed (PLD 0.00, SPG 0.00, FRT 0.00, BXP blocked, ARE 10.00, EQR cannot be priced, EQIX 0.00, AMT 0.00).
+
+Not blocking (recorded):
+- **AMT Q6:** after RE29a the gap of OE to AFFO less SBC is within 10% in every year (FY2025 -7.0%, was -18.8%; FY2023 -5.1%); the foreign-currency remeasurement was the whole difference. AMT's value 113.49 -> 134.98 and its Buffett buy price changes from not suitable to 101.98 (price score still 0, price 179.43).
+- **PLD:** value 51.76 -> 62.62 (+21%), quality Buffett 74.2 -> 82.1 (v5: 63.4); price score 0.
+- **ARE:** normalized FFO per share is now within -5.6% to -10.6% of the company's FFO as adjusted (was -9.5% to -31.3% before RE29a; FY2021 -8.6%); price score 10.00 unchanged (RP1b, RP5a unchanged).
+- **SPG:** normalized FFO per unit equals the company's Real Estate FFO (+0.1% in FY2023-FY2025). FY2021-FY2022: the platform / equity-instrument results are not disclosed in those reconciliations (nothing removed).
+- **EQR, BXP, FRT, EQIX:** amounts removed are below 1-2% of FFO or not disclosed separately (EQIX other income (expense) -7 / -17 / -11m); documented in Q1.
+- **EQIX Q6 (-24% to -28%)** remains flagged; the decision is recorded in the rules (OE kept conservative).
