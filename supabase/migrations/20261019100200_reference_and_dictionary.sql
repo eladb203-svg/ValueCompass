@@ -274,6 +274,7 @@ create table public.company_profile_history (
   constraint company_profile_history_profile_check
     check (profile in ('STANDARD','TECH_ASSET_LIGHT','BANK','INSURANCE','INCOME_REAL_ESTATE'))
 );
+create index idx_company_profile_history_override_by on public.company_profile_history (override_by);
 
 -- ---------------------------------------------------------------- filing_periods
 create table public.filing_periods (

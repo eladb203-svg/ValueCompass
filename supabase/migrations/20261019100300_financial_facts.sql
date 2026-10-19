@@ -25,6 +25,7 @@ create table public.financial_facts (
     or (value is not null and (status = 'found' or value = 0)))
 );
 create index idx_financial_facts_item_year on public.financial_facts (item_id, fiscal_year);
+create index idx_financial_facts_tag_id on public.financial_facts (tag_id);
 comment on table public.financial_facts is 'One row per company x fiscal year x dictionary component. No row = missing. Derived items (source_kind = derived) are written by the engine per Rulebook D/C.';
 comment on column public.financial_facts.basis is 'Reporting basis when it matters (e.g. group vs company share, per RE21 / ACL basis).';
 

@@ -383,6 +383,8 @@ grant select on public.v_fin_realestate to authenticated;
 --   ok | missing (an input has no row in financial_facts) | not_applicable | not_meaningful (denominator <= 0).
 -- Average equity = (this year + previous fiscal year) / 2; first available year: end of year only
 -- (roe_basis = 'end_of_year_only'); a gap year gives 'missing', no imputation.
+-- Negative base: roe is 'not_meaningful' (NULL) when the equity base is <= 0 at either end point or in the
+-- average, even if the average is positive (Display Spec 2026-10-19_13-31).
 create or replace view public.v_display_metrics with (security_invoker = true) as
 with p as (
     select
@@ -519,7 +521,8 @@ select
     case when r.profile <> 'INSURANCE' then 'not_applicable'
          when r.eps_operating is null then 'missing' else 'ok' end as operating_eps_state,
 
-    case when r.roe_num is not null and r.roe_den_avg > 0 then r.roe_num / r.roe_den_avg end as roe,
+    case when r.roe_num is not null and r.roe_den_avg > 0 and r.roe_den > 0 and coalesce(r.roe_den_prev, 1) > 0
+         then r.roe_num / r.roe_den_avg end as roe,
     case r.profile
         when 'BANK'      then 'ROTCE'
         when 'INSURANCE' then 'Operating ROE'
@@ -527,7 +530,7 @@ select
         else 'ROE'
     end as roe_label,
     case when r.roe_num is null or r.roe_den_avg is null then 'missing'
-         when r.roe_den_avg <= 0 then 'not_meaningful'
+         when r.roe_den_avg <= 0 or r.roe_den <= 0 or r.roe_den_prev <= 0 then 'not_meaningful'
          else 'ok' end as roe_state,
     r.roe_basis_v as roe_basis,
 

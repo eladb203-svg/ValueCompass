@@ -89,6 +89,9 @@ alter table public.company_score_summary
     check (graham_quality_coverage is null or (graham_quality_coverage >= 0 and graham_quality_coverage <= 1));
 create index idx_company_score_summary_latest_run_id on public.company_score_summary (latest_run_id);
 
+-- covering index for FK score_details_company_score_summary_fkey (the dropped unique key used to cover it)
+create index idx_score_details_company_id on public.score_details (company_id);
+
 -- ---- RLS (score_details / company_score_summary already have RLS and a SELECT policy)
 alter table public.score_runs enable row level security;
 revoke all on public.score_runs from anon, authenticated;

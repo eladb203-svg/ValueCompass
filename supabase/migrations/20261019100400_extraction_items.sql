@@ -27,6 +27,7 @@ create table public.extraction_items (
   constraint extraction_items_approved_check check (approval_status <> 'approved' or approved_at is not null)
 );
 create index idx_extraction_items_pending on public.extraction_items (company_id) where approval_status = 'pending';
+create index idx_extraction_items_approved_by on public.extraction_items (approved_by);
 
 alter table public.financial_facts
   add constraint financial_facts_extraction_id_fkey
