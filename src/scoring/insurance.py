@@ -26,7 +26,7 @@ PROFILE = "INSURANCE"
 LINE_OF_BUSINESS = {"CB": "P&C", "TRV": "P&C", "PGR": "P&C", "ALL": "P&C", "WRB": "P&C", "CINF": "P&C", "RNR": "reinsurance",
                     "MET": "life", "PRU": "life", "AFL": "life", "AIG": "composite", "HIG": "composite"}
 CAT_MATERIAL_SHARE = 0.05  # Q5: flag when catastrophe losses EXCEED 5% of premiums earned (I19)
-INSURANCE_TEST = 0.50
+from .router import INSURANCE_SHARE as INSURANCE_TEST  # noqa: E402  (row 2 threshold lives in the router)
 
 
 @dataclass

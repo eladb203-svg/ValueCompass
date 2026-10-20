@@ -20,13 +20,15 @@ from run_scoring_test import jsonable, model_json  # noqa: E402
 from src.providers import prices as price_provider  # noqa: E402
 from src.providers.insurance_facts import INS_FIELDS, build_insurance_series, load_insurance_regulatory  # noqa: E402
 from src.providers.sec_companyfacts import SecClient  # noqa: E402
-from src.scoring import insurance as INS  # noqa: E402
+from src.scoring import insurance as INS
+from src.scoring.router import INS_I, default_tables, insurance_liabilities_ratio, sic_set
+from router_runner import route_company  # noqa: E402
 from src.scoring.insurance import LINE_OF_BUSINESS, InsuranceInputs, score_insurance  # noqa: E402
 
 OUT = ROOT / "scripts" / "output_insurance"
 COMPANIES = ["CB", "TRV", "PGR", "ALL", "WRB", "CINF", "RNR", "MET", "PRU", "AFL", "AIG", "HIG"]
 SPEC = "docs/scoring/ValueCompass_Insurance_Rules_2026-10-13_11-00_EN.md"
-INSURANCE_SIC = ("6311", "6321", "6324", "6331", "6351", "6361", "6399", "6411")
+INSURANCE_SIC = tuple(sorted(str(x) for x in sic_set(default_tables(), INS_I)))   # from the router's SIC table (Part B.1)
 MODEL_VERSION = "insurance-rules-2026-10-13_11-00 on general model 1.0 + D14 + C13 (default ON)"
 
 
@@ -51,8 +53,7 @@ def profile_check(raw, ii):
     comps = {"claims liability (LIC)": claims, "future policy benefits": f["fpb"][i], "policyholder account balances": f["pab"][i],
              "unearned premiums": f["unearned"][i], "separate accounts liability": f["separate_accounts"][i],
              "market risk benefit liability": f["mrb_liability"][i]}
-    tot = sum(v for v in comps.values() if v is not None)
-    ratio = None if not liab else tot / liab
+    tot, ratio, _missing = insurance_liabilities_ratio(comps, liab)   # the router's ratio (single implementation)
     industry = str(raw.get("sic")) in INSURANCE_SIC
     return {"total_liabilities": liab, "components": comps, "insurance_liabilities": tot, "ratio": ratio, "sic": raw.get("sic"),
             "sic_description": raw.get("sic_description"), "industry_is_insurance": industry,
@@ -67,10 +68,11 @@ def run_company(sec, reg_all, t):
                          price_current=pr["current"], price_avg=pr["avg"], first_annual_report=raw["first_annual_report"], as_of=date.today(),
                          flags=list(raw["flags"]), data_problems=list(raw["problems"]) + list(pr["notes"]), tag_log=raw["tag_log"])
     prof = profile_check(raw, ii)
+    rr = route_company(sec, t, f=raw["f"], labels=raw["labels"], ends=raw["ends"])
     sc = score_insurance(ii)
     d, bq, gq = sc["derived"], sc["buffett_quality"], sc["graham_quality"]
     res = {"ticker": t, "name": raw["name"], "cik": raw["cik"], "profile": "INSURANCE", "line_of_business": LINE_OF_BUSINESS[t],
-           "profile_check": prof, "scoring_model_version": MODEL_VERSION, "as_of": date.today(),
+           "profile_check": prof, "profile_router": rr.to_jsonable(), "scoring_model_version": MODEL_VERSION, "as_of": date.today(),
            "fiscal_years": dict(zip(ii.fy, ii.end)), "financials": {k: dict(zip(ii.fy, v)) for k, v in ii.f.items()},
            "derived": {k: dict(zip(ii.fy, v)) for k, v in d.items() if isinstance(v, list) and len(v) == ii.n},
            "latest": d["latest"], "buffett_quality": model_json(bq), "graham_quality": model_json(gq),

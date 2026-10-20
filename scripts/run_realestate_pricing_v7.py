@@ -23,6 +23,7 @@ from run_scoring_test import jsonable, model_json  # noqa: E402
 from src.providers.realestate_facts import load_realestate_extracted  # noqa: E402
 from src.providers.sec_companyfacts import SecClient  # noqa: E402
 from src.scoring.realestate import conservative_cap_rate, score_realestate, score_realestate_pricing  # noqa: E402
+from router_runner import route_company  # noqa: E402
 
 T = ["O", "PLD", "SPG", "FRT", "BXP", "ARE", "EQR", "PSA", "EQIX", "AMT"]
 OUT = ROOT / "scripts" / "output_realestate_pricing_v7"
@@ -72,7 +73,7 @@ def main():
             sc = score_realestate(ri)
             pr = score_realestate_pricing(ri, sc)
             R[t] = {"ri": ri, "raw": raw, "sc": sc, "pr": pr}
-            res = {"ticker": t, "name": ri.name, "asset_type": ri.asset_type, "spec": SPEC, "as_of": date.today(), "price": {"current": ri.price_current, "date": ri.price_date},
+            res = {"ticker": t, "name": ri.name, "asset_type": ri.asset_type, "profile_router": route_company(sec, t, f=ri.f, labels=ri.fy, ends=ri.end, reg=ri.reg, reg_engine="realestate").to_jsonable(), "spec": SPEC, "as_of": date.today(), "price": {"current": ri.price_current, "date": ri.price_date},
                    "buffett_quality": model_json(sc["buffett_quality"]), "graham_quality": model_json(sc["graham_quality"]),
                    "buffett_price": pr["buffett_price"], "graham_price": pr["graham_price"], "display": pr["display"], "data_problems": list(dict.fromkeys(ri.data_problems))}
             (OUT / f"{t}.json").write_text(json.dumps(jsonable(res), indent=1, ensure_ascii=False, default=str), encoding="utf-8")

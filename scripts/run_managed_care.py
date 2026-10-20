@@ -22,6 +22,8 @@ from src.providers import prices as price_provider  # noqa: E402
 from src.providers.sec_companyfacts import SecClient, annual_series, build_inputs  # noqa: E402
 from src.scoring.inputs import CompanyInputs  # noqa: E402
 from src.scoring.profiles import score_company  # noqa: E402
+from router_runner import route_company  # noqa: E402
+from src.scoring.router import insurance_liabilities_ratio  # noqa: E402
 
 OUT = ROOT / "scripts" / "output_managed_care"
 COMPANIES = ["UNH", "ELV", "CI", "HUM", "CNC", "MOH"]
@@ -94,13 +96,11 @@ def liquidity_rows(facts, inp, d):
 def profile_check(facts, inp):
     end = inp.end[-1]
     liab, _ = _val(facts, ["Liabilities"], end)
-    comps, tot = {}, 0.0
+    comps = {}
     for name, tags in INS_COMPONENTS.items():
         v, tag = _val(facts, tags, end)
         comps[name] = {"value": v, "tag": tag}
-        tot += v or 0.0
-    ratio = None if not liab else tot / liab
-    missing = [n for n, c in comps.items() if c["value"] is None]
+    tot, ratio, missing = insurance_liabilities_ratio({k: c["value"] for k, c in comps.items()}, liab)   # the router's ratio (single implementation)
     return {"total_liabilities": liab, "components": comps, "insurance_liabilities": tot, "ratio": ratio, "missing_components": missing,
             "passes_insurance_test": None if ratio is None else ratio >= 0.5}
 
@@ -119,10 +119,12 @@ def alt_inputs(inp, liq):
 
 
 def run_one(sec, ticker):
+    rr = route_company(sec, ticker)
+    profile = rr.profile   # the router decides (managed health insurance fails the row-2 test -> STANDARD)
     splits = price_provider.get_splits(ticker)
-    raw = build_inputs(sec, ticker, "STANDARD", splits)
+    raw = build_inputs(sec, ticker, profile, splits)
     pr = price_provider.load_prices(ticker, raw["ends"], raw["labels"])
-    inp = CompanyInputs(ticker=ticker, name=raw["name"], profile="STANDARD", fy=raw["labels"], end=raw["ends"], f=raw["f"],
+    inp = CompanyInputs(ticker=ticker, name=raw["name"], profile=profile, fy=raw["labels"], end=raw["ends"], f=raw["f"],
                         sbc_state=raw["sbc_state"], price_current=pr["current"], price_avg=pr["avg"],
                         first_annual_report=raw["first_annual_report"], as_of=date.today(), flags=list(raw["flags"]),
                         data_problems=list(raw["problems"]) + list(pr["notes"]), tag_log=raw["tag_log"], assumed_zero=raw["assumed_zero"])
@@ -134,7 +136,7 @@ def run_one(sec, ticker):
     liq = liquidity_rows(facts, inp, sc["derived"])
     inp_alt = alt_inputs(inp, liq)
     sc_alt = score_company(inp_alt)
-    res = {"ticker": ticker, "name": raw["name"], "cik": raw["cik"], "profile": "STANDARD", "profile_check": prof,
+    res = {"ticker": ticker, "name": raw["name"], "cik": raw["cik"], "profile": profile, "profile_router": rr.to_jsonable(), "profile_check": prof,
            "fiscal_years": dict(zip(inp.fy, inp.end)), "price": {"current": pr["current"], "date": pr["current_date"]},
            "buffett_quality": model_json(sc["buffett_quality"]), "buffett_price": sc["buffett_price"],
            "graham_quality": model_json(sc["graham_quality"]), "graham_price": sc["graham_price"],

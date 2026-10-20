@@ -23,25 +23,26 @@ from src.scoring.graham import graham_price, graham_quality  # noqa: E402
 from src.scoring.inputs import CompanyInputs  # noqa: E402
 from src.scoring.metrics import median  # noqa: E402
 from src.scoring.profiles import score_company  # noqa: E402
+from router_runner import route_company  # noqa: E402
 
 OUT = ROOT / "scripts" / "output"
 RULE_ISSUES = ROOT / "scripts" / "rule_issues.md"
 
-COMPANIES = [
-    ("MSFT", "TECH_ASSET_LIGHT", "high quality"),
-    ("ORCL", "TECH_ASSET_LIGHT", "negative-ish equity + buybacks"),
-    ("AVGO", "TECH_ASSET_LIGHT", "heavy acquisitions"),
-    ("CRM", "TECH_ASSET_LIGHT", "high SBC"),
-    ("UBER", "TECH_ASSET_LIGHT", "loss-to-profit turnaround"),
-    ("KO", "STANDARD", "stable dividend compounder"),
-    ("MCD", "STANDARD", "negative equity + buybacks"),
-    ("HD", "STANDARD", "buybacks / leverage"),
-    ("NUE", "STANDARD", "cyclical"),
-    ("DOW", "STANDARD", "cyclical / spin-off"),
-    ("INTC", "STANDARD", "weak / deteriorating"),
-    ("KHC", "STANDARD", "mediocre / impairments"),
-    ("ADBE", "TECH_ASSET_LIGHT", "high-quality software"),
-    ("INTU", "TECH_ASSET_LIGHT", "high-quality software"),
+COMPANIES = [  # (ticker, note): the profile comes from the router (src/scoring/router.py), not from this list
+    ("MSFT", "high quality"),
+    ("ORCL", "negative-ish equity + buybacks"),
+    ("AVGO", "heavy acquisitions"),
+    ("CRM", "high SBC"),
+    ("UBER", "loss-to-profit turnaround"),
+    ("KO", "stable dividend compounder"),
+    ("MCD", "negative equity + buybacks"),
+    ("HD", "buybacks / leverage"),
+    ("NUE", "cyclical"),
+    ("DOW", "cyclical / spin-off"),
+    ("INTC", "weak / deteriorating"),
+    ("KHC", "mediocre / impairments"),
+    ("ADBE", "high-quality software"),
+    ("INTU", "high-quality software"),
 ]
 MODEL_VERSION = "2026-10-11_14-35"
 
@@ -83,7 +84,9 @@ def model_json(m):
 
 
 # ------------------------------------------------------------------ run one company
-def run_company(sec, ticker, profile, why):
+def run_company(sec, ticker, why):
+    rr = route_company(sec, ticker)
+    profile = rr.profile
     splits = price_provider.get_splits(ticker)
     raw = build_inputs(sec, ticker, profile, splits)
     pr = price_provider.load_prices(ticker, raw["ends"], raw["labels"])
@@ -103,7 +106,7 @@ def run_company(sec, ticker, profile, why):
     _flag_assumed_zero(inp, bq, gq)
     _collect_problems(inp, d, bq, gq, bp, gp)
     result = {
-        "ticker": ticker, "name": raw["name"], "cik": raw["cik"], "profile": profile, "profile_reason": why,
+        "ticker": ticker, "name": raw["name"], "cik": raw["cik"], "profile": profile, "profile_reason": why, "profile_router": rr.to_jsonable(),
         "scoring_model_version": MODEL_VERSION, "as_of": date.today(),
         "price": {"current": pr["current"], "current_date": pr["current_date"], "source": pr["source"],
                   "annual_average": dict(zip(inp.fy, pr["avg"])), "splits": pr["splits"]},
@@ -701,11 +704,11 @@ def main(argv):
     wanted = {a.upper() for a in argv}
     sec = SecClient()
     rows, failures = [], []
-    for ticker, profile, why in COMPANIES:
+    for ticker, why in COMPANIES:
         if wanted and ticker not in wanted:
             continue
         try:
-            r_ = run_company(sec, ticker, profile, why)
+            r_ = run_company(sec, ticker, why)
             if r_ is None:
                 print(f"{ticker}: not scored (sector_not_supported_v1)")
                 continue

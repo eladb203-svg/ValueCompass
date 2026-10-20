@@ -34,7 +34,7 @@ def test_dictionary_parsed():
     assert len({v[0] for v in KEYS.values()}) == len(KEYS)  # ids unique
 
 
-@pytest.mark.parametrize("engine", list(fm.FIELDS))
+@pytest.mark.parametrize("engine", [e for e in fm.FIELDS if e != "router"])
 def test_every_mapped_key_exists_and_map_is_injective(engine):
     m = fm.FIELDS[engine]
     assert all(k in KEYS for k in m.values()), [k for k in m.values() if k not in KEYS]
@@ -63,7 +63,7 @@ def _golden_series(engine):
     return names
 
 
-@pytest.mark.parametrize("engine", list(fm.FIELDS))
+@pytest.mark.parametrize("engine", [e for e in fm.FIELDS if e != "router"])
 def test_every_series_of_the_baseline_is_mapped_or_carried_through(engine):
     names = _golden_series(engine)
     assert names, engine
@@ -112,3 +112,13 @@ def test_year_label_roundtrip():
     assert label_to_year("FY2024") == 2024 and year_to_label(2024) == "FY2024"
     with pytest.raises(ValueError):
         label_to_year("2024")
+
+
+# the router items (code stage K4b): existing dictionary keys, plus the new ones added to the database in code stage K6 (FIN-187..192)
+ROUTER_NEW_KEYS = {"rd_expense", "interest_income_operating", "mortgage_loans_mbs", "nav_per_share", "investments_fair_value"}
+
+
+def test_router_items_are_existing_keys_or_the_declared_new_ones():
+    m = fm.FIELDS["router"]
+    assert len(set(m.values())) == len(m)
+    assert {k for k in m.values() if k not in KEYS} == ROUTER_NEW_KEYS

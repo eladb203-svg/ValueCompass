@@ -3,7 +3,8 @@
 Usage:  .venv/Scripts/python tests/golden/2026-10-20/make_golden.py [options] <raw_run_dir> [<golden_dir>]
 Options:
   --as-of=YYYY-MM-DD   fix date.today() inside the runners (the baseline was made on 2026-10-20)
-  --stub-yfinance      the EQR successor-price lookup (VMRK) finds no data, as in the baseline run (no network dependence)
+  --stub-yfinance      the EQR successor-price lookup (VMRK) finds no data, as in the baseline run (no network dependence); the router's provider industry
+                       comes from scripts/provider_industry_2026-10-20.csv (K4b)
   --via-facts          code stage K2: every inputs object takes the detour provider output -> facts -> inputs (src/etl) before the engines run
 
 * Each runner module is imported and its module-level OUT is redirected to <raw_run_dir>/<engine>/, then its own main() runs.
@@ -155,6 +156,8 @@ def patch_yfinance():
         def history(self, *a, **k):
             return pd.DataFrame({"Close": []})
     sys.modules["yfinance"] = types.SimpleNamespace(Ticker=_T)
+    from src.providers import industry_provider  # the provider industry (router tier 2) comes from a fixed file, not the network
+    industry_provider.use_fixed(ROOT / "scripts" / "provider_industry_2026-10-20.csv")
 
 
 def patch_via_facts():

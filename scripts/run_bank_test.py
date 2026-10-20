@@ -22,6 +22,7 @@ from src.providers import prices as price_provider  # noqa: E402
 from src.providers.bank_facts import build_bank_series, load_regulatory  # noqa: E402
 from src.providers.sec_companyfacts import SecClient  # noqa: E402
 from src.scoring.bank import BankInputs, bank_path, score_bank  # noqa: E402
+from router_runner import route_company  # noqa: E402
 
 OUT = ROOT / "scripts" / "output_banks"
 RULE_ISSUES = ROOT / "scripts" / "bank_rule_issues.md"
@@ -69,8 +70,9 @@ def run_bank(sec, reg_all, ticker):
         bi.data_problems.append(f"unmapped loan lines: {lt['unmapped_loan_lines']}")
     if lt.get("loans_mapped_share") is not None and not 0.97 <= lt["loans_mapped_share"] <= 1.03:
         bi.data_problems.append(f"mapped loan lines = {lt['loans_mapped_share']:.1%} of total loans")
+    rr = route_company(sec, ticker, f=f, labels=raw["labels"], ends=raw["ends"], reg=reg, reg_engine="bank")
     result = {
-        "ticker": ticker, "name": raw["name"], "cik": raw["cik"], "profile": "BANK", "path": path,
+        "ticker": ticker, "name": raw["name"], "cik": raw["cik"], "profile": "BANK", "path": path, "profile_router": rr.to_jsonable(),
         "scoring_model_version": MODEL_VERSION, "as_of": date.today(), "required_cet1": BANKS[ticker],
         "price": {"current": pr["current"], "current_date": pr["current_date"], "source": pr["source"],
                   "annual_average": dict(zip(bi.fy, pr["avg"])), "splits": pr["splits"]},

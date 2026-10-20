@@ -66,24 +66,9 @@ LOAN_MAP = {
 
 # ---------------------------------------------------------------- profile path
 log = logging.getLogger(__name__)
-BANK_SIC = ("6021", "6022", "6029", "6035", "6036")
+from .router import bank_path, bank_sic_set, default_tables  # noqa: E402,F401  (rows 1a / 1b live in the profile router, H-09)
 
-
-def bank_path(sic, deposits, total_liabilities, loans, assets, reports_cet1, reports_lcr, regulated_bhc=True) -> dict:
-    """Profile assignment: path 1 = industry 'Banks' + deposits/liabilities >= 50% + loans/assets >= 30%;
-    path 1b = regulated bank holding company that reports CET1 and LCR (includes investment banks)."""
-    dep_ratio = safe_div(deposits, total_liabilities)
-    loan_ratio = safe_div(loans, assets)
-    industry_ok = str(sic) in BANK_SIC
-    p1 = bool(industry_ok and dep_ratio is not None and loan_ratio is not None and dep_ratio >= 0.5 and loan_ratio >= 0.3)
-    from .profile_flags import borderline_flag  # S3a: tests within 5pp of their threshold
-    detail = {"deposits_to_liabilities": dep_ratio, "loans_to_assets": loan_ratio, "sic": str(sic),
-              "industry_is_banks": industry_ok, **borderline_flag({"deposits_to_liabilities": (dep_ratio, 0.5), "loans_to_assets": (loan_ratio, 0.3)})}
-    if p1:
-        return {"path": "1", **detail}
-    if regulated_bhc and reports_cet1 and reports_lcr:
-        return {"path": "1b", **detail}
-    return {"path": None, **detail}
+BANK_SIC = tuple(sorted(str(x) for x in bank_sic_set(default_tables())))
 
 
 # ---------------------------------------------------------------- inputs

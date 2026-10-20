@@ -460,41 +460,11 @@ def _last(ri, item):
 
 
 def _profile_check(ri, d) -> dict:
-    """S3 profile test (investment property / total assets >= 50% and rental revenue / total revenue >= 50%), RE10 (a company that fails is STANDARD) and RE11
-    (when the lease-income or investment-property tag is missing the test runs on extracted data: revenue breakdown and real estate leased to tenants incl. PP&E)."""
-    from .profile_flags import borderline_flag
+    """S3 profile test, row 3 of Part B: implemented once in the profile router (``router.property_test``); this only gathers the latest-year inputs."""
+    from .router import property_test
     g = ri.series
-    assets, ren = g("assets")[-1], g("re_net")[-1]
-    rental, tot = g("rental_revenue")[-1], g("total_revenue")[-1]
-    basis, notes = {"property": "XBRL tag", "rental": "XBRL tag"}, []
-    x_assets, x_prop, x_rent, x_tot = _last(ri, "profile_total_assets"), _last(ri, "profile_property_value"), _last(ri, "profile_rental_revenue"), _last(ri, "profile_total_revenue")
-    if ren is None or assets is None:
-        if x_prop is not None and x_assets is not None:
-            ren, assets, basis["property"] = x_prop, x_assets, "extracted (RE11: real estate leased to tenants carried in PP&E)"
-        else:
-            basis["property"] = "missing"
-    if rental is None or tot is None:
-        if x_rent is not None and x_tot is not None:
-            rental, tot, basis["rental"] = x_rent, x_tot, "extracted (RE11: revenue breakdown from the 10-K)"
-        else:
-            basis["rental"] = "missing"
-    a_share, r_share = _ratio(ren, assets), _ratio(rental, tot)
-    intang = g("intangibles_net")[-1]
-    if a_share is not None and a_share < PROFILE_ASSET_SHARE and intang and assets:
-        # RE15: real estate includes acquired lease-related intangibles (in-place leases, tenant relationships tied to leased assets); the finite-lived acquired
-        # intangibles (excluding goodwill) of tower / data-center companies are tenant-related and network-location intangibles
-        a2 = (ren + intang) / assets
-        notes.append(f"RE15: with acquired lease-related intangibles ({intang / 1e9:,.1f}bn) the share is {a2:.1%} (property alone {a_share:.1%})")
-        basis["property"] += " + acquired lease-related intangibles (RE15)"
-        a_share = a2
-    asset_ok = None if a_share is None else a_share >= PROFILE_ASSET_SHARE
-    rental_ok = None if r_share is None else r_share >= PROFILE_RENTAL_SHARE
-    ok = None if (asset_ok is None or rental_ok is None) else (asset_ok and rental_ok)
-    if ok is False:
-        notes.append("fails the test -> STANDARD (RE10 / RE11)")
-    return {"investment_property_share": a_share, "rental_revenue_share": r_share, "asset_ok": asset_ok, "rental_ok": rental_ok, "confirmed": ok, "basis": basis, "notes": notes,
-            "assignment": "INCOME_REAL_ESTATE" if ok else ("STANDARD" if ok is False else "undetermined"),
-            **borderline_flag({"investment_property_share": (a_share, PROFILE_ASSET_SHARE), "rental_revenue_share": (r_share, PROFILE_RENTAL_SHARE)})}
+    return property_test(g("assets")[-1], g("re_net")[-1], g("rental_revenue")[-1], g("total_revenue")[-1], g("intangibles_net")[-1],
+                         _last(ri, "profile_total_assets"), _last(ri, "profile_property_value"), _last(ri, "profile_rental_revenue"), _last(ri, "profile_total_revenue"))
 
 
 # ================================================================ adapters for the kept criteria

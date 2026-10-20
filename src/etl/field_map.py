@@ -72,7 +72,11 @@ REALESTATE = {
     "nci_total": "nci_total", "pref_equity": "pref_equity", "finance_lease_liab": "finance_lease_liab", "goodwill": "goodwill",
     "nci_op": "nci_op", "nci_lp": "nci_lp", "nci_redeemable": "nci_redeemable",
 }
-FIELDS = {"general": GENERAL, "bank": BANK, "insurance": INSURANCE, "realestate": REALESTATE}
+# ---- profile router (code stage K4b): FIN-187 rd_expense, FIN-188 sic_code (text row), FIN-189 provider_industry (text row),
+#      FIN-190 interest_income_operating, FIN-191 mortgage_loans_mbs, FIN-192 nav_per_share / investments_fair_value
+from ..scoring.router import ROUTER_ITEMS as ROUTER  # noqa: E402  (data table lives with the router)
+
+FIELDS = {"general": GENERAL, "bank": BANK, "insurance": INSURANCE, "realestate": REALESTATE, "router": ROUTER}
 
 # series that are carried through (FactSet.extras) but not stored as facts: no dictionary key and not read by the scoring code
 EXTRAS = {
@@ -80,6 +84,7 @@ EXTRAS = {
     "bank": set(),
     "insurance": {"aoci_afs_tag"},            # tag variant of aoci_afs, not read
     "realestate": {"equity_method_income"},   # not read
+    "router": set(),
 }
 
 # ---- extraction store: item -> fact key
