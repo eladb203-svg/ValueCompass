@@ -90,6 +90,7 @@ PER_SHARE = ("eps", "dps")
 SHARE_COUNTS = ("shares_dil", "shares_basic", "shares_out")
 ZERO_IF_ABSENT_FLOW = ("pref_div", "impairment", "debt_extinguishment", "transaction_costs", "buybacks", "acq_real_estate", "acq_business", "development",
                        "capital_improvements")
+ZERO_IF_ABSENT_BS = ("pref_equity",)  # Rulebook C5 / CL12: preferred stock absent from a retrieved balance sheet = 0, flagged
 # company-extension elements (inline XBRL of the 10-K): ticker -> field -> (local names, kind)
 RE_EXT: dict = {
     "PLD": {"rental_revenue": (["RentalRevenue"], "flow"), "other_property_revenue": (["OtherRealEstateRevenue"], "flow"),
@@ -291,6 +292,16 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
         labs = []
         for i, lab in enumerate(labels):
             if f[name][i] is None and f["net_income"][i] is not None:
+                f[name][i] = 0.0
+                log[name][lab] = {"tag": "assumed_zero", "value": 0.0}
+                labs.append(lab)
+        if labs:
+            assumed[name] = labs
+            problems.append(f"{name}: assumed_zero in {', '.join(labs)}")
+    for name in ZERO_IF_ABSENT_BS:
+        labs = []
+        for i, lab in enumerate(labels):
+            if f[name][i] is None and f["assets"][i] is not None:
                 f[name][i] = 0.0
                 log[name][lab] = {"tag": "assumed_zero", "value": 0.0}
                 labs.append(lab)

@@ -341,14 +341,15 @@ def test_v5_operating_loss_year_cannot_be_valued():
     assert bk.bank_graham_price(bi, derive_bank(bi), _gq(bi))["state"] == "cannot_be_valued"
 
 
-def test_v5_price_score_shown_only_when_graham_quality_at_least_55():
+def test_v5_price_score_shown_labelled_when_graham_quality_below_55():  # rulebook A.5 / X1 (K3 H-01)
     bi = synth()
     d = derive_bank(bi)
     q = _gq(bi)
     assert q.score >= 55 and bk.bank_graham_price(bi, d, q)["price_score"]["state"] == "score"
     q.score = 54.9
     gp = bk.bank_graham_price(bi, d, q)
-    assert gp["price_score"]["state"] == "not_shown" and gp["price_score"]["points"] is None and gp["value"] is not None
+    assert gp["price_score"]["state"] == "score" and gp["price_score"]["points"] is not None and gp["price_score"]["label"] and gp["value"] is not None
+    assert gp["buy_price"]["state"] == "not_suitable"
 
 
 def test_v6_rotce_norm_at_or_below_2_5pct_cannot_be_valued_and_never_negative():

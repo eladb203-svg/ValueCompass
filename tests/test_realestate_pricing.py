@@ -27,7 +27,7 @@ def test_conservative_cap_rate_is_gov_yield_plus_3pp_with_a_6pct_floor(tmp_path)
     assert c["value"] == pytest.approx(0.072932) and c["gov_year"] == "2025" and c["gov_kind"] == "annual"
     p.write_text("currency,year,yield_pct\nUSD,2025,1.0\n", encoding="utf-8")
     assert conservative_cap_rate("USD", p)["value"] == pytest.approx(0.06)  # floor
-    assert conservative_cap_rate("EUR", p)["value"] == pytest.approx(0.06) and "gov_yield_missing_floor_used" in conservative_cap_rate("EUR", p)["flags"]
+    assert conservative_cap_rate("EUR", p)["value"] is None and "gov_yield_missing_cannot_be_valued" in conservative_cap_rate("EUR", p)["flags"]  # K3 H-06: no 6% floor
 
 
 def test_repo_yields_file_gives_the_documented_cap_rate():

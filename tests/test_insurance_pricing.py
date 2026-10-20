@@ -114,13 +114,14 @@ def test_graham_cannot_be_valued_when_average_non_positive():
     assert gp["state"] == "cannot_be_valued" and gp["value"] is None and gp["buy_price"] is None
 
 
-def test_graham_price_score_hidden_when_quality_below_55():
+def test_graham_price_score_shown_labelled_when_quality_below_55():  # rulebook A.5 / X1 / P3 (K3 H-01)
     ii = ins()
     d = derive_insurance(ii)
     q = score_insurance(ii)["graham_quality"]
-    q.score = 50.0
+    q.score, q.status = 50.0, "full"
     gp = insurance_graham_price(ii, d, q)
-    assert gp["price_score"]["state"] == "not_shown" and gp["price_score"]["points"] is None
+    assert gp["price_score"]["state"] == "score" and gp["price_score"]["points"] is not None and gp["price_score"]["label"]
+    assert gp["buy_price"]["state"] == "not_suitable"
 
 
 def test_operating_eps_has_no_scale_guard_any_more():

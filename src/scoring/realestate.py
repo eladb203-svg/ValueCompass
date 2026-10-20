@@ -526,8 +526,8 @@ def _median5(vals):
 
 
 def b31(ri, d):
-    return [ai_pending(str(i), nm, 2.0, note="AI question") for i, nm in enumerate(
-        ["Understandable business", "Predictable demand", "Simple economics", "Durable asset base", "Transparent reporting"], start=1)]
+    # Rulebook C.B3.1 / CL9 (H-08): INCOME_REAL_ESTATE keeps the five general questions (same ids and names as the general model)
+    return [ai_pending(i, nm, 2.0, note="AI question") for i, nm in B.Q31]
 
 
 def b32(ri, d):
@@ -631,6 +631,7 @@ def b36(ri, d):
 
 def b37(ri, d):
     gd, v = _gd(ri, d), _View(ri, d)
+    gd["fcf"] = d["norm_ffo"]  # Rulebook C.B3.7 variants / CL5 (H-04): the denominator of 3.7.3 is always the normalized FFO, also when OE exists (3.7.4 below uses OE itself)
     items = B.c37(v, gd)
     # 4 distributions: dividends / OE (FFO proxy flagged), <=100% = 2, >=150% = 0
     a4 = [(1.0, 2), (1.5, 0)]
@@ -867,10 +868,10 @@ def gov_yield(currency: str = "USD", path: Path = GOV_YIELDS_CSV):
 
 
 def conservative_cap_rate(currency: str = "USD", path: Path = GOV_YIELDS_CSV) -> dict:
-    """RP2: max(latest monthly average 10-year yield + 3 pp, 6%); falls back to the latest annual average (flagged) and then to the 6% floor (flagged)."""
+    """RP2: max(latest monthly average 10-year yield + 3 pp, 6%); falls back to the latest annual average (flagged); with no yield at all the value is None (cannot be valued, RP2 / M6)."""
     y, per, kind = gov_yield(currency, path)
-    if y is None:
-        return {"value": CAP_FLOOR, "gov_yield": None, "gov_year": None, "gov_period": None, "gov_kind": None, "currency": currency, "flags": ["gov_yield_missing_floor_used"]}
+    if y is None:  # Rulebook RP2 / M6 / CL7 (H-06): no yield at all -> no cap rate, the NAV cannot be valued (no 6% floor)
+        return {"value": None, "gov_yield": None, "gov_year": None, "gov_period": None, "gov_kind": None, "currency": currency, "flags": ["gov_yield_missing_cannot_be_valued"]}
     fl = [] if kind == "monthly" else [f"gov_yield_is_annual_average_{per}_monthly_not_available"]
     return {"value": max(y + CAP_SPREAD, CAP_FLOOR), "gov_yield": y, "gov_year": per, "gov_period": per, "gov_kind": kind, "currency": currency, "flags": fl}
 
@@ -893,10 +894,9 @@ def _leverage_guard(d, quality) -> dict:
     if ntdc12 is not None and ntdc12 < LIQUIDITY_BLOCK:  # RP1a: 12-month liquidity coverage below 1.0x (the company depends on new market funding within a year)
         hard.append(f"12-month liquidity coverage {ntdc12:.2f}x < {LIQUIDITY_BLOCK:g}x")
     checks = []
-    if d["ntdc12"][-1] is None:
+    if d["ntdc12"][-1] is None:  # C-18a: a 12-month coverage that cannot be computed stays a block
         checks.append("near-term debt coverage (12 months) not computed (maturities or facilities missing)")
-    if quality is not None and quality.status != "full":
-        checks.append(f"Buffett quality coverage {quality.coverage:.0%} (status {quality.status}): not full")
+    # Rulebook RP1a / M7 (H-03): quality coverage below 80% does not block the price score; it removes only the buy price (B._buy_price)
     borderline = st == "ratio" and ratio is not None and LEVERAGE_BORDERLINE[0] <= ratio <= LEVERAGE_BORDERLINE[1]
     return {"blocked": bool(hard or checks), "hard": hard, "quality_checks": checks, "reasons": hard + checks, "nd_ebitdare": ratio if st in ("ratio", "net_cash") else None,
             "borderline": borderline, "ntdc12": d["ntdc12"][-1]}
@@ -949,7 +949,11 @@ def _buffett_base_growth(ri, d, series) -> dict:
     if med <= 0:
         return {**out, "ok": False, "reason": "per-share base <= 0"}
     prev5 = series[-10:-5] if len(series) >= 10 else []
-    if len(prev5) == 5 and all(x is not None for x in prev5) and median(prev5) > 0:
+    if len(prev5) == 5 and all(x is not None for x in prev5) and median(prev5) <= 0:
+        g1 = 0.0  # Rulebook RP1 / CL6 (H-05): previous-5 median <= 0 -> stage-1 growth 0%, flagged (as the general model)
+        out["growth_method"] = "previous-5 median <= 0: stage-1 growth 0%"
+        out["flags"].append("growth_not_measurable (previous-5 median <= 0): stage-1 growth set to lower clip 0% (assumption)")
+    elif len(prev5) == 5 and all(x is not None for x in prev5):
         graw = (med / median(prev5)) ** (1 / 5) - 1
         g1 = clip(graw, *B.STAGE1_CAP)
         out["growth_method"] = "median(last 5) vs median(previous 5), annualized"
@@ -1092,6 +1096,9 @@ def nav_components(ri, d, cap: Optional[float] = None) -> dict:
     g = ri.series
     cr = conservative_cap_rate()
     cap = cr["value"] if cap is None else cap
+    if cap is None:
+        return {"cap_rate": None, "cap_detail": cr, "noi": d["noi"][-1], "noi_basis": d["noi_basis"][-1], "flags": list(cr["flags"]), "ok": False,
+                "reason": "no government yield for the currency: conservative cap rate cannot be set (RP2 / M6)"}
     noi = d["noi"][-1]
     c: dict = {"cap_rate": cap, "cap_detail": cr, "noi": noi, "noi_basis": d["noi_basis"][-1], "flags": list(cr["flags"]), "rp2c": rp2c_basis(ri, d)}
     if noi is None or noi <= 0:
@@ -1238,11 +1245,38 @@ def re29b_gap_control(d, i, threshold: float = 0.05) -> Optional[dict]:
     return {"adjustment": adj, "q1_before": q1_before, "q1_after": q1_after, "q1_widening_pp": w1, "q6_before": q6_before, "q6_after": q6_after, "q6_widening_pp": w6, "flag": bool(flag)}
 
 
+Q6_THRESHOLD = 0.15  # E11 / Q6
+
+
+def q6_gap_flags(ri, d) -> list:
+    """Rulebook E11 / Q6 (H-19): OE per share vs the reported AFFO (BXP: FAD) per share less stock-based compensation per share, per year. Gap = OE / (AFFO - SBC) - 1; above 15% in absolute value
+    is flagged. Flag only: no score, value or price changes. Years without a reported AFFO, without OE (FFO-proxy years) or without a share count are skipped. BXP divides by the weighted shares
+    plus OP units of the partnership (RE28), everyone else by the effective shares."""
+    out = []
+    for i, lab in enumerate(ri.fy):
+        a, o = d["affo_reported"][i], d["oe"][i]
+        if a is None or o is None or d["oe_basis"][i] != "OE":
+            continue
+        den = d["partnership_units_weighted"][i] or d["shares_eff"][i]
+        if not den:
+            continue
+        net = (a - (d["sbc"][i] or 0.0)) / den
+        gap = o / den / net - 1 if net else None
+        out.append({"year": lab, "gap": gap, "flag": bool(gap is not None and abs(gap) > Q6_THRESHOLD)})
+    return out
+
+
 def score_realestate_pricing(ri: REInputs, sc: dict) -> dict:
     """Pricing on top of a quality result (RP1-RP3 and the display items)."""
     from .c16 import apply_c16
     d = sc["derived"]
     res = {"buffett_price": re_buffett_price(ri, d, sc["buffett_quality"]), "graham_price": re_graham_nav(ri, d, sc["graham_quality"]), "display": price_display(ri, d)}
+    q6 = q6_gap_flags(ri, d)
+    res["reconciliation_q6"] = q6
+    flagged = [x for x in q6 if x["flag"]]
+    if flagged:
+        res["buffett_price"]["flags"] = list(res["buffett_price"].get("flags") or []) + [
+            "E11_Q6_oe_vs_affo_less_sbc_gap_above_15pct (" + ", ".join(f"{x['year']} {x['gap']:+.0%}" for x in flagged) + ")"]
     return apply_c16(res, ri.price_entity_issue)
 
 

@@ -88,7 +88,7 @@ BANK_FIELDS: dict = {
 }
 PER_SHARE = ("eps", "dps")
 SHARE_COUNTS = ("shares_dil", "shares_basic", "shares_out")
-ZERO_IF_ABSENT_FLOW = ("buybacks", "dividends", "acquisitions", "goodwill_acquired")
+ZERO_IF_ABSENT_FLOW = ("buybacks", "dividends", "acquisitions", "goodwill_acquired", "pref_div")  # pref_div: Rulebook C5 / CL12, after the net income - net income to common derivation
 ZERO_IF_ABSENT_BS = ("goodwill", "intangibles", "preferred", "st_borrow", "lt_debt", "fhlb")
 
 

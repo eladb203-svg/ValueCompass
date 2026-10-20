@@ -97,7 +97,7 @@
       "max_pts": 2.0,
       "metric": null,
       "metric_label": "",
-      "name": "Understandable business",
+      "name": "Is it clear what the company sells?",
       "note": "AI question",
       "points": null,
       "state": "ai_pending",
@@ -110,7 +110,7 @@
       "max_pts": 2.0,
       "metric": null,
       "metric_label": "",
-      "name": "Predictable demand",
+      "name": "Is it clear who the customers are?",
       "note": "AI question",
       "points": null,
       "state": "ai_pending",
@@ -123,7 +123,7 @@
       "max_pts": 2.0,
       "metric": null,
       "metric_label": "",
-      "name": "Simple economics",
+      "name": "Are the revenue sources simple to understand?",
       "note": "AI question",
       "points": null,
       "state": "ai_pending",
@@ -136,7 +136,7 @@
       "max_pts": 2.0,
       "metric": null,
       "metric_label": "",
-      "name": "Durable asset base",
+      "name": "Are the main risks clear?",
       "note": "AI question",
       "points": null,
       "state": "ai_pending",
@@ -149,7 +149,7 @@
       "max_pts": 2.0,
       "metric": null,
       "metric_label": "",
-      "name": "Transparent reporting",
+      "name": "Can the business be explained in one sentence?",
       "note": "AI question",
       "points": null,
       "state": "ai_pending",
@@ -649,10 +649,10 @@
       "id": "3",
       "inputs": {
        "sum_acquisitions": 20598100000.0,
-       "sum_fcf": 21052200000.0
+       "sum_fcf": 23815200000.0
       },
       "max_pts": 2,
-      "metric": 0.97843,
+      "metric": 0.864914,
       "metric_label": "acq/FCF",
       "name": "M&A created value",
       "note": "acquisitions > 10% of FCF: AI question required",
@@ -844,7 +844,7 @@
     "criterion": "3.1",
     "id": "1",
     "max_pts": 2.0,
-    "name": "Understandable business",
+    "name": "Is it clear what the company sells?",
     "note": "AI question",
     "state": "ai_pending"
    },
@@ -852,7 +852,7 @@
     "criterion": "3.1",
     "id": "2",
     "max_pts": 2.0,
-    "name": "Predictable demand",
+    "name": "Is it clear who the customers are?",
     "note": "AI question",
     "state": "ai_pending"
    },
@@ -860,7 +860,7 @@
     "criterion": "3.1",
     "id": "3",
     "max_pts": 2.0,
-    "name": "Simple economics",
+    "name": "Are the revenue sources simple to understand?",
     "note": "AI question",
     "state": "ai_pending"
    },
@@ -868,7 +868,7 @@
     "criterion": "3.1",
     "id": "4",
     "max_pts": 2.0,
-    "name": "Durable asset base",
+    "name": "Are the main risks clear?",
     "note": "AI question",
     "state": "ai_pending"
    },
@@ -876,7 +876,7 @@
     "criterion": "3.1",
     "id": "5",
     "max_pts": 2.0,
-    "name": "Transparent reporting",
+    "name": "Can the business be explained in one sentence?",
     "note": "AI question",
     "state": "ai_pending"
    },
@@ -953,6 +953,7 @@
   "acq_real_estate: assumed_zero in FY2016, FY2017, FY2018, FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
   "development: assumed_zero in FY2016, FY2017, FY2018, FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
   "capital_improvements: assumed_zero in FY2016, FY2017, FY2018, FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
+  "pref_equity: assumed_zero in FY2016, FY2017, FY2018, FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
   "shares_out: balance-sheet tag missing, cover-page count used in FY2017"
  ],
  "display": {
@@ -1816,6 +1817,7 @@
    "acq_real_estate: assumed_zero in FY2016, FY2017, FY2018, FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
    "development: assumed_zero in FY2016, FY2017, FY2018, FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
    "capital_improvements: assumed_zero in FY2016, FY2017, FY2018, FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
+   "pref_equity: assumed_zero in FY2016, FY2017, FY2018, FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
    "shares_out: balance-sheet tag missing, cover-page count used in FY2017"
   ],
   "end": [
@@ -2288,16 +2290,16 @@
     0.0
    ],
    "pref_equity": [
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    null
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
    ],
    "prop_opex": [
     1762694000.0,
@@ -5256,34 +5258,44 @@
    },
    "pref_equity": {
     "FY2016": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     },
     "FY2017": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     },
     "FY2018": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     },
     "FY2019": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     },
     "FY2020": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     },
     "FY2021": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     },
     "FY2022": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     },
     "FY2023": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     },
     "FY2024": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     },
     "FY2025": {
-     "tag": null
+     "tag": "assumed_zero",
+     "value": 0.0
     }
    },
    "prop_opex": {

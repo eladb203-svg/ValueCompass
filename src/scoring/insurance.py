@@ -87,7 +87,8 @@ def derive_insurance(ii: InsuranceInputs) -> dict:
     pre, tax = g("pretax"), g("tax")
     d["tax_rate"] = [0.25 if (p is None or t is None or p <= 0) else min(0.40, max(0.0, t / p)) for p, t in zip(pre, tax)]
     gw_imp = g("goodwill_impairment")
-    d["nop_pretax"] = [None if (p is None or gg is None) else p - gg - (w or 0.0) for p, gg, w in zip(pre, d["non_recurring_gains"], gw_imp)]
+    # Rulebook C.B3.4-INS (H-02): goodwill impairment is added back (a non-operating charge), as BANK V5
+    d["nop_pretax"] = [None if (p is None or gg is None) else p - gg + (w or 0.0) for p, gg, w in zip(pre, d["non_recurring_gains"], gw_imp)]
     d["nop_after_tax"] = [None if x is None else x * (1 - r) for x, r in zip(d["nop_pretax"], d["tax_rate"])]
     d["total_operating_margin"] = [safe_div(a, b) for a, b in zip(d["nop_pretax"], d["operating_revenue"])]
     d["net_margin"] = [safe_div(a, b) for a, b in zip(g("net_income"), d["operating_revenue"])]
@@ -907,9 +908,10 @@ def insurance_buffett_price(ii, d, quality: ModelResult) -> dict:
     out["sensitivity"] = sens
     vals = [v for v in sens.values() if v is not None]
     out["sensitivity_range"] = (min(vals), max(vals))
-    if per_share <= 0:
+    if per_share <= 0:  # Rulebook C15 / P2, CL14 (H-07): value <= 0 -> price score 0, no buy price
         return {**out, "state": "cannot_be_valued", "reason": "model value <= 0 (V6)", "fair_value": None, "sensitivity": None, "sensitivity_range": None,
-                "price_score": na, "buy_price": None}
+                "price_score": {"state": "score", "points": 0.0, "reason": "C15: value <= 0 -> price score 0"}, "buy_price": None,
+                "flags": out["flags"] + ["C15_value_nonpositive_cannot_be_valued"]}
     price = ii.price_current
     if price is None:
         out["price_score"] = {"state": "missing", "points": None, "reason": "no current price"}
@@ -970,10 +972,9 @@ def insurance_graham_price(ii, d, quality: ModelResult) -> dict:
     else:
         disc = (val - ii.price_current) / val
         out["price_score"] = {"state": "score", "discount": disc, "points": interpolate(disc, G.CLASSIC_PRICE), "anchors": describe(G.CLASSIC_PRICE)}
-        if quality.score is None or quality.score < 55:
-            out["price_score"] = {"state": "not_shown", "points": None, "discount": disc,
-                                  "reason": (f"Graham quality {quality.score:.1f} < 55" if quality.score is not None else "no quality score")}
-            out["flags"].append("price_score_hidden_graham_quality_below_55")
+        if quality.score is None or quality.score < 55:  # Rulebook A.5 / X1 / P3 (H-01): shown, labelled; buy price "not suitable" (_buy_price)
+            out["price_score"]["label"] = ("Graham quality below 55" if quality.score is not None else "no Graham quality score")
+            out["flags"].append("X1_price_score_shown_graham_quality_below_55")
     out["buy_price"] = B._buy_price(val, quality, G.CLASSIC_MARGIN)
     return out
 

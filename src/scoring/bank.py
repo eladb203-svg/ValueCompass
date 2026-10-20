@@ -1057,8 +1057,10 @@ def bank_buffett_price(bi, d, quality: ModelResult) -> dict:
     out["single_stage_sanity"] = (norm - G_TERM) / (R_DISC - G_TERM)  # justified P/TBV, single stage
     price = bi.price_current
     if per_share <= 0:  # never output a negative value
+        # Rulebook C15 / V6, CL14 (H-07): value <= 0 -> price score 0, no buy price (as the general model)
         return {**out, "state": "cannot_be_valued", "reason": "model value <= 0 (V6)", "fair_value": None, "sensitivity": None,
-                "sensitivity_range": None, "price_score": {"state": "not_applicable", "points": None}, "buy_price": None}
+                "sensitivity_range": None, "price_score": {"state": "score", "points": 0.0, "reason": "C15: value <= 0 -> price score 0"},
+                "buy_price": None, "flags": out["flags"] + ["C15_value_nonpositive_cannot_be_valued"]}
     if price is None:
         out["price_score"] = {"state": "missing", "points": None, "reason": "no current price"}
     else:
@@ -1197,11 +1199,9 @@ def bank_graham_price(bi, d, quality: ModelResult) -> dict:
         disc = (val - bi.price_current) / val
         out["price_score"] = {"state": "score", "discount": disc, "points": interpolate(disc, G.CLASSIC_PRICE),
                               "anchors": describe(G.CLASSIC_PRICE)}
-        if quality.score is None or quality.score < 55:  # V5 quality gate
-            out["price_score"] = {"state": "not_shown", "points": None, "discount": disc,
-                                  "reason": (f"Graham quality {quality.score:.1f} < 55 (V5)" if quality.score is not None
-                                             else "no quality score")}
-            out["flags"].append("V5_price_score_hidden_graham_quality_below_55")
+        if quality.score is None or quality.score < 55:  # Rulebook A.5 / X1 (H-01): the score stays shown, labelled; the buy price is "not suitable" (_buy_price)
+            out["price_score"]["label"] = ("Graham quality below 55" if quality.score is not None else "no Graham quality score")
+            out["flags"].append("X1_price_score_shown_graham_quality_below_55")
     out["buy_price"] = B._buy_price(val, quality, G.CLASSIC_MARGIN)
     return out
 
