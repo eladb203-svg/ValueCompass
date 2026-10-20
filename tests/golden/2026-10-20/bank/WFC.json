@@ -1,0 +1,4387 @@
+{
+ "buffett_price": {
+  "buy_price": {
+   "buy_price": 49.011799,
+   "margin_of_safety": 0.256711,
+   "quality_coverage": 0.96,
+   "quality_score": 76.49328,
+   "quality_status": "full",
+   "state": "computed"
+  },
+  "fair_value": 65.939129,
+  "flags": [
+   "growth_gate_failed (a: revenue rose in only 2 of 4 transitions)"
+  ],
+  "g1": 0.025,
+  "growth_gate": {
+   "eps_falls_gt10": 1,
+   "eps_positive_years": 5,
+   "failing": [
+    "a: revenue rose in only 2 of 4 transitions"
+   ],
+   "passed": false,
+   "revenue_rises": 2
+  },
+  "implied_return": 0.084193,
+  "implied_rotce": 0.163867,
+  "justified_ptbv": 1.461376,
+  "method": "two_stage_excess_returns",
+  "model": "buffett_price_bank_v2",
+  "payout": 0.950827,
+  "price_current": 83.550003,
+  "price_score": {
+   "anchors": "-0.25->0 | -0.2->0.5 | 0->2.5 | 0.1->4.5 | 0.2->6.5 | 0.3->8.5 | 0.4->10",
+   "discount": -0.267078,
+   "points": 0.0,
+   "state": "score"
+  },
+  "price_to_tbv": 1.851677,
+  "pv_residual_income": 32607351176.158043,
+  "pv_terminal_value": 31773999731.939713,
+  "rotce_median": 0.134603,
+  "rotce_norm": 0.134603,
+  "schedule": [
+   {
+    "growth": 0.025,
+    "residual_income": 4828601318.107336,
+    "rotce": 0.134603,
+    "tce_start": 139542000000.0,
+    "year": 1
+   },
+   {
+    "growth": 0.025,
+    "residual_income": 4949316351.060019,
+    "rotce": 0.134603,
+    "tce_start": 143030550000.0,
+    "year": 2
+   },
+   {
+    "growth": 0.025,
+    "residual_income": 5073049259.83652,
+    "rotce": 0.134603,
+    "tce_start": 146606313750.0,
+    "year": 3
+   },
+   {
+    "growth": 0.025,
+    "residual_income": 5199875491.332433,
+    "rotce": 0.134603,
+    "tce_start": 150271471593.75,
+    "year": 4
+   },
+   {
+    "growth": 0.025,
+    "residual_income": 5329872378.615744,
+    "rotce": 0.134603,
+    "tce_start": 154028258383.59375,
+    "year": 5
+   },
+   {
+    "growth": 0.025,
+    "residual_income": 5463119188.081138,
+    "rotce": 0.134603,
+    "tce_start": 157878964843.1836,
+    "year": 6
+   },
+   {
+    "growth": 0.025,
+    "residual_income": 5599697167.783166,
+    "rotce": 0.134603,
+    "tce_start": 161825938964.26318,
+    "year": 7
+   },
+   {
+    "growth": 0.025,
+    "residual_income": 5739689596.977744,
+    "rotce": 0.134603,
+    "tce_start": 165871587438.36975,
+    "year": 8
+   },
+   {
+    "growth": 0.025,
+    "residual_income": 5883181836.902187,
+    "rotce": 0.134603,
+    "tce_start": 170018377124.32898,
+    "year": 9
+   },
+   {
+    "growth": 0.025,
+    "residual_income": 6030261382.824742,
+    "rotce": 0.134603,
+    "tce_start": 174268836552.4372,
+    "year": 10
+   }
+  ],
+  "sensitivity": {
+   "base": 65.939129,
+   "erosion": 50.475081,
+   "rotce_minus_1pp": 59.922962,
+   "rotce_plus_1pp": 71.955297
+  },
+  "sensitivity_range": [
+   50.475081,
+   71.955297
+  ],
+  "shares": 3092600000.0,
+  "single_stage_sanity": 1.461376,
+  "state": "valued",
+  "tce0": 139542000000.0,
+  "tce10": 178625557466.2481,
+  "total_value": 203923350908.09778,
+  "v1_single_stage": {
+   "fair_value": 65.939129,
+   "implied_return": 0.084191,
+   "implied_rotce": 0.163876,
+   "justified_ptbv": 1.461376,
+   "price_score": {
+    "anchors": "-0.25->0 | -0.2->0.5 | 0->2.5 | 0.1->4.5 | 0.2->6.5 | 0.3->8.5 | 0.4->10",
+    "discount": -0.267078,
+    "points": 0.0,
+    "state": "score"
+   },
+   "reason": null,
+   "rotce_median": 0.134603,
+   "rotce_norm": 0.134603,
+   "state": "valued",
+   "tbvps": 45.121257
+  }
+ },
+ "buffett_quality": {
+  "buy_price_allowed": true,
+  "coverage": 0.96,
+  "criteria": [
+   {
+    "computed_share": 0.0,
+    "covered_points": 10,
+    "id": "3.1",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Is it clear what the company sells?",
+      "note": "AI question (not run in this round)",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Is it clear who the customers are?",
+      "note": "AI question (not run in this round)",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Are the revenue sources simple to understand?",
+      "note": "AI question (not run in this round)",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     },
+     {
+      "flags": [],
+      "id": "4",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Are the main risks clear?",
+      "note": "AI question (not run in this round)",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     },
+     {
+      "flags": [],
+      "id": "5",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Can the business be explained in one sentence?",
+      "note": "AI question (not run in this round)",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     }
+    ],
+    "name": "Simple, understandable business",
+    "normalized": null,
+    "observed_points": 0.0,
+    "range_max": 10.0,
+    "range_min": 0.0,
+    "valid": true,
+    "weight": 10
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 10.0,
+    "id": "3.2",
+    "items": [
+     {
+      "flags": [],
+      "id": "1a",
+      "inputs": {},
+      "max_pts": 1.0,
+      "metric": null,
+      "metric_label": "",
+      "name": "Gross margin level",
+      "note": "bank: gross margin not applicable (matrix)",
+      "points": null,
+      "state": "not_applicable",
+      "thresholds": ""
+     },
+     {
+      "flags": [],
+      "id": "1b",
+      "inputs": {},
+      "max_pts": 1.5,
+      "metric": null,
+      "metric_label": "",
+      "name": "Gross margin stability",
+      "note": "bank: gross margin not applicable (matrix)",
+      "points": null,
+      "state": "not_applicable",
+      "thresholds": ""
+     },
+     {
+      "flags": [
+       "D8"
+      ],
+      "id": "2a",
+      "inputs": {
+       "pretax_margin": [
+        0.373431,
+        0.210158,
+        0.261947,
+        0.283902,
+        0.301067
+       ]
+      },
+      "max_pts": 1.5,
+      "metric": 0.163273,
+      "metric_label": "pretax margin range (pretax income / bank revenue)",
+      "name": "Pretax margin stability",
+      "note": "",
+      "points": 0.0,
+      "state": "score",
+      "thresholds": "0.04->1.5 | 0.12->0"
+     },
+     {
+      "flags": [
+       "D8"
+      ],
+      "id": "2b",
+      "inputs": {
+       "pretax_margin": [
+        0.373431,
+        0.210158,
+        0.261947,
+        0.283902,
+        0.301067
+       ]
+      },
+      "max_pts": 1.0,
+      "metric": 0.017165,
+      "metric_label": "latest minus 5y median pretax margin",
+      "name": "No pretax margin erosion",
+      "note": "",
+      "points": 1.0,
+      "state": "score",
+      "thresholds": "-0.05->0 | -0.01->1"
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {
+       "rotce": [
+        0.150636,
+        0.091303,
+        0.13059,
+        0.134603,
+        0.147588
+       ]
+      },
+      "max_pts": 2.0,
+      "metric": 4.0,
+      "metric_label": "years with ROTCE>=12% (of 5)",
+      "name": "Persistent ROTCE",
+      "note": "",
+      "points": 1.5,
+      "state": "score",
+      "thresholds": "1->0 | 2->0.5 | 3->1 | 4->1.5 | 5->2"
+     },
+     {
+      "flags": [],
+      "id": "4",
+      "inputs": {},
+      "max_pts": 2.0,
+      "metric": null,
+      "metric_label": "",
+      "name": "Stable competitive position",
+      "note": "AI question",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     },
+     {
+      "flags": [],
+      "id": "5",
+      "inputs": {},
+      "max_pts": 1.0,
+      "metric": null,
+      "metric_label": "",
+      "name": "Clear moat",
+      "note": "AI question x0.5",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     }
+    ],
+    "name": "Moat",
+    "normalized": 5.555556,
+    "observed_points": 2.5,
+    "range_max": 7.333333,
+    "range_min": 3.333333,
+    "valid": true,
+    "weight": 10.0
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 15,
+    "id": "3.3",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "net_income": [
+        22109000000.0,
+        13677000000.0,
+        19142000000.0,
+        19722000000.0,
+        21338000000.0
+       ]
+      },
+      "max_pts": 6,
+      "metric": 5.0,
+      "metric_label": "years NI>0 (of 5)",
+      "name": "Positive net income in most years",
+      "note": "",
+      "points": 6.0,
+      "state": "score",
+      "thresholds": "2->0 | 3->2 | 4->4 | 5->6"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "eps": [
+        5.08,
+        3.27,
+        4.83,
+        5.37,
+        6.26
+       ]
+      },
+      "max_pts": 4,
+      "metric": 1.0,
+      "metric_label": "EPS falls >10% (of 4 transitions)",
+      "name": "Stable EPS",
+      "note": "",
+      "points": 3.0,
+      "state": "score",
+      "thresholds": "0->4 | 1->3 | 2->1.5 | 3->0"
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {
+       "revenue": [
+        79166000000.0,
+        74368000000.0,
+        82597000000.0,
+        82296000000.0,
+        83699000000.0
+       ]
+      },
+      "max_pts": 3,
+      "metric": 0.014017,
+      "metric_label": "revenue CAGR (4 periods across 5 FYs)",
+      "name": "Revenue growth",
+      "note": "",
+      "points": 0.841042,
+      "state": "score",
+      "thresholds": "0->0 | 0.05->3"
+     },
+     {
+      "flags": [],
+      "id": "4",
+      "inputs": {
+       "net_income": [
+        22109000000.0,
+        13677000000.0,
+        19142000000.0,
+        19722000000.0,
+        21338000000.0
+       ]
+      },
+      "max_pts": 2,
+      "metric": 0.69349,
+      "metric_label": "weakest NI / median NI",
+      "name": "No exceptionally weak year",
+      "note": "",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "0->0 | 0.5->2"
+     }
+    ],
+    "name": "Consistent profitability",
+    "normalized": 11.841042,
+    "observed_points": 11.841042,
+    "range_max": 11.841042,
+    "range_min": 11.841042,
+    "valid": true,
+    "weight": 15
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 15,
+    "id": "3.4",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "rotce": [
+        0.150636,
+        0.091303,
+        0.13059,
+        0.134603,
+        0.147588
+       ]
+      },
+      "max_pts": 10,
+      "metric": 0.134603,
+      "metric_label": "5y median ROTCE",
+      "name": "ROTCE (5y median)",
+      "note": "",
+      "points": 6.973547,
+      "state": "score",
+      "thresholds": "0.06->0 | 0.12->6 | 0.18->10"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "roa": [
+        0.011335,
+        0.007144,
+        0.010039,
+        0.010213,
+        0.010464
+       ]
+      },
+      "max_pts": 5,
+      "metric": 0.010213,
+      "metric_label": "5y median ROA",
+      "name": "ROA (5y median)",
+      "note": "",
+      "points": 3.475022,
+      "state": "score",
+      "thresholds": "0.005->0 | 0.0125->5"
+     }
+    ],
+    "name": "Return on capital",
+    "normalized": 10.448569,
+    "observed_points": 10.448569,
+    "range_max": 10.448569,
+    "range_min": 10.448569,
+    "valid": true,
+    "weight": 15
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 15,
+    "id": "3.5",
+    "items": [
+     {
+      "flags": [
+       "ppnr_as_reported_one_offs_not_adjusted"
+      ],
+      "id": "1",
+      "inputs": {
+       "ppnr_to_assets": [
+        0.013026,
+        0.008965,
+        0.014179,
+        0.014343,
+        0.014151
+       ]
+      },
+      "max_pts": 4,
+      "metric": 0.014151,
+      "metric_label": "5y median PPNR / average assets",
+      "name": "Earning power (PPNR / avg assets)",
+      "note": "",
+      "points": 1.66035,
+      "state": "score",
+      "thresholds": "0.01->0 | 0.02->4"
+     },
+     {
+      "flags": [
+       "pretax_earning_power_test_D1"
+      ],
+      "id": "2",
+      "inputs": {
+       "loans_latest": 986167000000.0,
+       "ppnr": [
+        25408000000.0,
+        17163000000.0,
+        27035000000.0,
+        27698000000.0,
+        28857000000.0
+       ]
+      },
+      "max_pts": 4,
+      "metric": 0.913807,
+      "metric_label": "median PPNR / (3% x latest loans)",
+      "name": "Stress coverage",
+      "note": "",
+      "points": 3.310459,
+      "state": "score",
+      "thresholds": "0.5->0 | 1->4"
+     },
+     {
+      "flags": [
+       "D2"
+      ],
+      "id": "3",
+      "inputs": {
+       "annual": [
+        -0.021883,
+        0.156551,
+        0.087792,
+        0.137762
+       ]
+      },
+      "max_pts": 7,
+      "metric": 0.112777,
+      "metric_label": "median of annual (dTBVPS + DPS) / prior TBVPS",
+      "name": "Tangible value creation",
+      "note": "",
+      "points": 6.578662,
+      "state": "score",
+      "thresholds": "0->0 | 0.12->7"
+     }
+    ],
+    "name": "Earning power and value creation",
+    "normalized": 11.549471,
+    "observed_points": 11.549471,
+    "range_max": 11.549471,
+    "range_min": 11.549471,
+    "valid": true,
+    "weight": 15
+   },
+   {
+    "computed_share": 0.8,
+    "covered_points": 8,
+    "id": "3.6",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "binding_approach": "standardized",
+       "buffer_by_approach": {
+        "advanced": 3.85,
+        "standardized": 2.11
+       },
+       "cet1": 10.61,
+       "cet1_adv": 12.35,
+       "cet1_std": 10.61,
+       "required": 8.5,
+       "required_adv": 8.5,
+       "required_std": 8.5
+      },
+      "max_pts": 4,
+      "metric": 2.11,
+      "metric_label": "min over approaches of (CET1 - reported requirement) (pp)",
+      "name": "Capital buffer",
+      "note": "",
+      "points": 3.376,
+      "state": "score",
+      "thresholds": "0 pp->0 | 2.5 pp->4"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "nco_rate": [
+        0.001766,
+        null,
+        null,
+        null,
+        0.004306
+       ]
+      },
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Typical charge-offs",
+      "note": "NCO rate available for fewer than 3 of the last 5 years",
+      "points": null,
+      "state": "missing",
+      "thresholds": "0.003->2 | 0.015->0"
+     },
+     {
+      "flags": [
+       "thresholds_to_recalibrate_D11"
+      ],
+      "id": "3",
+      "inputs": {
+       "loans": 986167000000.0,
+       "nonaccrual": 8201000000.0,
+       "past_due_90_display_only": 3000000000.0,
+       "source": "extraction"
+      },
+      "max_pts": 1,
+      "metric": 0.008316,
+      "metric_label": "nonaccrual loans / gross loans (D11)",
+      "name": "Nonaccrual loans",
+      "note": "",
+      "points": 0.867359,
+      "state": "score",
+      "thresholds": "0.005->1 | 0.03->0"
+     },
+     {
+      "flags": [
+       "temporary_thresholds_D11"
+      ],
+      "id": "4",
+      "inputs": {
+       "acl": 14337000000.0,
+       "nonaccrual": 8201000000.0
+      },
+      "max_pts": 1,
+      "metric": 1.748201,
+      "metric_label": "ACL / nonaccrual loans (D11)",
+      "name": "Reserve coverage (ACL / nonaccrual)",
+      "note": "",
+      "points": 1.0,
+      "state": "score",
+      "thresholds": "0.75->0 | 1.5->1"
+     },
+     {
+      "flags": [],
+      "id": "5",
+      "inputs": {
+       "measurement": "q4_average",
+       "source": "MD&A - Financial Summary / Table 1"
+      },
+      "max_pts": 2,
+      "metric": 119.0,
+      "metric_label": "LCR (Q4 average)",
+      "name": "Liquidity (LCR)",
+      "note": "",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "100%->0 | 110%->2"
+     }
+    ],
+    "name": "Capital, credit and liquidity",
+    "normalized": 9.054199,
+    "observed_points": 7.243359,
+    "range_max": 9.243359,
+    "range_min": 7.243359,
+    "valid": true,
+    "weight": 10
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 10,
+    "id": "3.7",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "buybacks": [
+        14464000000.0,
+        6033000000.0,
+        11851000000.0,
+        19448000000.0,
+        17516000000.0
+       ],
+       "pe": [
+        8.659628,
+        14.105291,
+        8.808729,
+        11.010442,
+        12.601367
+       ]
+      },
+      "max_pts": 2,
+      "metric": 0.982236,
+      "metric_label": "buyback-weighted P/E / median P/E",
+      "name": "Relative buyback valuation",
+      "note": "",
+      "points": 1.58882,
+      "state": "score",
+      "thresholds": "0.9->2 | 1->1.5 | 1.2->0"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "latest": 3092600000.0,
+       "t_minus_4": 3814556833.0
+      },
+      "max_pts": 2,
+      "metric": -0.189264,
+      "metric_label": "period-end share count change vs t-4",
+      "name": "No meaningful dilution",
+      "note": "",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "0->2 | 0.1->0"
+     },
+     {
+      "flags": [
+       "assumed_zero (acquisitions)"
+      ],
+      "id": "3",
+      "inputs": {
+       "sum_acquisitions": 0.0,
+       "sum_net_income": 95988000000.0
+      },
+      "max_pts": 2,
+      "metric": 0.0,
+      "metric_label": "acquisitions / net income",
+      "name": "M&A created value",
+      "note": "no acquisitions",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "<10% = 2, above: AI"
+     },
+     {
+      "flags": [],
+      "id": "4",
+      "inputs": {
+       "sum_distributions": 91268000000.0,
+       "sum_net_income": 95988000000.0
+      },
+      "max_pts": 2,
+      "metric": 0.950827,
+      "metric_label": "(dividends + buybacks) / net income (5y)",
+      "name": "Distributions supported by earnings",
+      "note": "",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "1->2 | 1.5->0"
+     },
+     {
+      "flags": [],
+      "id": "5",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Transparent, conservative, consistent management",
+      "note": "AI question",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     }
+    ],
+    "name": "Management and capital allocation",
+    "normalized": 9.486025,
+    "observed_points": 7.58882,
+    "range_max": 9.58882,
+    "range_min": 7.58882,
+    "valid": true,
+    "weight": 10
+   },
+   {
+    "computed_share": 0.846154,
+    "covered_points": 13,
+    "id": "3.8",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "revenue": [
+        79166000000.0,
+        74368000000.0,
+        82597000000.0,
+        82296000000.0,
+        83699000000.0
+       ]
+      },
+      "max_pts": 3,
+      "metric": 2.0,
+      "metric_label": "bank revenue rises (of 4)",
+      "name": "Consistency of revenue growth",
+      "note": "",
+      "points": 1.0,
+      "state": "score",
+      "thresholds": "1->0 | 2->1 | 3->2 | 4->3"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "end_avg": 5.815,
+       "start_avg": 4.175
+      },
+      "max_pts": 3,
+      "metric": 0.116772,
+      "metric_label": "smoothed EPS growth",
+      "name": "EPS growth",
+      "note": "",
+      "points": 3.0,
+      "state": "score",
+      "thresholds": "0->0 | 0.1->3"
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {
+       "tbvps": [
+        36.934566,
+        35.026345,
+        39.209759,
+        41.152057,
+        45.121257
+       ]
+      },
+      "max_pts": 3,
+      "metric": 1.0,
+      "metric_label": "TBVPS declines (of 4 transitions)",
+      "name": "TBVPS consistency",
+      "note": "",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "0->3 | 1->2 | 2->1 | 3->0"
+     },
+     {
+      "flags": [
+       "D7"
+      ],
+      "id": "4",
+      "inputs": {
+       "acquisition_years_skipped": [],
+       "valid_growth": []
+      },
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Loan growth (risk indicator)",
+      "note": "fewer than 2 valid (non-acquisition) years",
+      "points": null,
+      "state": "missing",
+      "thresholds": "0.1->2 | 0.2->0"
+     },
+     {
+      "flags": [],
+      "id": "5",
+      "inputs": {
+       "net_margin": [
+        0.279274,
+        0.18391,
+        0.231752,
+        0.239647,
+        0.254937
+       ]
+      },
+      "max_pts": 2,
+      "metric": -0.0157,
+      "metric_label": "decline in net margin, avg first 2 -> last 2",
+      "name": "Margins maintained",
+      "note": "",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "0.01->2 | 0.05->0"
+     },
+     {
+      "flags": [],
+      "id": "6",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Growth is sustainable",
+      "note": "AI question",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     }
+    ],
+    "name": "Quality, sustainable growth",
+    "normalized": 10.909091,
+    "observed_points": 8.0,
+    "range_max": 12.0,
+    "range_min": 8.0,
+    "valid": true,
+    "weight": 15
+   }
+  ],
+  "invalid_criteria": [],
+  "model": "buffett_quality_bank",
+  "observed_points": 59.171261,
+  "pending_criteria": [
+   "3.1"
+  ],
+  "range_error": null,
+  "range_max": 82.004594,
+  "range_min": 60.004594,
+  "score": 76.49328,
+  "status": "full",
+  "unknown_items": [
+   {
+    "criterion": "3.1",
+    "id": "1",
+    "max_pts": 2,
+    "name": "Is it clear what the company sells?",
+    "note": "AI question (not run in this round)",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.1",
+    "id": "2",
+    "max_pts": 2,
+    "name": "Is it clear who the customers are?",
+    "note": "AI question (not run in this round)",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.1",
+    "id": "3",
+    "max_pts": 2,
+    "name": "Are the revenue sources simple to understand?",
+    "note": "AI question (not run in this round)",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.1",
+    "id": "4",
+    "max_pts": 2,
+    "name": "Are the main risks clear?",
+    "note": "AI question (not run in this round)",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.1",
+    "id": "5",
+    "max_pts": 2,
+    "name": "Can the business be explained in one sentence?",
+    "note": "AI question (not run in this round)",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.2",
+    "id": "4",
+    "max_pts": 2.0,
+    "name": "Stable competitive position",
+    "note": "AI question",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.2",
+    "id": "5",
+    "max_pts": 1.0,
+    "name": "Clear moat",
+    "note": "AI question x0.5",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.6",
+    "id": "2",
+    "max_pts": 2,
+    "name": "Typical charge-offs",
+    "note": "NCO rate available for fewer than 3 of the last 5 years",
+    "state": "missing"
+   },
+   {
+    "criterion": "3.7",
+    "id": "5",
+    "max_pts": 2,
+    "name": "Transparent, conservative, consistent management",
+    "note": "AI question",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.8",
+    "id": "4",
+    "max_pts": 2,
+    "name": "Loan growth (risk indicator)",
+    "note": "fewer than 2 valid (non-acquisition) years",
+    "state": "missing"
+   },
+   {
+    "criterion": "3.8",
+    "id": "6",
+    "max_pts": 2,
+    "name": "Growth is sustainable",
+    "note": "AI question",
+    "state": "ai_pending"
+   }
+  ]
+ },
+ "cik": "0000072971",
+ "data_problems": [
+  "shares_out: balance-sheet tag missing, cover-page count used in FY2016, FY2017, FY2018, FY2019, FY2020, FY2021",
+  "acquisitions: assumed_zero in FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
+  "goodwill_acquired: assumed_zero in FY2018, FY2019, FY2020, FY2021, FY2022, FY2023, FY2024, FY2025",
+  "intangibles: assumed_zero in FY2023, FY2024, FY2025",
+  "fhlb: no XBRL tag in any year -> assumed_zero",
+  "loans: missing in FY2022, FY2023, FY2024, FY2025",
+  "nco: missing in FY2022, FY2023, FY2024, FY2025",
+  "acl: missing in FY2022, FY2023, FY2024, FY2025"
+ ],
+ "data_source": {
+  "regulatory_csv_rows": {
+   "acl_loans_2025": {
+    "note": "",
+    "quote": "| | | | | 1,201 | | | 1,072 | | | | | Net loan charge-offs | | | | | (3,994) | | | (4,772) | | | | | Other | | | | | 5 | | | (10) | | | | | Balance, end of period | | | | | $ | 14,337 | | | 14,636 | | | | | Compon",
+    "section": "Note 3 - Allowance for credit losses",
+    "unit": "USD mm",
+    "value": 14337.0,
+    "verified": true
+   },
+   "avg_loans_2025": {
+    "note": "",
+    "quote": "| | 392,406 | | | 20,323 | | | 5.18 | Total loans | 927,491 | | | 54,850 | | | 5.91 | | | 915,376 | | | 58,009 | | | 6.34 | | | 943,916 | | | 57,266 | | | 6.07 | Equity securities (2) | 12,072 | | | 291 | | | 2.41 | | | 11,986 | | | 386 | | | 3.22 | | | 12,059 | | | 342 | | | 2.83 | Other interest-earning assets (2) | 16,808 | | | 810 | | | 4.81 | | | 13,",
+    "section": "MD&A - Average balances and interest rates",
+    "unit": "USD mm",
+    "value": 927491.0,
+    "verified": true
+   },
+   "cet1_capital": {
+    "note": "",
+    "quote": "1) | | Dec 31, 2025 | | Dec 31, 2024 | Common Equity Tier 1 | (A) | | | $ | 137,346 | | | 134,588 | | | | | 137,346 | | | 134,588 | Tier 1 capital | (B) | | | 153,567 | | | 152,866 | | | | | 153,567 | | | 152,866 | Total capital | (C) | | | 184,682 | | | 184,638 | | | | | 174,617 | | | 174,446 | Risk-weighted assets | (D) | | | 1,294,609 | | | 1,216,146 | | |",
+    "section": "MD&A - Capital Management - Table 35: Capital Components and Ratios",
+    "unit": "USD mm",
+    "value": 137346.0,
+    "verified": true
+   },
+   "cet1_ratio_advanced": {
+    "note": "",
+    "quote": "| | | | | 1,112,533 | | | 1,085,017 | Common Equity Tier 1 capital ratio | (A)/(D) | 8.50 | % | | 10.61 | | * | 11.07 | | | 8.50 | | | 12.35 | | | 12.40 | Tier 1 capital ratio | (B)/(D) | 10.00 | | | 11.86 | | * | 12.57 |",
+    "section": "MD&A - Capital Management - Table 35: Capital Components and Ratios",
+    "unit": "%",
+    "value": 12.35,
+    "verified": true
+   },
+   "cet1_ratio_standardized": {
+    "note": "Standardized is the binding framework (asterisk) at December 31, 2025",
+    "quote": "| | | | | 1,112,533 | | | 1,085,017 | Common Equity Tier 1 capital ratio | (A)/(D) | 8.50 | % | | 10.61 | | * | 11.07 | | | 8.50 | | | 12.35 | | | 12.40 | Tier 1 capital ratio | (B)/(D) | 10.00 | | | 11.86 | | * | 12.57 |",
+    "section": "MD&A - Capital Management - Table 35: Capital Components and Ratios",
+    "unit": "%",
+    "value": 10.61,
+    "verified": true
+   },
+   "cet1_required_advanced": {
+    "note": "the second 8.50% in the quote is the Advanced requirement",
+    "quote": "| | | | | 1,112,533 | | | 1,085,017 | Common Equity Tier 1 capital ratio | (A)/(D) | 8.50 | % | | 10.61 | | * | 11.07 | | | 8.50 | | | 12.35 | | | 12.40 | Tier 1 capital ratio | (B)/(D) | 10.00 | | | 11.86 | | * | 12.57 |",
+    "section": "MD&A - Table 35 (Required Capital Ratios)",
+    "unit": "%",
+    "value": 8.5,
+    "verified": true
+   },
+   "cet1_required_standardized": {
+    "note": "",
+    "quote": "| | | | | 1,112,533 | | | 1,085,017 | Common Equity Tier 1 capital ratio | (A)/(D) | 8.50 | % | | 10.61 | | * | 11.07 | | | 8.50 | | | 12.35 | | | 12.40 | Tier 1 capital ratio | (B)",
+    "section": "MD&A - Table 35 (Required Capital Ratios)",
+    "unit": "%",
+    "value": 8.5,
+    "verified": true
+   },
+   "funding:deposits:Total deposits": {
+    "note": "",
+    "quote": "| | | | | | | | | | | | | | | | | | | Total deposits | $ | 1,426,207 | | | | | 1,371,804 | | | | | 54,403 | | | 4 As of December 31, 2025 and 2024, total deposits that exceed FDIC insurance limits, or are otherwise uninsured, were estimated to be $600 billion and $550",
+    "section": "Consolidated balance sheet (December 31, 2025)",
+    "unit": "USD mm",
+    "value": 1426207.0,
+    "verified": true
+   },
+   "funding:long_term:Long-term debt": {
+    "note": "",
+    "quote": "fair value) (1) | 68,196 | | | 61,145 Long-term debt (includes $7,082 and $3,495 carried at fair value) | 174,712 | | | 173,078 | Total liabilities (3) | 1,965,593 | | | 1,748,779 | Equity | | | Wells Fargo stockholders’ equity: | | Preferred stock - aggregate liquidation preference of $17,376 and $19,376 |",
+    "section": "Consolidated balance sheet (December 31, 2025)",
+    "unit": "USD mm",
+    "value": 174712.0,
+    "verified": true
+   },
+   "funding:repo:Federal funds purchased and securities loaned or sold under repurchase agreements": {
+    "note": "",
+    "quote": "deposits | 1,426,207 | | | 1,371,804 | Federal funds purchased and securities loaned or sold under repurchase agreements (1) | 232,687 | | | 95,235 | Short-term borrowings (1) | 18,323 | | | 2,704 | Trading liabilities (1) | 45,468 | | | 44,813 Accrued expenses and other liabilities (includes $357 and $318 carried at fair value) (",
+    "section": "Consolidated balance sheet (December 31, 2025)",
+    "unit": "USD mm",
+    "value": 232687.0,
+    "verified": true
+   },
+   "funding:short_term:Short-term borrowings": {
+    "note": "",
+    "quote": "greements (1) | 232,687 | | | 95,235 | Short-term borrowings (1) | 18,323 | | | 2,704 | Trading liabilities (1) | 45,468 | | | 44,813 Accrued expenses and other liabilities (includes $357 and $318 carried at fair value) (1) | 68,196 | | | 61,145 Long-term debt (includes",
+    "section": "Consolidated balance sheet (December 31, 2025)",
+    "unit": "USD mm",
+    "value": 18323.0,
+    "verified": true
+   },
+   "lcr_q4_average": {
+    "note": "",
+    "quote": "(6) | 23.22 | | | 24.83 | | | 25.05 | Liquidity Coverage Ratio (LCR) (7) | 119 | | | 125 | | | 125 Average balances: | | | | | Ave",
+    "section": "MD&A - Financial Summary / Table 1",
+    "unit": "%",
+    "value": 119.0,
+    "verified": true
+   },
+   "loan:Auto": {
+    "note": "",
+    "quote": ",540 | | | — | | | — | | | | | | | | | Auto | 12,283 | | | 34,375 | | | 3,829 | | | — | | | 50,487 | | | 38,204 | | | — | | | | | | | | | Other consumer | 27,951 | | | 6,023 | | | 64 | | | 17 | | | 34,055 | | | 5,884 | | | 220 | | | | | | | | | Total consumer | 109,564 | | | 69,920 | | | 89,712 | | | 117,076 | | | 386,272 | | | 203,463 | | | 73,245",
+    "section": "MD&A - Loans maturity table",
+    "unit": "USD mm",
+    "value": 50487.0,
+    "verified": true
+   },
+   "loan:Commercial and industrial": {
+    "note": "",
+    "quote": "ariable interest rates | | | | | | | | Commercial and industrial | $ | 162,370 | | | 255,431 | | | 32,804 | | | 1,463 | | | 452,068 | | | 28,110 | | | 261,588 | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | |",
+    "section": "MD&A - Loans maturity table",
+    "unit": "USD mm",
+    "value": 452068.0,
+    "verified": true
+   },
+   "loan:Commercial real estate": {
+    "note": "",
+    "quote": "| | | | | | | | | | | | | | | | | | | Commercial real estate | 59,616 | | | 59,743 | | | 11,455 | | | 1,470 | | | 132,284 | | | 15,753 | | | 56,915 | | | | | | | | | Lease financing | 3,332 | | | 10,883 | | | 1,319 | | | 9 | | | 15,543 | | | 12,056 | | | 155 | | | | | | | | | Total commercial | 225,318 | | | 326,057 | | | 45,578 | | | 2,942 | | | 599,895 | | | 55,9",
+    "section": "MD&A - Loans maturity table",
+    "unit": "USD mm",
+    "value": 132284.0,
+    "verified": true
+   },
+   "loan:Credit card": {
+    "note": "",
+    "quote": "159,375 | | | 73,025 | | | | | | | | | Credit card | 59,540 | | | — | | | — | | | — | | | 59,540 | | | — | | | — | | | | | | | | | Auto | 12,283 | | | 34,375 | | | 3,829 | | | — | | | 50,487 | | | 38,204 | | | — | | | | | | | | | Other consumer | 27,951 | | | 6,023 | | | 64 | | | 17 | | | 34,055 | | | 5,884 | | | 220 | | | | | | | | | Total consumer | 10",
+    "section": "MD&A - Loans maturity table",
+    "unit": "USD mm",
+    "value": 59540.0,
+    "verified": true
+   },
+   "loan:Lease financing": {
+    "note": "",
+    "quote": "15,753 | | | 56,915 | | | | | | | | | Lease financing | 3,332 | | | 10,883 | | | 1,319 | | | 9 | | | 15,543 | | | 12,056 | | | 155 | | | | | | | | | Total commercial | 225,318 | | | 326,057 | | | 45,578 | | | 2,942 | | | 599,895 | | | 55,919 | | | 318,658 | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | |",
+    "section": "MD&A - Loans maturity table",
+    "unit": "USD mm",
+    "value": 15543.0,
+    "verified": true
+   },
+   "loan:Other consumer": {
+    "note": "",
+    "quote": "| | | 38,204 | | | — | | | | | | | | | Other consumer | 27,951 | | | 6,023 | | | 64 | | | 17 | | | 34,055 | | | 5,884 | | | 220 | | | | | | | | | Total consumer | 109,564 | | | 69,920 | | | 89,712 | | | 117,076 | | | 386,272 | | | 203,463 | | | 73,245 | | | | | | | | | Total loans | $ | 334,882 | | | 395,977 | | | 135,290 | | | 120,018 | | | 986,167 | | | 25",
+    "section": "MD&A - Loans maturity table",
+    "unit": "USD mm",
+    "value": 34055.0,
+    "verified": true
+   },
+   "loan:Residential mortgage": {
+    "note": "",
+    "quote": "| | | | | | | | | | | | | | | | | | | Residential mortgage | 9,790 | | | 29,522 | | | 85,819 | | | 117,059 | | | 242,190 | | | 159,375 | | | 73,025 | | | | | | | | | Credit card | 59,540 | | | — | | | — | | | — | | | 59,540 | | | — | | | — | | | | | | | | | Auto | 12,283 | | | 34,375 | | | 3,829 | | | — | | | 50,487 | | | 38,204 | | | — | | | | | | | | | Other",
+    "section": "MD&A - Loans maturity table",
+    "unit": "USD mm",
+    "value": 242190.0,
+    "verified": true
+   },
+   "loans_2025": {
+    "note": "",
+    "quote": "203,463 | | | 73,245 | | | | | | | | | Total loans | $ | 334,882 | | | 395,977 | | | 135,290 | | | 120,018 | | | 986,167 | | | 259,382 | | | 391,903 | | | | | | | | | | | | | | | | 24 | Wells Fargo & Company Deposits Deposits increased from December 31, 2024, reflecting: •growth in consumer deposits driven by higher brokerage deposits in WIM; •growth in commer",
+    "section": "MD&A - Loans maturity table",
+    "unit": "USD mm",
+    "value": 986167.0,
+    "verified": true
+   },
+   "nco_2025": {
+    "note": "",
+    "quote": "| | | | | 1,201 | | | 1,072 | | | | | Net loan charge-offs | | | | | (3,994) | | | (4,772) | | | | | Other | | | | | 5 | | | (10) | | | | | Balance, end of period | | | | | $ | 14,337 | | | 14,636 | | | | | Components: | | | | | | | | | | | Allowance for loan losses | | | | | $ | 13,797 | | | 14,183 | | | | | Allowance for unfunded credit commitments | | | | | 540 | |",
+    "section": "Note 3 - Allowance for credit losses",
+    "unit": "USD mm",
+    "value": 3994.0,
+    "verified": true
+   },
+   "nonaccrual_loans": {
+    "note": "",
+    "quote": "| Consumer loans | 2,935 | | | 3,112 | Total nonaccrual loans | $ | 8,201 | | | 7,730 | Nonaccrual loans as a % of total loans | 0.83 | % | | 0.85 | | | | | | | | | | | | | Allowance for credit losses (ACL) for loans | $ | 14,337 | | | 14,636 | ACL for loans as a % of total loans | 1.45 | % | | 1.60 | | | | | | | | Net loan charge-offs as a % of: | | | | | |",
+    "section": "MD&A - Risk Management - Credit Risk",
+    "unit": "USD mm",
+    "value": 8201.0,
+    "verified": true
+   },
+   "past_due_90_accruing:total": {
+    "note": "includes $1,688mm government insured/guaranteed (not government insured: $1,312mm)",
+    "quote": "oans not government insured/guaranteed. Table 3.14: Loans 90 Days or More Past Due and Still Accruing | | | | | | | | | | | | (in millions) | Dec 31, 2025 | | Dec 31, 2024 | Total: | $ | 3,000 | | | 4,802 Less: government insured/guaranteed loans (1) | 1,688 | | | 2,801 | | | | Total, not government insured/guaranteed | $ | 1,312 | | | 2,001 By segment and class, not government insured/guaran",
+    "section": "Note 3 - Table 3.14 Loans 90 Days or More Past Due and Still Accruing",
+    "unit": "USD mm",
+    "value": 3000.0,
+    "verified": true
+   },
+   "rwa_advanced": {
+    "note": "",
+    "quote": ",638 | | | | | 174,617 | | | 174,446 | Risk-weighted assets | (D) | | | 1,294,609 | | | 1,216,146 | | | | | 1,112,533 | | | 1,085,017 | Common Equity Tier 1 capital ratio | (A)/(D) | 8.50 | % | | 10.61 | | * | 11.07 | | | 8.50 | | | 12.35 | | | 12.40 | Tier 1 cap",
+    "section": "MD&A - Capital Management - Table 35: Capital Components and Ratios",
+    "unit": "USD mm",
+    "value": 1112533.0,
+    "verified": true
+   },
+   "rwa_standardized": {
+    "note": "",
+    "quote": ",638 | | | | | 174,617 | | | 174,446 | Risk-weighted assets | (D) | | | 1,294,609 | | | 1,216,146 | | | | | 1,112,533 | | | 1,085,017 | Common Equity Tier 1 capital ratio | (A)/(D) | 8.50 | % | | 10.61 | | * | 11.07 | | | 8.50 | | | 12.35 | | | 12.40 | Tier 1 capital ratio | (B)/(D) | 10.00 | | | 11.86 | | * | 12.57 | | | 10.00 | | | 13.80 | | | 14.09 | Total",
+    "section": "MD&A - Capital Management - Table 35: Capital Components and Ratios",
+    "unit": "USD mm",
+    "value": 1294609.0,
+    "verified": true
+   },
+   "total_capital_advanced": {
+    "note": "",
+    "quote": ",866 | | | | | 153,567 | | | 152,866 | Total capital | (C) | | | 184,682 | | | 184,638 | | | | | 174,617 | | | 174,446 | Risk-weighted assets | (D) | | | 1,294,609 | | | 1,216,146 | | | | | 1,112,533 | | | 1,085,017 | Common Equity Tier 1 capital ratio | (",
+    "section": "MD&A - Capital Management - Table 35: Capital Components and Ratios",
+    "unit": "USD mm",
+    "value": 174617.0,
+    "verified": true
+   },
+   "total_capital_standardized": {
+    "note": "",
+    "quote": ",866 | | | | | 153,567 | | | 152,866 | Total capital | (C) | | | 184,682 | | | 184,638 | | | | | 174,617 | | | 174,446 | Risk-weighted assets | (D) | | | 1,294,609 | | | 1,216,146 | | | | | 1,112,533 | | | 1,085,017 | Common Equity Tier 1 capital ratio | (A)/(D) | 8.50 | % | | 10.61 | | * | 11.07 | | | 8.50 | | | 12.35 | | | 12.40 | Tier 1 capital ratio",
+    "section": "MD&A - Capital Management - Table 35: Capital Components and Ratios",
+    "unit": "USD mm",
+    "value": 184682.0,
+    "verified": true
+   },
+   "uninsured_deposits": {
+    "note": "",
+    "quote": "| | 4 As of December 31, 2025 and 2024, total deposits that exceed FDIC insurance limits, or are otherwise uninsured, were estimated to be $600 billion and $550 billion, respectively. Estimated uninsured domestic depos",
+    "section": "MD&A - Deposits",
+    "unit": "USD mm",
+    "value": 600000.0,
+    "verified": true
+   }
+  },
+  "sec_companyfacts": "CIK0000072971",
+  "tag_log_per_field_per_year": {
+   "acl": {
+    "FY2016": {
+     "filed": "2021-02-23",
+     "tag": "FinancingReceivableAllowanceForCreditLosses",
+     "value": 12540000000.0
+    },
+    "FY2017": {
+     "filed": "2021-02-23",
+     "tag": "FinancingReceivableAllowanceForCreditLosses",
+     "value": 11960000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "FinancingReceivableAllowanceForCreditLosses",
+     "value": 10707000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "FinancingReceivableAllowanceForCreditLosses",
+     "value": 10456000000.0
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "FinancingReceivableAllowanceForCreditLosses",
+     "value": 19713000000.0
+    },
+    "FY2021": {
+     "filed": "2022-02-22",
+     "tag": "FinancingReceivableAllowanceForCreditLosses",
+     "value": 13788000000.0
+    },
+    "FY2022": {
+     "tag": null
+    },
+    "FY2023": {
+     "tag": null
+    },
+    "FY2024": {
+     "tag": null
+    },
+    "FY2025": {
+     "tag": null
+    }
+   },
+   "acquisitions": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "PaymentsToAcquireBusinessesNetOfCashAcquired",
+     "value": 30584000000.0
+    },
+    "FY2017": {
+     "filed": "2019-02-27",
+     "tag": "PaymentsToAcquireBusinessesNetOfCashAcquired",
+     "value": 320000000.0
+    },
+    "FY2018": {
+     "filed": "2019-02-27",
+     "tag": "PaymentsToAcquireBusinessesNetOfCashAcquired",
+     "value": 10000000.0
+    },
+    "FY2019": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2020": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2021": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2022": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2023": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2024": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2025": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    }
+   },
+   "assets": {
+    "FY2016": {
+     "filed": "2018-03-01",
+     "tag": "Assets",
+     "value": 1930115000000.0
+    },
+    "FY2017": {
+     "filed": "2019-02-27",
+     "tag": "Assets",
+     "value": 1951757000000.0
+    },
+    "FY2018": {
+     "filed": "2020-02-27",
+     "tag": "Assets",
+     "value": 1895883000000.0
+    },
+    "FY2019": {
+     "filed": "2021-02-23",
+     "tag": "Assets",
+     "value": 1927555000000.0
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "Assets",
+     "value": 1952911000000.0
+    },
+    "FY2021": {
+     "filed": "2023-02-21",
+     "tag": "Assets",
+     "value": 1948068000000.0
+    },
+    "FY2022": {
+     "filed": "2024-02-20",
+     "tag": "Assets",
+     "value": 1881020000000.0
+    },
+    "FY2023": {
+     "filed": "2025-02-25",
+     "tag": "Assets",
+     "value": 1932468000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "Assets",
+     "value": 1929845000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "Assets",
+     "value": 2148631000000.0
+    }
+   },
+   "buybacks": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 8116000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 9908000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 20633000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 24533000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 3415000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 14464000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 6033000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 11851000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 19448000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "PaymentsForRepurchaseOfCommonStock",
+     "value": 17516000000.0
+    }
+   },
+   "deposits": {
+    "FY2016": {
+     "filed": "2018-03-01",
+     "tag": "Deposits",
+     "value": 1306079000000.0
+    },
+    "FY2017": {
+     "filed": "2019-02-27",
+     "tag": "Deposits",
+     "value": 1335991000000.0
+    },
+    "FY2018": {
+     "filed": "2020-02-27",
+     "tag": "Deposits",
+     "value": 1286170000000.0
+    },
+    "FY2019": {
+     "filed": "2021-02-23",
+     "tag": "Deposits",
+     "value": 1322626000000.0
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "Deposits",
+     "value": 1404381000000.0
+    },
+    "FY2021": {
+     "filed": "2023-02-21",
+     "tag": "Deposits",
+     "value": 1482479000000.0
+    },
+    "FY2022": {
+     "filed": "2024-02-20",
+     "tag": "Deposits",
+     "value": 1383985000000.0
+    },
+    "FY2023": {
+     "filed": "2025-02-25",
+     "tag": "Deposits",
+     "value": 1358173000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "Deposits",
+     "value": 1371804000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "Deposits",
+     "value": 1426207000000.0
+    }
+   },
+   "dividends": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 7472000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 7480000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 7692000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 8198000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 4852000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 2422000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 4178000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 4789000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 5133000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "PaymentsOfDividendsCommonStock",
+     "value": 5434000000.0
+    }
+   },
+   "dps": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 1.515
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 1.54
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 1.64
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 1.92
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 1.22
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 0.6
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 1.1
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 1.3
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 1.5
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "CommonStockDividendsPerShareDeclared",
+     "value": 1.7
+    }
+   },
+   "eps": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "EarningsPerShareDiluted",
+     "value": 3.99
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "EarningsPerShareDiluted",
+     "value": 4.1
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "EarningsPerShareDiluted",
+     "value": 4.28
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "EarningsPerShareDiluted",
+     "value": 4.09
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "EarningsPerShareDiluted",
+     "value": 0.43
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "EarningsPerShareDiluted",
+     "value": 5.08
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "EarningsPerShareDiluted",
+     "value": 3.27
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "EarningsPerShareDiluted",
+     "value": 4.83
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "EarningsPerShareDiluted",
+     "value": 5.37
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "EarningsPerShareDiluted",
+     "value": 6.26
+    }
+   },
+   "equity": {
+    "FY2016": {
+     "filed": "2018-03-01",
+     "tag": "StockholdersEquity",
+     "value": 199581000000.0
+    },
+    "FY2017": {
+     "filed": "2019-02-27",
+     "tag": "StockholdersEquity",
+     "value": 206936000000.0
+    },
+    "FY2018": {
+     "filed": "2020-02-27",
+     "tag": "StockholdersEquity",
+     "value": 196166000000.0
+    },
+    "FY2019": {
+     "filed": "2021-02-23",
+     "tag": "StockholdersEquity",
+     "value": 187146000000.0
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "StockholdersEquity",
+     "value": 184680000000.0
+    },
+    "FY2021": {
+     "filed": "2023-02-21",
+     "tag": "StockholdersEquity",
+     "value": 187606000000.0
+    },
+    "FY2022": {
+     "filed": "2024-02-20",
+     "tag": "StockholdersEquity",
+     "value": 180227000000.0
+    },
+    "FY2023": {
+     "filed": "2025-02-25",
+     "tag": "StockholdersEquity",
+     "value": 185735000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "StockholdersEquity",
+     "value": 179120000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "StockholdersEquity",
+     "value": 181117000000.0
+    }
+   },
+   "fhlb": {
+    "FY2016": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2017": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2018": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2019": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2020": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2021": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2022": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2023": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2024": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2025": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    }
+   },
+   "goodwill": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "Goodwill",
+     "value": 26693000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "Goodwill",
+     "value": 26587000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "Goodwill",
+     "value": 26418000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "Goodwill",
+     "value": 26390000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "Goodwill",
+     "value": 26392000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "Goodwill",
+     "value": 25180000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "Goodwill",
+     "value": 25173000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "Goodwill",
+     "value": 25175000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "Goodwill",
+     "value": 25167000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "Goodwill",
+     "value": 24967000000.0
+    }
+   },
+   "goodwill_acquired": {
+    "FY2016": {
+     "filed": "2018-03-01",
+     "tag": "GoodwillAcquiredDuringPeriod",
+     "value": 1254000000.0
+    },
+    "FY2017": {
+     "filed": "2019-02-27",
+     "tag": "GoodwillAcquiredDuringPeriod",
+     "value": 24000000.0
+    },
+    "FY2018": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2019": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2020": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2021": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2022": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2023": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2024": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2025": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    }
+   },
+   "goodwill_impairment": {
+    "FY2016": {
+     "tag": null
+    },
+    "FY2017": {
+     "tag": null
+    },
+    "FY2018": {
+     "filed": "2020-02-27",
+     "tag": "GoodwillImpairmentLoss",
+     "value": 0.0
+    },
+    "FY2019": {
+     "filed": "2020-02-27",
+     "tag": "GoodwillImpairmentLoss",
+     "value": 0.0
+    },
+    "FY2020": {
+     "tag": null
+    },
+    "FY2021": {
+     "tag": null
+    },
+    "FY2022": {
+     "tag": null
+    },
+    "FY2023": {
+     "tag": null
+    },
+    "FY2024": {
+     "tag": null
+    },
+    "FY2025": {
+     "tag": null
+    }
+   },
+   "intangibles": {
+    "FY2016": {
+     "filed": "2018-03-01",
+     "tag": "FiniteLivedIntangibleAssetsNet",
+     "value": 4115000000.0
+    },
+    "FY2017": {
+     "filed": "2019-02-27",
+     "tag": "FiniteLivedIntangibleAssetsNet",
+     "value": 3034000000.0
+    },
+    "FY2018": {
+     "filed": "2020-02-27",
+     "tag": "FiniteLivedIntangibleAssetsNet",
+     "value": 1988000000.0
+    },
+    "FY2019": {
+     "filed": "2021-02-23",
+     "tag": "FiniteLivedIntangibleAssetsNet",
+     "value": 1853000000.0
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "FiniteLivedIntangibleAssetsNet",
+     "value": 1640000000.0
+    },
+    "FY2021": {
+     "filed": "2023-02-21",
+     "tag": "FiniteLivedIntangibleAssetsNet",
+     "value": 1480000000.0
+    },
+    "FY2022": {
+     "filed": "2023-02-21",
+     "tag": "FiniteLivedIntangibleAssetsNet",
+     "value": 1322000000.0
+    },
+    "FY2023": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2024": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    },
+    "FY2025": {
+     "tag": "assumed_zero",
+     "value": 0.0
+    }
+   },
+   "loans": {
+    "FY2016": {
+     "filed": "2021-02-23",
+     "tag": "NotesReceivableGross",
+     "value": 967604000000.0
+    },
+    "FY2017": {
+     "filed": "2021-02-23",
+     "tag": "NotesReceivableGross",
+     "value": 956770000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "NotesReceivableGross",
+     "value": 953110000000.0
+    },
+    "FY2019": {
+     "filed": "2021-02-23",
+     "tag": "NotesReceivableGross",
+     "value": 962265000000.0
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "NotesReceivableGross",
+     "value": 887637000000.0
+    },
+    "FY2021": {
+     "filed": "2022-02-22",
+     "tag": "NotesReceivableGross",
+     "value": 895394000000.0
+    },
+    "FY2022": {
+     "tag": null
+    },
+    "FY2023": {
+     "tag": null
+    },
+    "FY2024": {
+     "tag": null
+    },
+    "FY2025": {
+     "tag": null
+    }
+   },
+   "lt_debt": {
+    "FY2016": {
+     "filed": "2018-03-01",
+     "tag": "LongTermDebt",
+     "value": 255077000000.0
+    },
+    "FY2017": {
+     "filed": "2019-02-27",
+     "tag": "LongTermDebt",
+     "value": 225020000000.0
+    },
+    "FY2018": {
+     "filed": "2020-02-27",
+     "tag": "LongTermDebt",
+     "value": 229044000000.0
+    },
+    "FY2019": {
+     "filed": "2021-02-23",
+     "tag": "LongTermDebt",
+     "value": 228191000000.0
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "LongTermDebt",
+     "value": 212950000000.0
+    },
+    "FY2021": {
+     "filed": "2023-02-21",
+     "tag": "LongTermDebt",
+     "value": 160689000000.0
+    },
+    "FY2022": {
+     "filed": "2024-02-20",
+     "tag": "LongTermDebt",
+     "value": 174870000000.0
+    },
+    "FY2023": {
+     "filed": "2025-02-25",
+     "tag": "LongTermDebt",
+     "value": 207588000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "LongTermDebt",
+     "value": 173078000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "LongTermDebt",
+     "value": 174712000000.0
+    }
+   },
+   "nco": {
+    "FY2016": {
+     "tag": "AllowanceForLoanAndLeaseLossesWriteoffsNet",
+     "value": 3520000000.0
+    },
+    "FY2017": {
+     "tag": "AllowanceForLoanAndLeaseLossesWriteoffsNet",
+     "value": 2928000000.0
+    },
+    "FY2018": {
+     "tag": "AllowanceForLoanAndLeaseLossesWriteoffsNet",
+     "value": 2744000000.0
+    },
+    "FY2019": {
+     "tag": "AllowanceForLoanAndLeaseLossesWriteoffsNet",
+     "value": 2762000000.0
+    },
+    "FY2020": {
+     "tag": "AllowanceForLoanAndLeaseLossesWriteoffsNet",
+     "value": 3289000000.0
+    },
+    "FY2021": {
+     "tag": "AllowanceForLoanAndLeaseLossesWriteoffsNet",
+     "value": 1574000000.0
+    },
+    "FY2022": {
+     "tag": null
+    },
+    "FY2023": {
+     "tag": null
+    },
+    "FY2024": {
+     "tag": null
+    },
+    "FY2025": {
+     "tag": null
+    }
+   },
+   "net_income": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "NetIncomeLoss",
+     "value": 21938000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "NetIncomeLoss",
+     "value": 22183000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "NetIncomeLoss",
+     "value": 22393000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "NetIncomeLoss",
+     "value": 19715000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "NetIncomeLoss",
+     "value": 3377000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "NetIncomeLoss",
+     "value": 22109000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "NetIncomeLoss",
+     "value": 13677000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "NetIncomeLoss",
+     "value": 19142000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "NetIncomeLoss",
+     "value": 19722000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "NetIncomeLoss",
+     "value": 21338000000.0
+    }
+   },
+   "ni_common": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 20373000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 20554000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 20689000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 18103000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 1786000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 20818000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 12562000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 17982000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 18606000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "NetIncomeLossAvailableToCommonStockholdersBasic",
+     "value": 20285000000.0
+    }
+   },
+   "nii": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 47754000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 49557000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 49995000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 47303000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 39956000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 35779000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 44950000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 52375000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 47676000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "InterestIncomeExpenseNet",
+     "value": 47484000000.0
+    }
+   },
+   "nonaccrual": {
+    "FY2016": {
+     "tag": null
+    },
+    "FY2017": {
+     "tag": null
+    },
+    "FY2018": {
+     "tag": null
+    },
+    "FY2019": {
+     "tag": null
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "FinancingReceivableRecordedInvestmentNonaccrualStatus",
+     "value": 8728000000.0
+    },
+    "FY2021": {
+     "filed": "2022-02-22",
+     "tag": "FinancingReceivableRecordedInvestmentNonaccrualStatus",
+     "value": 7212000000.0
+    },
+    "FY2022": {
+     "tag": null
+    },
+    "FY2023": {
+     "tag": null
+    },
+    "FY2024": {
+     "tag": null
+    },
+    "FY2025": {
+     "tag": null
+    }
+   },
+   "nonint": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "NoninterestIncome",
+     "value": 40513000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "NoninterestIncome",
+     "value": 38832000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "NoninterestIncome",
+     "value": 36413000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "NoninterestIncome",
+     "value": 39529000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "NoninterestIncome",
+     "value": 34308000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "NoninterestIncome",
+     "value": 43387000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "NoninterestIncome",
+     "value": 29418000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "NoninterestIncome",
+     "value": 30222000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "NoninterestIncome",
+     "value": 34620000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "NoninterestIncome",
+     "value": 36215000000.0
+    }
+   },
+   "past_due_90": {
+    "FY2016": {
+     "tag": null
+    },
+    "FY2017": {
+     "tag": null
+    },
+    "FY2018": {
+     "tag": null
+    },
+    "FY2019": {
+     "tag": null
+    },
+    "FY2020": {
+     "tag": null
+    },
+    "FY2021": {
+     "filed": "2023-02-21",
+     "tag": "FinancingReceivableExcludingAccruedInterest90DaysOrMorePastDueStillAccruing",
+     "value": 5358000000.0
+    },
+    "FY2022": {
+     "filed": "2024-02-20",
+     "tag": "FinancingReceivableExcludingAccruedInterest90DaysOrMorePastDueStillAccruing",
+     "value": 4340000000.0
+    },
+    "FY2023": {
+     "filed": "2025-02-25",
+     "tag": "FinancingReceivableExcludingAccruedInterest90DaysOrMorePastDueStillAccruing",
+     "value": 3751000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "FinancingReceivableExcludingAccruedInterest90DaysOrMorePastDueStillAccruing",
+     "value": 4802000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "FinancingReceivableExcludingAccruedInterest90DaysOrMorePastDueStillAccruing",
+     "value": 3000000000.0
+    }
+   },
+   "pref_div": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1565000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1629000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1704000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1612000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1591000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1291000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1115000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1160000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1116000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "PreferredStockDividendsAndOtherAdjustments",
+     "value": 1053000000.0
+    }
+   },
+   "preferred": {
+    "FY2016": {
+     "filed": "2018-03-01",
+     "tag": "PreferredStockValue",
+     "value": 24551000000.0
+    },
+    "FY2017": {
+     "filed": "2019-02-27",
+     "tag": "PreferredStockValue",
+     "value": 25358000000.0
+    },
+    "FY2018": {
+     "filed": "2020-02-27",
+     "tag": "PreferredStockValue",
+     "value": 23214000000.0
+    },
+    "FY2019": {
+     "filed": "2021-02-23",
+     "tag": "PreferredStockValue",
+     "value": 21549000000.0
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "PreferredStockValue",
+     "value": 21136000000.0
+    },
+    "FY2021": {
+     "filed": "2023-02-21",
+     "tag": "PreferredStockValue",
+     "value": 20057000000.0
+    },
+    "FY2022": {
+     "filed": "2024-02-20",
+     "tag": "PreferredStockValue",
+     "value": 19448000000.0
+    },
+    "FY2023": {
+     "filed": "2025-02-25",
+     "tag": "PreferredStockValue",
+     "value": 19448000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "PreferredStockValue",
+     "value": 18608000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "PreferredStockValue",
+     "value": 16608000000.0
+    }
+   },
+   "pretax": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 32120000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 27377000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 28538000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 25967000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 2505000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 29563000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 15629000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 21636000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 23364000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+     "value": 25199000000.0
+    }
+   },
+   "provision": {
+    "FY2016": {
+     "filed": "2020-02-27",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": 3770000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": 2528000000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": 1744000000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": 2687000000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": 14129000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": -4155000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": 1534000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": 5399000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": 4334000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "ProvisionForLoanLeaseAndOtherLosses",
+     "value": 3658000000.0
+    }
+   },
+   "securities_gain_loss": {
+    "FY2016": {
+     "tag": null
+    },
+    "FY2017": {
+     "tag": null
+    },
+    "FY2018": {
+     "tag": null
+    },
+    "FY2019": {
+     "tag": null
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "DebtSecuritiesAvailableForSaleRealizedGainLoss",
+     "value": 873000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "DebtSecuritiesAvailableForSaleRealizedGainLoss",
+     "value": 553000000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "DebtSecuritiesAvailableForSaleRealizedGainLoss",
+     "value": 151000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "DebtSecuritiesAvailableForSaleRealizedGainLoss",
+     "value": 10000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "DebtSecuritiesAvailableForSaleRealizedGainLoss",
+     "value": -920000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "DebtSecuritiesAvailableForSaleRealizedGainLoss",
+     "value": -144000000.0
+    }
+   },
+   "shares_basic": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 5052800000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 4964600000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 4799700000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 4393100000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 4118000000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 4061900000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 3805200000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 3688300000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 3426100000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "WeightedAverageNumberOfSharesOutstandingBasic",
+     "value": 3201800000.0
+    }
+   },
+   "shares_dil": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 5108300000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 5017300000.0
+    },
+    "FY2018": {
+     "filed": "2021-02-23",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 4838400000.0
+    },
+    "FY2019": {
+     "filed": "2022-02-22",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 4425400000.0
+    },
+    "FY2020": {
+     "filed": "2023-02-21",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 4134200000.0
+    },
+    "FY2021": {
+     "filed": "2024-02-20",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 4096200000.0
+    },
+    "FY2022": {
+     "filed": "2025-02-25",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 3837000000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 3720400000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 3467600000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "WeightedAverageNumberOfDilutedSharesOutstanding",
+     "value": 3242300000.0
+    }
+   },
+   "shares_out": {
+    "FY2016": {
+     "tag": "dei:EntityCommonStockSharesOutstanding (cover page)",
+     "value": 5003367904.0
+    },
+    "FY2017": {
+     "tag": "dei:EntityCommonStockSharesOutstanding (cover page)",
+     "value": 4877753899.0
+    },
+    "FY2018": {
+     "tag": "dei:EntityCommonStockSharesOutstanding (cover page)",
+     "value": 4549421815.0
+    },
+    "FY2019": {
+     "tag": "dei:EntityCommonStockSharesOutstanding (cover page)",
+     "value": 4099887226.0
+    },
+    "FY2020": {
+     "tag": "dei:EntityCommonStockSharesOutstanding (cover page)",
+     "value": 4134106677.0
+    },
+    "FY2021": {
+     "tag": "dei:EntityCommonStockSharesOutstanding (cover page)",
+     "value": 3814556833.0
+    },
+    "FY2022": {
+     "filed": "2026-02-24",
+     "tag": "CommonStockSharesOutstanding",
+     "value": 3833800000.0
+    },
+    "FY2023": {
+     "filed": "2026-02-24",
+     "tag": "CommonStockSharesOutstanding",
+     "value": 3598900000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "CommonStockSharesOutstanding",
+     "value": 3288900000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "CommonStockSharesOutstanding",
+     "value": 3092600000.0
+    }
+   },
+   "st_borrow": {
+    "FY2016": {
+     "filed": "2019-02-27",
+     "tag": "ShortTermBorrowings",
+     "value": 96781000000.0
+    },
+    "FY2017": {
+     "filed": "2020-02-27",
+     "tag": "ShortTermBorrowings",
+     "value": 103256000000.0
+    },
+    "FY2018": {
+     "filed": "2020-02-27",
+     "tag": "ShortTermBorrowings",
+     "value": 105787000000.0
+    },
+    "FY2019": {
+     "filed": "2021-02-23",
+     "tag": "ShortTermBorrowings",
+     "value": 104512000000.0
+    },
+    "FY2020": {
+     "filed": "2022-02-22",
+     "tag": "ShortTermBorrowings",
+     "value": 58999000000.0
+    },
+    "FY2021": {
+     "filed": "2023-02-21",
+     "tag": "ShortTermBorrowings",
+     "value": 34409000000.0
+    },
+    "FY2022": {
+     "filed": "2024-02-20",
+     "tag": "ShortTermBorrowings",
+     "value": 51145000000.0
+    },
+    "FY2023": {
+     "filed": "2025-02-25",
+     "tag": "ShortTermBorrowings",
+     "value": 89559000000.0
+    },
+    "FY2024": {
+     "filed": "2026-02-24",
+     "tag": "ShortTermBorrowings",
+     "value": 2704000000.0
+    },
+    "FY2025": {
+     "filed": "2026-02-24",
+     "tag": "ShortTermBorrowings",
+     "value": 18323000000.0
+    }
+   }
+  }
+ },
+ "derived": {
+  "avg_loans": {
+   "FY2016": 967604000000.0,
+   "FY2017": 962187000000.0,
+   "FY2018": 954940000000.0,
+   "FY2019": 957687500000.0,
+   "FY2020": 924951000000.0,
+   "FY2021": 891515500000.0,
+   "FY2022": null,
+   "FY2023": null,
+   "FY2024": null,
+   "FY2025": 927491000000.0
+  },
+  "deposit_funding": {
+   "FY2016": 0.787774,
+   "FY2017": 0.80275,
+   "FY2018": 0.793442,
+   "FY2019": 0.799011,
+   "FY2020": 0.837771,
+   "FY2021": 0.883703,
+   "FY2022": 0.859618,
+   "FY2023": 0.82049,
+   "FY2024": 0.886415,
+   "FY2025": 0.880787
+  },
+  "deposit_growth": {
+   "FY2016": null,
+   "FY2017": 0.022902,
+   "FY2018": -0.037291,
+   "FY2019": 0.028345,
+   "FY2020": 0.061813,
+   "FY2021": 0.05561,
+   "FY2022": -0.066439,
+   "FY2023": -0.01865,
+   "FY2024": 0.010036,
+   "FY2025": 0.039658
+  },
+  "dps": {
+   "FY2016": 1.515,
+   "FY2017": 1.54,
+   "FY2018": 1.64,
+   "FY2019": 1.92,
+   "FY2020": 1.22,
+   "FY2021": 0.6,
+   "FY2022": 1.1,
+   "FY2023": 1.3,
+   "FY2024": 1.5,
+   "FY2025": 1.7
+  },
+  "loans": {
+   "FY2016": 967604000000.0,
+   "FY2017": 956770000000.0,
+   "FY2018": 953110000000.0,
+   "FY2019": 962265000000.0,
+   "FY2020": 887637000000.0,
+   "FY2021": 895394000000.0,
+   "FY2022": null,
+   "FY2023": null,
+   "FY2024": null,
+   "FY2025": 986167000000.0
+  },
+  "nco": {
+   "FY2016": 3520000000.0,
+   "FY2017": 2928000000.0,
+   "FY2018": 2744000000.0,
+   "FY2019": 2762000000.0,
+   "FY2020": 3289000000.0,
+   "FY2021": 1574000000.0,
+   "FY2022": null,
+   "FY2023": null,
+   "FY2024": null,
+   "FY2025": 3994000000.0
+  },
+  "nco_rate": {
+   "FY2016": 0.003638,
+   "FY2017": 0.003043,
+   "FY2018": 0.002873,
+   "FY2019": 0.002884,
+   "FY2020": 0.003556,
+   "FY2021": 0.001766,
+   "FY2022": null,
+   "FY2023": null,
+   "FY2024": null,
+   "FY2025": 0.004306
+  },
+  "net_margin": {
+   "FY2016": 0.248541,
+   "FY2017": 0.25097,
+   "FY2018": 0.259154,
+   "FY2019": 0.227048,
+   "FY2020": 0.045473,
+   "FY2021": 0.279274,
+   "FY2022": 0.18391,
+   "FY2023": 0.231752,
+   "FY2024": 0.239647,
+   "FY2025": 0.254937
+  },
+  "pe": {
+   "FY2016": 12.27002,
+   "FY2017": 13.409737,
+   "FY2018": 12.9168,
+   "FY2019": 11.946822,
+   "FY2020": 69.798511,
+   "FY2021": 8.659628,
+   "FY2022": 14.105291,
+   "FY2023": 8.808729,
+   "FY2024": 11.010442,
+   "FY2025": 12.601367
+  },
+  "ppnr": {
+   "FY2016": 35890000000.0,
+   "FY2017": 29905000000.0,
+   "FY2018": 30282000000.0,
+   "FY2019": 28654000000.0,
+   "FY2020": 16634000000.0,
+   "FY2021": 25408000000.0,
+   "FY2022": 17163000000.0,
+   "FY2023": 27035000000.0,
+   "FY2024": 27698000000.0,
+   "FY2025": 28857000000.0
+  },
+  "ppnr_to_assets": {
+   "FY2016": null,
+   "FY2017": 0.015408,
+   "FY2018": 0.015741,
+   "FY2019": 0.014989,
+   "FY2020": 0.008573,
+   "FY2021": 0.013026,
+   "FY2022": 0.008965,
+   "FY2023": 0.014179,
+   "FY2024": 0.014343,
+   "FY2025": 0.014151
+  },
+  "preferred": {
+   "FY2016": 24551000000.0,
+   "FY2017": 25358000000.0,
+   "FY2018": 23214000000.0,
+   "FY2019": 21549000000.0,
+   "FY2020": 21136000000.0,
+   "FY2021": 20057000000.0,
+   "FY2022": 19448000000.0,
+   "FY2023": 19448000000.0,
+   "FY2024": 18608000000.0,
+   "FY2025": 16608000000.0
+  },
+  "pretax_margin": {
+   "FY2016": 0.363896,
+   "FY2017": 0.309733,
+   "FY2018": 0.33027,
+   "FY2019": 0.299049,
+   "FY2020": 0.033731,
+   "FY2021": 0.373431,
+   "FY2022": 0.210158,
+   "FY2023": 0.261947,
+   "FY2024": 0.283902,
+   "FY2025": 0.301067
+  },
+  "revenue": {
+   "FY2016": 88267000000.0,
+   "FY2017": 88389000000.0,
+   "FY2018": 86408000000.0,
+   "FY2019": 86832000000.0,
+   "FY2020": 74264000000.0,
+   "FY2021": 79166000000.0,
+   "FY2022": 74368000000.0,
+   "FY2023": 82597000000.0,
+   "FY2024": 82296000000.0,
+   "FY2025": 83699000000.0
+  },
+  "roa": {
+   "FY2016": null,
+   "FY2017": 0.011429,
+   "FY2018": 0.01164,
+   "FY2019": 0.010313,
+   "FY2020": 0.001741,
+   "FY2021": 0.011335,
+   "FY2022": 0.007144,
+   "FY2023": 0.010039,
+   "FY2024": 0.010213,
+   "FY2025": 0.010464
+  },
+  "rotce": {
+   "FY2016": null,
+   "FY2017": 0.138794,
+   "FY2018": 0.139553,
+   "FY2019": 0.128436,
+   "FY2020": 0.013091,
+   "FY2021": 0.150636,
+   "FY2022": 0.091303,
+   "FY2023": 0.13059,
+   "FY2024": 0.134603,
+   "FY2025": 0.147588
+  },
+  "tbvps": {
+   "FY2016": 28.824984,
+   "FY2017": 31.153068,
+   "FY2018": 31.772389,
+   "FY2019": 33.501897,
+   "FY2020": 32.779028,
+   "FY2021": 36.934566,
+   "FY2022": 35.026345,
+   "FY2023": 39.209759,
+   "FY2024": 41.152057,
+   "FY2025": 45.121257
+  },
+  "tce": {
+   "FY2016": 144222000000.0,
+   "FY2017": 151957000000.0,
+   "FY2018": 144546000000.0,
+   "FY2019": 137354000000.0,
+   "FY2020": 135512000000.0,
+   "FY2021": 140889000000.0,
+   "FY2022": 134284000000.0,
+   "FY2023": 141112000000.0,
+   "FY2024": 135345000000.0,
+   "FY2025": 139542000000.0
+  }
+ },
+ "extra": {},
+ "financials": {
+  "acl": {
+   "FY2016": 12540000000.0,
+   "FY2017": 11960000000.0,
+   "FY2018": 10707000000.0,
+   "FY2019": 10456000000.0,
+   "FY2020": 19713000000.0,
+   "FY2021": 13788000000.0,
+   "FY2022": null,
+   "FY2023": null,
+   "FY2024": null,
+   "FY2025": null
+  },
+  "acquisitions": {
+   "FY2016": 30584000000.0,
+   "FY2017": 320000000.0,
+   "FY2018": 10000000.0,
+   "FY2019": 0.0,
+   "FY2020": 0.0,
+   "FY2021": 0.0,
+   "FY2022": 0.0,
+   "FY2023": 0.0,
+   "FY2024": 0.0,
+   "FY2025": 0.0
+  },
+  "assets": {
+   "FY2016": 1930115000000.0,
+   "FY2017": 1951757000000.0,
+   "FY2018": 1895883000000.0,
+   "FY2019": 1927555000000.0,
+   "FY2020": 1952911000000.0,
+   "FY2021": 1948068000000.0,
+   "FY2022": 1881020000000.0,
+   "FY2023": 1932468000000.0,
+   "FY2024": 1929845000000.0,
+   "FY2025": 2148631000000.0
+  },
+  "buybacks": {
+   "FY2016": 8116000000.0,
+   "FY2017": 9908000000.0,
+   "FY2018": 20633000000.0,
+   "FY2019": 24533000000.0,
+   "FY2020": 3415000000.0,
+   "FY2021": 14464000000.0,
+   "FY2022": 6033000000.0,
+   "FY2023": 11851000000.0,
+   "FY2024": 19448000000.0,
+   "FY2025": 17516000000.0
+  },
+  "deposits": {
+   "FY2016": 1306079000000.0,
+   "FY2017": 1335991000000.0,
+   "FY2018": 1286170000000.0,
+   "FY2019": 1322626000000.0,
+   "FY2020": 1404381000000.0,
+   "FY2021": 1482479000000.0,
+   "FY2022": 1383985000000.0,
+   "FY2023": 1358173000000.0,
+   "FY2024": 1371804000000.0,
+   "FY2025": 1426207000000.0
+  },
+  "dividends": {
+   "FY2016": 7472000000.0,
+   "FY2017": 7480000000.0,
+   "FY2018": 7692000000.0,
+   "FY2019": 8198000000.0,
+   "FY2020": 4852000000.0,
+   "FY2021": 2422000000.0,
+   "FY2022": 4178000000.0,
+   "FY2023": 4789000000.0,
+   "FY2024": 5133000000.0,
+   "FY2025": 5434000000.0
+  },
+  "dps": {
+   "FY2016": 1.515,
+   "FY2017": 1.54,
+   "FY2018": 1.64,
+   "FY2019": 1.92,
+   "FY2020": 1.22,
+   "FY2021": 0.6,
+   "FY2022": 1.1,
+   "FY2023": 1.3,
+   "FY2024": 1.5,
+   "FY2025": 1.7
+  },
+  "eps": {
+   "FY2016": 3.99,
+   "FY2017": 4.1,
+   "FY2018": 4.28,
+   "FY2019": 4.09,
+   "FY2020": 0.43,
+   "FY2021": 5.08,
+   "FY2022": 3.27,
+   "FY2023": 4.83,
+   "FY2024": 5.37,
+   "FY2025": 6.26
+  },
+  "equity": {
+   "FY2016": 199581000000.0,
+   "FY2017": 206936000000.0,
+   "FY2018": 196166000000.0,
+   "FY2019": 187146000000.0,
+   "FY2020": 184680000000.0,
+   "FY2021": 187606000000.0,
+   "FY2022": 180227000000.0,
+   "FY2023": 185735000000.0,
+   "FY2024": 179120000000.0,
+   "FY2025": 181117000000.0
+  },
+  "fhlb": {
+   "FY2016": 0.0,
+   "FY2017": 0.0,
+   "FY2018": 0.0,
+   "FY2019": 0.0,
+   "FY2020": 0.0,
+   "FY2021": 0.0,
+   "FY2022": 0.0,
+   "FY2023": 0.0,
+   "FY2024": 0.0,
+   "FY2025": 0.0
+  },
+  "goodwill": {
+   "FY2016": 26693000000.0,
+   "FY2017": 26587000000.0,
+   "FY2018": 26418000000.0,
+   "FY2019": 26390000000.0,
+   "FY2020": 26392000000.0,
+   "FY2021": 25180000000.0,
+   "FY2022": 25173000000.0,
+   "FY2023": 25175000000.0,
+   "FY2024": 25167000000.0,
+   "FY2025": 24967000000.0
+  },
+  "goodwill_acquired": {
+   "FY2016": 1254000000.0,
+   "FY2017": 24000000.0,
+   "FY2018": 0.0,
+   "FY2019": 0.0,
+   "FY2020": 0.0,
+   "FY2021": 0.0,
+   "FY2022": 0.0,
+   "FY2023": 0.0,
+   "FY2024": 0.0,
+   "FY2025": 0.0
+  },
+  "goodwill_impairment": {
+   "FY2016": null,
+   "FY2017": null,
+   "FY2018": 0.0,
+   "FY2019": 0.0,
+   "FY2020": null,
+   "FY2021": null,
+   "FY2022": null,
+   "FY2023": null,
+   "FY2024": null,
+   "FY2025": null
+  },
+  "intangibles": {
+   "FY2016": 4115000000.0,
+   "FY2017": 3034000000.0,
+   "FY2018": 1988000000.0,
+   "FY2019": 1853000000.0,
+   "FY2020": 1640000000.0,
+   "FY2021": 1480000000.0,
+   "FY2022": 1322000000.0,
+   "FY2023": 0.0,
+   "FY2024": 0.0,
+   "FY2025": 0.0
+  },
+  "loans": {
+   "FY2016": 967604000000.0,
+   "FY2017": 956770000000.0,
+   "FY2018": 953110000000.0,
+   "FY2019": 962265000000.0,
+   "FY2020": 887637000000.0,
+   "FY2021": 895394000000.0,
+   "FY2022": null,
+   "FY2023": null,
+   "FY2024": null,
+   "FY2025": null
+  },
+  "lt_debt": {
+   "FY2016": 255077000000.0,
+   "FY2017": 225020000000.0,
+   "FY2018": 229044000000.0,
+   "FY2019": 228191000000.0,
+   "FY2020": 212950000000.0,
+   "FY2021": 160689000000.0,
+   "FY2022": 174870000000.0,
+   "FY2023": 207588000000.0,
+   "FY2024": 173078000000.0,
+   "FY2025": 174712000000.0
+  },
+  "nco": {
+   "FY2016": 3520000000.0,
+   "FY2017": 2928000000.0,
+   "FY2018": 2744000000.0,
+   "FY2019": 2762000000.0,
+   "FY2020": 3289000000.0,
+   "FY2021": 1574000000.0,
+   "FY2022": null,
+   "FY2023": null,
+   "FY2024": null,
+   "FY2025": null
+  },
+  "net_income": {
+   "FY2016": 21938000000.0,
+   "FY2017": 22183000000.0,
+   "FY2018": 22393000000.0,
+   "FY2019": 19715000000.0,
+   "FY2020": 3377000000.0,
+   "FY2021": 22109000000.0,
+   "FY2022": 13677000000.0,
+   "FY2023": 19142000000.0,
+   "FY2024": 19722000000.0,
+   "FY2025": 21338000000.0
+  },
+  "ni_common": {
+   "FY2016": 20373000000.0,
+   "FY2017": 20554000000.0,
+   "FY2018": 20689000000.0,
+   "FY2019": 18103000000.0,
+   "FY2020": 1786000000.0,
+   "FY2021": 20818000000.0,
+   "FY2022": 12562000000.0,
+   "FY2023": 17982000000.0,
+   "FY2024": 18606000000.0,
+   "FY2025": 20285000000.0
+  },
+  "nii": {
+   "FY2016": 47754000000.0,
+   "FY2017": 49557000000.0,
+   "FY2018": 49995000000.0,
+   "FY2019": 47303000000.0,
+   "FY2020": 39956000000.0,
+   "FY2021": 35779000000.0,
+   "FY2022": 44950000000.0,
+   "FY2023": 52375000000.0,
+   "FY2024": 47676000000.0,
+   "FY2025": 47484000000.0
+  },
+  "nonaccrual": {
+   "FY2016": null,
+   "FY2017": null,
+   "FY2018": null,
+   "FY2019": null,
+   "FY2020": 8728000000.0,
+   "FY2021": 7212000000.0,
+   "FY2022": null,
+   "FY2023": null,
+   "FY2024": null,
+   "FY2025": null
+  },
+  "nonint": {
+   "FY2016": 40513000000.0,
+   "FY2017": 38832000000.0,
+   "FY2018": 36413000000.0,
+   "FY2019": 39529000000.0,
+   "FY2020": 34308000000.0,
+   "FY2021": 43387000000.0,
+   "FY2022": 29418000000.0,
+   "FY2023": 30222000000.0,
+   "FY2024": 34620000000.0,
+   "FY2025": 36215000000.0
+  },
+  "past_due_90": {
+   "FY2016": null,
+   "FY2017": null,
+   "FY2018": null,
+   "FY2019": null,
+   "FY2020": null,
+   "FY2021": 5358000000.0,
+   "FY2022": 4340000000.0,
+   "FY2023": 3751000000.0,
+   "FY2024": 4802000000.0,
+   "FY2025": 3000000000.0
+  },
+  "pref_div": {
+   "FY2016": 1565000000.0,
+   "FY2017": 1629000000.0,
+   "FY2018": 1704000000.0,
+   "FY2019": 1612000000.0,
+   "FY2020": 1591000000.0,
+   "FY2021": 1291000000.0,
+   "FY2022": 1115000000.0,
+   "FY2023": 1160000000.0,
+   "FY2024": 1116000000.0,
+   "FY2025": 1053000000.0
+  },
+  "preferred": {
+   "FY2016": 24551000000.0,
+   "FY2017": 25358000000.0,
+   "FY2018": 23214000000.0,
+   "FY2019": 21549000000.0,
+   "FY2020": 21136000000.0,
+   "FY2021": 20057000000.0,
+   "FY2022": 19448000000.0,
+   "FY2023": 19448000000.0,
+   "FY2024": 18608000000.0,
+   "FY2025": 16608000000.0
+  },
+  "pretax": {
+   "FY2016": 32120000000.0,
+   "FY2017": 27377000000.0,
+   "FY2018": 28538000000.0,
+   "FY2019": 25967000000.0,
+   "FY2020": 2505000000.0,
+   "FY2021": 29563000000.0,
+   "FY2022": 15629000000.0,
+   "FY2023": 21636000000.0,
+   "FY2024": 23364000000.0,
+   "FY2025": 25199000000.0
+  },
+  "provision": {
+   "FY2016": 3770000000.0,
+   "FY2017": 2528000000.0,
+   "FY2018": 1744000000.0,
+   "FY2019": 2687000000.0,
+   "FY2020": 14129000000.0,
+   "FY2021": -4155000000.0,
+   "FY2022": 1534000000.0,
+   "FY2023": 5399000000.0,
+   "FY2024": 4334000000.0,
+   "FY2025": 3658000000.0
+  },
+  "securities_gain_loss": {
+   "FY2016": null,
+   "FY2017": null,
+   "FY2018": null,
+   "FY2019": null,
+   "FY2020": 873000000.0,
+   "FY2021": 553000000.0,
+   "FY2022": 151000000.0,
+   "FY2023": 10000000.0,
+   "FY2024": -920000000.0,
+   "FY2025": -144000000.0
+  },
+  "shares_basic": {
+   "FY2016": 5052800000.0,
+   "FY2017": 4964600000.0,
+   "FY2018": 4799700000.0,
+   "FY2019": 4393100000.0,
+   "FY2020": 4118000000.0,
+   "FY2021": 4061900000.0,
+   "FY2022": 3805200000.0,
+   "FY2023": 3688300000.0,
+   "FY2024": 3426100000.0,
+   "FY2025": 3201800000.0
+  },
+  "shares_dil": {
+   "FY2016": 5108300000.0,
+   "FY2017": 5017300000.0,
+   "FY2018": 4838400000.0,
+   "FY2019": 4425400000.0,
+   "FY2020": 4134200000.0,
+   "FY2021": 4096200000.0,
+   "FY2022": 3837000000.0,
+   "FY2023": 3720400000.0,
+   "FY2024": 3467600000.0,
+   "FY2025": 3242300000.0
+  },
+  "shares_out": {
+   "FY2016": 5003367904.0,
+   "FY2017": 4877753899.0,
+   "FY2018": 4549421815.0,
+   "FY2019": 4099887226.0,
+   "FY2020": 4134106677.0,
+   "FY2021": 3814556833.0,
+   "FY2022": 3833800000.0,
+   "FY2023": 3598900000.0,
+   "FY2024": 3288900000.0,
+   "FY2025": 3092600000.0
+  },
+  "st_borrow": {
+   "FY2016": 96781000000.0,
+   "FY2017": 103256000000.0,
+   "FY2018": 105787000000.0,
+   "FY2019": 104512000000.0,
+   "FY2020": 58999000000.0,
+   "FY2021": 34409000000.0,
+   "FY2022": 51145000000.0,
+   "FY2023": 89559000000.0,
+   "FY2024": 2704000000.0,
+   "FY2025": 18323000000.0
+  }
+ },
+ "first_annual_report": "1994-03-08",
+ "fiscal_years": {
+  "FY2016": "2016-12-31",
+  "FY2017": "2017-12-31",
+  "FY2018": "2018-12-31",
+  "FY2019": "2019-12-31",
+  "FY2020": "2020-12-31",
+  "FY2021": "2021-12-31",
+  "FY2022": "2022-12-31",
+  "FY2023": "2023-12-31",
+  "FY2024": "2024-12-31",
+  "FY2025": "2025-12-31"
+ },
+ "flags": [
+  "shares_out_cover_page",
+  "loans_latest_from_extraction",
+  "nco_latest_from_extraction"
+ ],
+ "graham_price": {
+  "buy_price": {
+   "buy_price": 43.877353,
+   "margin_of_safety": 0.325642,
+   "quality_coverage": 0.97,
+   "quality_score": 77.30741,
+   "quality_status": "full",
+   "state": "computed"
+  },
+  "eps_years": 10,
+  "flags": [],
+  "loss_years": [],
+  "method": "graham_number_tangible_book_10y_eps",
+  "model": "graham_price_bank_v2",
+  "normalized_eps": 4.17,
+  "price_current": 83.550003,
+  "price_score": {
+   "anchors": "-0.25->0 | -0.2->0.5 | 0->2.5 | 0.15->4.5 | 0.25->6.5 | 0.4->8.5 | 0.5->10",
+   "discount": -0.284093,
+   "points": 0.0,
+   "state": "score"
+  },
+  "state": "valued",
+  "tbvps": 45.121257,
+  "v1_3y_eps": {
+   "normalized_eps": 5.486667,
+   "price_score": {
+    "anchors": "-0.25->0 | -0.2->0.5 | 0->2.5 | 0.15->4.5 | 0.25->6.5 | 0.4->8.5 | 0.5->10",
+    "discount": -0.119465,
+    "points": 1.305355,
+    "state": "score"
+   },
+   "reason": null,
+   "state": "valued",
+   "value": 74.633901
+  },
+  "value": 65.065367
+ },
+ "graham_quality": {
+  "buy_price_allowed": true,
+  "coverage": 0.97,
+  "criteria": [
+   {
+    "computed_share": 1.0,
+    "covered_points": 10,
+    "id": "3.1",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "fx": "USD, R15 not exercised",
+       "revenue": 83699000000.0
+      },
+      "max_pts": 3,
+      "metric": 83699000000.0,
+      "metric_label": "latest revenue USD",
+      "name": "Company size",
+      "note": "",
+      "points": 3.0,
+      "state": "score",
+      "thresholds": "1e+08->0 | 3e+08->1.5 | 7.5e+08->3"
+     },
+     {
+      "flags": [
+       "predecessor_history_not_checked"
+      ],
+      "id": "2",
+      "inputs": {
+       "first_annual_report": "1994-03-08"
+      },
+      "max_pts": 3,
+      "metric": 32.618754,
+      "metric_label": "years since earliest 10-K filing",
+      "name": "Proven operating history",
+      "note": "",
+      "points": 3.0,
+      "state": "score",
+      "thresholds": "3->0 | 5->1.5 | 10->3"
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "No dependence on one product, customer or market",
+      "note": "AI question",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     },
+     {
+      "flags": [],
+      "id": "4",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Proven business position in its industry",
+      "note": "AI question",
+      "points": null,
+      "state": "ai_pending",
+      "thresholds": ""
+     }
+    ],
+    "name": "Company size and business stability",
+    "normalized": 10.0,
+    "observed_points": 6.0,
+    "range_max": 10.0,
+    "range_min": 6.0,
+    "valid": true,
+    "weight": 10
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 15,
+    "id": "3.2",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "binding_approach": "standardized",
+       "buffer_by_approach": {
+        "advanced": 3.85,
+        "standardized": 2.11
+       },
+       "required": 8.5
+      },
+      "max_pts": 8,
+      "metric": 2.11,
+      "metric_label": "min over approaches of (CET1 - reported requirement) (pp)",
+      "name": "Capital buffer",
+      "note": "",
+      "points": 5.626667,
+      "state": "score",
+      "thresholds": "0 pp->0 | 3 pp->8"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "measurement": "q4_average",
+       "source": "MD&A - Financial Summary / Table 1"
+      },
+      "max_pts": 4,
+      "metric": 119.0,
+      "metric_label": "LCR (Q4 average)",
+      "name": "Liquidity (LCR)",
+      "note": "",
+      "points": 3.8,
+      "state": "score",
+      "thresholds": "100%->0 | 120%->4"
+     },
+     {
+      "flags": [
+       "repo_included_D15"
+      ],
+      "id": "3",
+      "inputs": {
+       "funding_lines": [
+        {
+         "line": "Total deposits",
+         "note": "",
+         "role": "deposits",
+         "value_usd": 1426207000000.0
+        },
+        {
+         "line": "Federal funds purchased and securities loaned or sold under repurchase agreements",
+         "note": "",
+         "role": "repo",
+         "value_usd": 232687000000.0
+        },
+        {
+         "line": "Short-term borrowings",
+         "note": "",
+         "role": "short_term",
+         "value_usd": 18323000000.0
+        },
+        {
+         "line": "Long-term debt",
+         "note": "",
+         "role": "long_term",
+         "value_usd": 174712000000.0
+        }
+       ]
+      },
+      "max_pts": 2,
+      "metric": 0.77012,
+      "metric_label": "deposits / (deposits + short-term + long-term + FHLB + repo) (D15)",
+      "name": "Deposit funding",
+      "note": "",
+      "points": 1.800798,
+      "state": "score",
+      "thresholds": "0.5->0 | 0.8->2"
+     },
+     {
+      "flags": [],
+      "id": "4",
+      "inputs": {
+       "growth": [
+        -0.066439,
+        -0.01865,
+        0.010036,
+        0.039658
+       ]
+      },
+      "max_pts": 1,
+      "metric": -0.066439,
+      "metric_label": "worst annual deposit growth (4 transitions)",
+      "name": "Deposit stability",
+      "note": "",
+      "points": 0.335613,
+      "state": "score",
+      "thresholds": "-0.1->0 | 0->1"
+     }
+    ],
+    "name": "Capital, liquidity and funding",
+    "normalized": 11.563078,
+    "observed_points": 11.563078,
+    "range_max": 11.563078,
+    "range_min": 11.563078,
+    "valid": true,
+    "weight": 15
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 15,
+    "id": "3.3",
+    "items": [
+     {
+      "flags": [
+       "max_3_points_with_6_to_9_years",
+       "window contains no credit crisis"
+      ],
+      "id": "1",
+      "inputs": {
+       "nco_rate": [
+        0.003638,
+        0.003043,
+        0.002873,
+        0.002884,
+        0.003556,
+        0.001766,
+        null,
+        null,
+        null,
+        0.004306
+       ],
+       "years": 7
+      },
+      "max_pts": 5,
+      "metric": 0.004306,
+      "metric_label": "highest NCO rate over 7 years",
+      "name": "Worst observed credit-loss year",
+      "note": "window contains no credit crisis (display note; thresholds unchanged)",
+      "points": 3.0,
+      "state": "score",
+      "thresholds": "0.005->5 | 0.03->0"
+     },
+     {
+      "flags": [
+       "thresholds_to_recalibrate_D11"
+      ],
+      "id": "2",
+      "inputs": {
+       "nonaccrual": 8201000000.0,
+       "source": "extraction"
+      },
+      "max_pts": 3,
+      "metric": 0.008316,
+      "metric_label": "nonaccrual loans / gross loans (D11)",
+      "name": "Nonaccrual loans",
+      "note": "",
+      "points": 2.602076,
+      "state": "score",
+      "thresholds": "0.005->3 | 0.03->0"
+     },
+     {
+      "flags": [
+       "temporary_thresholds_D11"
+      ],
+      "id": "3",
+      "inputs": {
+       "acl": 14337000000.0,
+       "nonaccrual": 8201000000.0
+      },
+      "max_pts": 4,
+      "metric": 1.748201,
+      "metric_label": "ACL / nonaccrual loans (D11)",
+      "name": "Loss absorption (ACL / nonaccrual)",
+      "note": "",
+      "points": 3.194245,
+      "state": "score",
+      "thresholds": "0.75->0 | 2->4"
+     },
+     {
+      "flags": [],
+      "id": "4",
+      "inputs": {
+       "categories": {
+        "commercial_industrial": 467611000000.0,
+        "commercial_real_estate": 132284000000.0,
+        "consumer": 144082000000.0,
+        "other": 0.0,
+        "residential_mortgage": 242190000000.0
+       },
+       "cre": 132284000000.0,
+       "cre_to_total_capital": 0.71628,
+       "hhi": 0.32449,
+       "mapped_share": 1.0,
+       "total_regulatory_capital": 184682000000.0
+      },
+      "max_pts": 3,
+      "metric": 0.32449,
+      "metric_label": "HHI over 5 categories",
+      "name": "Concentration",
+      "note": "",
+      "points": 2.10612,
+      "state": "score",
+      "thresholds": "0.25->3 | 0.5->0"
+     }
+    ],
+    "name": "Credit quality and conservatism",
+    "normalized": 10.902441,
+    "observed_points": 10.902441,
+    "range_max": 10.902441,
+    "range_min": 10.902441,
+    "valid": true,
+    "weight": 15
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 15,
+    "id": "3.4",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "net_income": [
+        21938000000.0,
+        22183000000.0,
+        22393000000.0,
+        19715000000.0,
+        3377000000.0,
+        22109000000.0,
+        13677000000.0,
+        19142000000.0,
+        19722000000.0,
+        21338000000.0
+       ]
+      },
+      "max_pts": 9,
+      "metric": 1.0,
+      "metric_label": "share of years NI>0",
+      "name": "Profitable years",
+      "note": "",
+      "points": 9.0,
+      "state": "score",
+      "thresholds": "0.6->0 | 0.7->3 | 0.8->5 | 0.9->7 | 1->9"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "eps": [
+        3.99,
+        4.1,
+        4.28,
+        4.09,
+        0.43,
+        5.08,
+        3.27,
+        4.83,
+        5.37,
+        6.26
+       ],
+       "falls": 2,
+       "transitions": 9
+      },
+      "max_pts": 4,
+      "metric": 0.222222,
+      "metric_label": "share of transitions with EPS fall >20%",
+      "name": "Frequency of declines",
+      "note": "",
+      "points": 1.5,
+      "state": "score",
+      "thresholds": "0->4 | 0.111111->3 | 0.222222->1.5 | 0.333333->0"
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {
+       "drawdowns": [
+        0.0,
+        0.0,
+        0.0,
+        0.044393,
+        0.899533,
+        0.0,
+        0.356299,
+        0.049213,
+        0.0,
+        0.0
+       ],
+       "eps": [
+        3.99,
+        4.1,
+        4.28,
+        4.09,
+        0.43,
+        5.08,
+        3.27,
+        4.83,
+        5.37,
+        6.26
+       ]
+      },
+      "max_pts": 2,
+      "metric": 0.899533,
+      "metric_label": "max drawdown from running EPS peak",
+      "name": "Depth of the largest decline",
+      "note": "",
+      "points": 0.0,
+      "state": "score",
+      "thresholds": "0.1->2 | 0.5->0"
+     }
+    ],
+    "name": "Earnings stability",
+    "normalized": 10.5,
+    "observed_points": 10.5,
+    "range_max": 10.5,
+    "range_min": 10.5,
+    "valid": true,
+    "weight": 15
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 10,
+    "id": "3.5",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "has_dividend_by_year": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+       ]
+      },
+      "max_pts": 4,
+      "metric": 10,
+      "metric_label": "consecutive years with dividend",
+      "name": "Continuity",
+      "note": "",
+      "points": 4.0,
+      "state": "score",
+      "thresholds": "2->0 | 5->1.5 | 10->4"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "dps": [
+        1.515,
+        1.54,
+        1.64,
+        1.92,
+        1.22,
+        0.6,
+        1.1,
+        1.3,
+        1.5,
+        1.7
+       ]
+      },
+      "max_pts": 2,
+      "metric": 2,
+      "metric_label": "DPS cuts >10%",
+      "name": "No cuts",
+      "note": "",
+      "points": 0.0,
+      "state": "score",
+      "thresholds": "0->2 | 1->1 | 2->0"
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {
+       "sum_dividends": 21956000000.0,
+       "sum_ni": 95988000000.0
+      },
+      "max_pts": 2,
+      "metric": 0.228737,
+      "metric_label": "sum dividends / sum NI (5y)",
+      "name": "Earnings coverage",
+      "note": "",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "0.6->2 | 0.8->1 | 1->0"
+     },
+     {
+      "flags": [],
+      "id": "4",
+      "inputs": {},
+      "max_pts": 2,
+      "metric": null,
+      "metric_label": "",
+      "name": "Cash-flow coverage",
+      "note": "bank: not applicable (matrix)",
+      "points": null,
+      "state": "not_applicable",
+      "thresholds": ""
+     }
+    ],
+    "name": "Dividend history",
+    "normalized": 7.5,
+    "observed_points": 6.0,
+    "range_max": 7.5,
+    "range_min": 7.5,
+    "valid": true,
+    "weight": 10
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 15,
+    "id": "3.6",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "end_avg": 5.486667,
+       "eps": [
+        3.99,
+        4.1,
+        4.28,
+        4.09,
+        0.43,
+        5.08,
+        3.27,
+        4.83,
+        5.37,
+        6.26
+       ],
+       "n": 10,
+       "start_avg": 4.123333
+      },
+      "max_pts": 9,
+      "metric": 0.041653,
+      "metric_label": "annualized 3v3 EPS growth over 7 periods",
+      "name": "Long-term growth (Graham's test)",
+      "note": "",
+      "points": 5.110169,
+      "state": "score",
+      "thresholds": "0->0 | 0.04->5 | 0.1->9"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "eps": [
+        3.99,
+        4.1,
+        4.28,
+        4.09,
+        0.43,
+        5.08,
+        3.27,
+        4.83,
+        5.37,
+        6.26
+       ]
+      },
+      "max_pts": 3,
+      "metric": 0.666667,
+      "metric_label": "share of transitions with EPS rise",
+      "name": "Consistency of growth",
+      "note": "",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "0.4->0 | 0.6->1.5 | 0.8->3"
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {
+       "end_avg": 5.815,
+       "start_avg": 4.175
+      },
+      "max_pts": 3,
+      "metric": 0.116772,
+      "metric_label": "smoothed EPS growth (5y)",
+      "name": "Growth continues",
+      "note": "",
+      "points": 3.0,
+      "state": "score",
+      "thresholds": "0->0 | 0.05->3"
+     }
+    ],
+    "name": "Moderate earnings growth",
+    "normalized": 10.110169,
+    "observed_points": 10.110169,
+    "range_max": 10.110169,
+    "range_min": 10.110169,
+    "valid": true,
+    "weight": 15
+   },
+   {
+    "computed_share": 1.0,
+    "covered_points": 10,
+    "id": "3.7",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "tangible_assets": 2123664000000.0,
+       "tce": 139542000000.0
+      },
+      "max_pts": 5,
+      "metric": 0.065708,
+      "metric_label": "TCE / (assets - goodwill - intangibles)",
+      "name": "Tangible equity to assets",
+      "note": "",
+      "points": 4.284689,
+      "state": "score",
+      "thresholds": "0.04->0 | 0.07->5"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {
+       "tbvps_latest": 45.121257,
+       "tbvps_t_minus_4": 36.934566
+      },
+      "max_pts": 3,
+      "metric": 0.051325,
+      "metric_label": "TBVPS CAGR (t-4 to t)",
+      "name": "TBVPS preservation",
+      "note": "",
+      "points": 3.0,
+      "state": "score",
+      "thresholds": "-0.05->0 | 0->1.5 | 0.05->3"
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {
+       "approach": "standardized",
+       "rwa": 1294609000000.0
+      },
+      "max_pts": 2,
+      "metric": 0.602527,
+      "metric_label": "binding RWA / total assets",
+      "name": "Risk intensity (RWA / assets)",
+      "note": "",
+      "points": 1.58989,
+      "state": "score",
+      "thresholds": "0.5->2 | 1->0"
+     }
+    ],
+    "name": "Quality of equity and assets",
+    "normalized": 8.874579,
+    "observed_points": 8.874579,
+    "range_max": 8.874579,
+    "range_min": 8.874579,
+    "valid": true,
+    "weight": 10
+   },
+   {
+    "computed_share": 0.7,
+    "covered_points": 7,
+    "id": "3.8",
+    "items": [
+     {
+      "flags": [],
+      "id": "1",
+      "inputs": {
+       "eps": [
+        5.08,
+        3.27,
+        4.83,
+        5.37,
+        6.26
+       ]
+      },
+      "max_pts": 5,
+      "metric": 1.0,
+      "metric_label": "EPS declines >10% (of 4)",
+      "name": "EPS stability",
+      "note": "",
+      "points": 3.5,
+      "state": "score",
+      "thresholds": "0->5 | 1->3.5 | 2->2 | 3->0"
+     },
+     {
+      "flags": [],
+      "id": "2",
+      "inputs": {},
+      "max_pts": 3,
+      "metric": null,
+      "metric_label": "",
+      "name": "Allowance erosion relative to earnings",
+      "note": "NCO/provision/pretax available for fewer than 3 of 5 years",
+      "points": null,
+      "state": "missing",
+      "thresholds": "0.05->3 | 0.2->0"
+     },
+     {
+      "flags": [],
+      "id": "3",
+      "inputs": {
+       "latest": 3092600000.0,
+       "t_minus_4": 3814556833.0
+      },
+      "max_pts": 2,
+      "metric": -0.189264,
+      "metric_label": "period-end share count change vs t-4",
+      "name": "Dilution",
+      "note": "",
+      "points": 2.0,
+      "state": "score",
+      "thresholds": "0->2 | 0.1->0"
+     }
+    ],
+    "name": "Earnings quality and dilution",
+    "normalized": 7.857143,
+    "observed_points": 5.5,
+    "range_max": 8.5,
+    "range_min": 5.5,
+    "valid": true,
+    "weight": 10
+   }
+  ],
+  "invalid_criteria": [],
+  "model": "graham_quality_bank",
+  "observed_points": 69.450267,
+  "pending_criteria": [],
+  "range_error": null,
+  "range_max": 77.950267,
+  "range_min": 70.950267,
+  "score": 77.30741,
+  "status": "full",
+  "unknown_items": [
+   {
+    "criterion": "3.1",
+    "id": "3",
+    "max_pts": 2,
+    "name": "No dependence on one product, customer or market",
+    "note": "AI question",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.1",
+    "id": "4",
+    "max_pts": 2,
+    "name": "Proven business position in its industry",
+    "note": "AI question",
+    "state": "ai_pending"
+   },
+   {
+    "criterion": "3.8",
+    "id": "2",
+    "max_pts": 3,
+    "name": "Allowance erosion relative to earnings",
+    "note": "NCO/provision/pretax available for fewer than 3 of 5 years",
+    "state": "missing"
+   }
+  ]
+ },
+ "latest": {
+  "acl": 14337000000.0,
+  "acl_to_nonaccrual": 1.748201,
+  "approach": "standardized",
+  "buffer_by_approach": {
+   "advanced": 3.85,
+   "standardized": 2.11
+  },
+  "buffer_round1": 2.11,
+  "capital_buffer": 2.11,
+  "cet1_adv": 12.35,
+  "cet1_ratio": 10.61,
+  "cet1_std": 10.61,
+  "deposit_funding": 0.77012,
+  "deposit_funding_v1": null,
+  "flags": [],
+  "funding_lines": [
+   {
+    "line": "Total deposits",
+    "note": "",
+    "role": "deposits",
+    "value_usd": 1426207000000.0
+   },
+   {
+    "line": "Federal funds purchased and securities loaned or sold under repurchase agreements",
+    "note": "",
+    "role": "repo",
+    "value_usd": 232687000000.0
+   },
+   {
+    "line": "Short-term borrowings",
+    "note": "",
+    "role": "short_term",
+    "value_usd": 18323000000.0
+   },
+   {
+    "line": "Long-term debt",
+    "note": "",
+    "role": "long_term",
+    "value_usd": 174712000000.0
+   }
+  ],
+  "funding_roles": {
+   "deposits": 1426207000000.0,
+   "long_term": 174712000000.0,
+   "repo": 232687000000.0,
+   "short_term": 18323000000.0
+  },
+  "funding_source": "extracted balance-sheet lines",
+  "lcr": 119.0,
+  "lcr_date": "2025-12-31",
+  "lcr_measure": "q4_average",
+  "lcr_note": "",
+  "lcr_source": "MD&A - Financial Summary / Table 1",
+  "loan_categories": {
+   "commercial_industrial": 467611000000.0,
+   "commercial_real_estate": 132284000000.0,
+   "consumer": 144082000000.0,
+   "other": 0.0,
+   "residential_mortgage": 242190000000.0
+  },
+  "loans_latest": 986167000000.0,
+  "loans_mapped_share": 1.0,
+  "loans_mapped_total": 986167000000.0,
+  "nonaccrual": 8201000000.0,
+  "nonaccrual_rate": 0.008316,
+  "nonaccrual_source": "extraction",
+  "past_due_90_display_only": 3000000000.0,
+  "required_adv": 8.5,
+  "required_cet1": 8.5,
+  "required_std": 8.5,
+  "rwa": 1294609000000.0,
+  "total_capital": 184682000000.0,
+  "uninsured_deposits": 600000000000.0,
+  "unmapped_loan_lines": [],
+  "v9": {
+   "ccyb": 0.0,
+   "computed": null,
+   "gsib_surcharge": 0.0,
+   "match": null,
+   "scb": null,
+   "stated": 8.5,
+   "used": 8.5
+  }
+ },
+ "name": "WELLS FARGO & COMPANY/MN",
+ "path": {
+  "borderline_assignment": false,
+  "borderline_tests": {},
+  "deposits_to_liabilities": 0.724878,
+  "industry_is_banks": true,
+  "loans_to_assets": 0.458975,
+  "path": "1",
+  "sic": "6021"
+ },
+ "price": {
+  "annual_average": {
+   "FY2016": 48.957381,
+   "FY2017": 54.97992,
+   "FY2018": 55.283904,
+   "FY2019": 48.8625,
+   "FY2020": 30.01336,
+   "FY2021": 43.990913,
+   "FY2022": 46.124303,
+   "FY2023": 42.54616,
+   "FY2024": 59.126071,
+   "FY2025": 78.88456
+  },
+  "current": 83.550003,
+  "current_date": "2026-10-09",
+  "source": "yfinance (Close, split-adjusted, not dividend-adjusted)",
+  "splits": [
+   [
+    "1977-06-20",
+    2.0
+   ],
+   [
+    "1988-07-01",
+    1.5
+   ],
+   [
+    "1989-07-24",
+    2.0
+   ],
+   [
+    "1993-06-29",
+    2.0
+   ],
+   [
+    "1997-10-14",
+    2.0
+   ],
+   [
+    "2006-08-14",
+    2.0
+   ]
+  ]
+ },
+ "profile": "BANK",
+ "required_cet1": 8.5,
+ "scoring_model_version": "bank-rules-2026-10-12_22-35 (D10-D15, V1-V11, pricing v2) on general model 1.0 (2026-10-11_22-30) + D14 range fix",
+ "ticker": "WFC"
+}

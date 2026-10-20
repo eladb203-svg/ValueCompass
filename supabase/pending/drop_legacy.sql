@@ -1,3 +1,4 @@
+-- תורץ בק5 עם מספר גרסה חדש
 -- לא להריץ עד שלב הקוד — יחד עם שכתוב src/repositories/financial_repository.py ל-financial_facts
 -- DB stage 1 / migration 8 of 8 - drop financial_yearly and financial_ratios (replaced by financial_facts
 -- and v_display_metrics). Aborts if either table has rows.
