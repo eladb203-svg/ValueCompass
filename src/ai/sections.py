@@ -132,9 +132,9 @@ def _note_heads(body: str) -> list:
     out += [(m.start(), int(m.group(1)), m.group(2).strip()) for m in _NOTE_HEAD_ALONE.finditer(b)]
     return sorted(out)
 NOTE_KEYS = {
-    "NOTE-ACQ": re.compile(r"acquisition|business\s+combination|goodwill|divestiture|dispositions?\b|mergers?\b", re.I),
+    "NOTE-ACQ": re.compile(r"acquisition|business\s+combination|goodwill|divestitures?|dispositions?\b|mergers?\b|discontinued|assets?\s+held\s+for\s+sale", re.I),
     "NOTE-UNUSUAL": re.compile(r"restructuring|impairment|other\s+(?:income|expense|operating|charges)|special\s+|unusual|nonrecurring|non-recurring|\bgains?\b|\blosses\b|discontinued|"
-                               r"supplemental\s+(?:financial|balance)|litigation|legal\s+(?:proceedings|matters)|settlements?", re.I),
+                               r"supplemental\s+(?:financial|balance)|litigation|legal\s+(?:proceedings|matters)|settlements?|equity[- ]method\s+investments?|marketable\s+(?:debt\s+)?securities", re.I),
     "NOTE-LOANS": re.compile(r"^loans?\b|\bloans\b.*(?:allowance|credit|portfolio)|allowance\s+for\s+(?:credit|loan)|credit\s+quality|financing\s+receivables", re.I),
 }
 SEGMENT_KEYS = re.compile(r"segment|geographic|major\s+customers?|concentrations?\s+of|significant\s+customers?", re.I)
@@ -220,9 +220,29 @@ def _document_candidates(body: str) -> dict:
             out["TXT-005"].append(("\n\n".join(t for _, t in seg), "note"))
         for nid, key in NOTE_KEYS.items():
             nt = _note_texts(body, chain, key)
+            if nid == "NOTE-UNUSUAL":                                 # only the valuation-allowance part of the income-taxes note (a release is a typical one-time item)
+                va = _valuation_allowance(body, chain)
+                if va:
+                    nt = nt + [("income taxes: valuation allowance", va)]
             if nt:
                 out[nid].append(("\n\n".join(t for _, t in nt), "note"))
     return out
+
+
+_TAX_TITLE = re.compile(r"income\s+taxes?", re.I)
+
+
+def _valuation_allowance(body: str, chain: list, max_chars: int = 8_000) -> str:
+    """Lines that mention a valuation allowance in the income-taxes note, with one line before and two after (a release of the allowance is a typical one-time item)."""
+    out: list = []
+    for title, text in _note_texts(body, chain, _TAX_TITLE, cap_each=60_000):
+        lines = text.split("\n")
+        keep = set()
+        for i, ln in enumerate(lines):
+            if "valuation allowance" in ln.lower():
+                keep.update(range(max(0, i - 1), min(len(lines), i + 3)))
+        out += [lines[i] for i in sorted(keep)]
+    return "\n".join(out)[:max_chars]
 
 
 def _documents(text: str) -> list:

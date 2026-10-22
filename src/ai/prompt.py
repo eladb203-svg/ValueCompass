@@ -20,8 +20,9 @@ def scoring_skills() -> dict:
     return {s["skill_id"]: s for s in d["skills"]}
 
 
-def scoring_template() -> str:
-    return _load("scoring.yaml")["template"]
+def scoring_template(variant: str = "3") -> str:
+    """variant "3" = the standard template; "3.1" = the candidate with a mandatory `facts_check` field before `answer` (K5a-3)."""
+    return _load("scoring.yaml")["template_31" if variant == "3.1" else "template"]
 
 
 def classification_skill() -> dict:
@@ -41,13 +42,13 @@ def txt_sections(skill: dict) -> list:
     return [s for s in skill["sections"] if s.startswith(("TXT-", "NOTE-"))]
 
 
-def build_prompt(skill: dict, ctx: dict, sections: dict) -> tuple:
+def build_prompt(skill: dict, ctx: dict, sections: dict, variant: str = "3") -> tuple:
     """-> (prompt, text_sent, sections_sent). ``sections`` = {TXT-00x: text}; ``ctx`` = company_name, ticker, fiscal_year, profile, accession, code_facts (optional)."""
     sent = [(sid, sections[sid]) for sid in txt_sections(skill) if sections.get(sid)]
     text = "\n\n".join(f"[{sid}]\n{t}" for sid, t in sent)
     pn = (skill.get("profile_notes") or {}).get(ctx.get("profile"))
     extra = skill.get("extra_output")
-    prompt = scoring_template().format(
+    prompt = scoring_template(variant).format(
         skill_id=skill["skill_id"], version=skill["version"], question=skill["question"], card=skill["card"], scale_2=skill["scale_2"], scale_1=skill["scale_1"],
         scale_0=skill["scale_0"], evidence_focus=skill["evidence_focus"], profile_note=(f"Profile note ({ctx.get('profile')}): {pn}" if pn else ""),
         code_facts=ctx.get("code_facts") or "(none provided for this question)",
