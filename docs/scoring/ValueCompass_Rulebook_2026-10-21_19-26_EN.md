@@ -1,11 +1,11 @@
 ---
 title: "ValueCompass — Rulebook"
-subtitle: "Closed 2026-10-20_12-31 · English (source of truth)"
+subtitle: "Closed 2026-10-21_19-26 · English (source of truth)"
 ---
 
 # ValueCompass — Rulebook
 
-**Version:** closed 2026-10-20_12-31 (amends 2026-10-17_21-51: C5 extended, CL12; FIN-186 added, CL13; price score of "cannot be valued" clarified, CL14). **Status:** **closed — the source of truth** for the scoring rules, for the database (stage 2) and for the code (stage 3). It supersedes the governing files: general model v1.3 (2026-10-14_22-35), BANK 2026-10-13_10-20, INSURANCE 2026-10-13_17-25, INCOME_REAL_ESTATE 2026-10-15_11-45 and the consolidated sector rules 2026-10-15_12-00 (S-06: those files still carry the pre-X1 rule and are not to be used). Closure rests on the verification of the book against the source files and the code (2026-10-15, Part V) and on the decision list approved on 2026-10-17 (Part G). Where the code differs from this book, the book governs and the code is aligned in stage 3 (Part H).
+**Version:** closed 2026-10-21_19-26 (amends 2026-10-17_21-51: C5 extended, CL12; FIN-186 added, CL13; price score of "cannot be valued" clarified, CL14; Part B classification, CL15; router clarifications, CL16; Buffett 3.1 #3 scale, CL17; Graham 3.1 #4 scale, CL18). **Status:** **closed — the source of truth** for the scoring rules, for the database (stage 2) and for the code (stage 3). It supersedes the governing files: general model v1.3 (2026-10-14_22-35), BANK 2026-10-13_10-20, INSURANCE 2026-10-13_17-25, INCOME_REAL_ESTATE 2026-10-15_11-45 and the consolidated sector rules 2026-10-15_12-00 (S-06: those files still carry the pre-X1 rule and are not to be used). Closure rests on the verification of the book against the source files and the code (2026-10-15, Part V) and on the decision list approved on 2026-10-17 (Part G). Where the code differs from this book, the book governs and the code is aligned in stage 3 (Part H).
 **Language:** English is the source of truth; the Hebrew version is a translation.
 
 | Part | Content | Status |
@@ -141,23 +141,72 @@ Display only; scores, margins of safety and buy-price rules are unchanged (gener
 
 ## Part B — Profile assignment (S3, S3a)
 
-Two layers: **classification** (sector, industry — display and peer comparison, no effect on scores) and **methodology_profile** (selects the model). Code assigns; rows are tested in order and the first match wins.
+Two layers: **classification** (industry — selects the candidate rows below; also used for display and peer comparison, no direct effect on scores) and **methodology_profile** (selects the model). **Order of operations:** (1) the company's industry is classified (B.1); (2) the rows below are tested in order for that industry, and the first match wins. Code assigns.
 
-| Order | Profile | Candidate industries | Confirming test (latest year, code) | Fails → |
+| Order | Profile | Candidate industries (B.1) | Confirming test (code) | Fails → |
 |---|---|---|---|---|
 | 1a | BANK | Banks | Deposits / total liabilities ≥50% and loans / total assets ≥30% | 1b |
 | 1b | BANK | Banks; investment banks and brokers; consumer and commercial credit | Reports regulatory CET1 and LCR as a supervised bank holding company | Investment banks / brokers → STANDARD; credit → UNSUPPORTED |
-| 2 | INSURANCE | Insurance; managed health insurance | Insurance liabilities / total liabilities ≥50% | STANDARD (US managed-care organizations fail: Health Care sector, STANDARD) |
-| 3 | INCOME_REAL_ESTATE | Income real estate / property REIT | Investment property / total assets ≥50% and rental revenue / total revenue ≥50% (extracted data when tags are missing, RE11; real estate incl. acquired lease intangibles, RE15) | STANDARD (e.g., WELL) |
-| 4 | UNSUPPORTED | Mortgage REITs; BDCs and credit funds; non-bank lenders not passing 1b | — | |
-| 5a | TECH_ASSET_LIGHT | Software; IT services; internet and advertising | None (industry suffices) | |
-| 5b | TECH_ASSET_LIGHT | Hardware; semiconductors; semiconductor equipment; communications equipment; components | R&D / revenue ≥10% and gross margin ≥50% (5-year medians) | STANDARD |
+| 2 | INSURANCE | Insurance carriers; managed health insurance; insurance brokers and services (guard) | Insurance liabilities / total liabilities ≥50% | STANDARD (US managed-care organizations and insurance brokers fail: STANDARD) |
+| 3 | INCOME_REAL_ESTATE | Property REITs and income real estate | Investment property / total assets ≥50% and rental revenue / total revenue ≥50% (extracted data when tags are missing, RE11; real estate incl. acquired lease intangibles, RE15) | STANDARD (e.g., WELL) |
+| 4 | UNSUPPORTED | Mortgage REITs; BDCs and credit funds; SPACs (SIC 6770); asset-backed issuers (SIC 6189); credit lenders not passing 1b | — (industry suffices) | |
+| 5a | TECH_ASSET_LIGHT | Software; IT services; internet platforms and advertising (search, social networks, online marketplaces — not online retail with its own inventory and logistics) | None (industry suffices) | |
+| 5b | TECH_ASSET_LIGHT | Hardware; semiconductors; semiconductor equipment; communications equipment; electronic components | R&D / revenue ≥10% and gross margin ≥50% (5-year medians; gross profit may be derived per C4, flagged) | STANDARD |
 | 6 | STANDARD | All others, incl. asset managers, insurance brokers, exchanges, payments, developers and homebuilders | — | |
 
-- **S3a — borderline:** a test result within 5 pp of its threshold → "borderline assignment" flag and an admin review list; code still decides. When a tag is missing, the test runs on extracted data (the AI extracts numbers; code tests).
-- **Stability:** recomputed with every annual report; the profile changes only after two consecutive years with a different result. Industry changes are logged.
-- **Manual override (P1):** the admin may correct industry or profile, with a stored and displayed reason.
-- **Classification source:** US — SEC SIC mapped to the ValueCompass taxonomy (own names, not GICS); Israel — TASE industry; others — data-provider classification. No classification → AI question choosing from a closed list (R16, R18).
+- **S3a — borderline:** a test result within 5 pp of its threshold (every test, incl. both 5b tests) → "borderline assignment" flag and an admin review list; code still decides. When a tag is missing, the test runs on extracted data (the AI extracts numbers; code tests).
+- **Undetermined:** when an input of a test is missing (e.g., an insurance-liability component not tagged in a year), the year's result is "undetermined" — not a failure (CL15).
+- **Stability:** recomputed with every annual report; the profile changes only after two consecutive years with a different result. An "undetermined" year is neither a different result nor a break in the sequence. Industry changes are logged.
+- **Industry over the window (CL16):** the industry is classified on the latest year and applied to the whole window; industry changes are logged. SIC is the current code (SEC keeps no SIC history).
+- **Manual override (P1):** the admin may correct industry or profile, with a stored and displayed reason; the computed profile stays visible next to the override.
+
+### B.1 Industry classification (CL15, 2026-10-20)
+
+**Three tiers, in order:**
+
+| Tier | Source | Used when | Decision |
+|---|---|---|---|
+| 1 | SEC SIC code (submissions; FIN-188) mapped by the table below | The SIC code maps to one industry | Automatic |
+| 2 | Data-provider industry (FIN-189), mapped by a ValueCompass mapping table (data, not code) | The SIC code is ambiguous (marked "multi" below) or maps to "Other" for a company whose business may be a candidate industry | Automatic when it maps to one industry |
+| 3 | AI question on the company's annual report (Business section, TXT-001): choose one industry from the closed list, with a quote (R16, R18) | No provider industry, or tiers 1–2 do not decide | **Automatic when two sources agree** (tier 2 and tier 3); **admin approval** when they disagree. Until decided: STANDARD with the flag "classification pending" |
+
+Non-US companies: tier 1 is the local classification (Israel: TASE industry); tiers 2–3 as above.
+
+**ValueCompass industries (router layer):** Banks; Investment banks and brokers; Consumer and commercial credit; Insurance carriers; Managed health insurance; Insurance brokers and services; Property REITs and income real estate; Mortgage REITs; BDCs and credit funds; SPACs and asset-backed issuers; Software; IT services; Internet platforms and advertising; Hardware; Semiconductors; Semiconductor equipment; Communications equipment; Electronic components; Asset managers; Exchanges and data; Payments; Homebuilders and developers; Other. The display layer may refine "Other" into further industries.
+
+**SIC → industry (US):**
+
+| SIC | Industry | Note |
+|---|---|---|
+| 6021, 6022, 6029, 6035, 6036; 6011, 6019, 6081, 6082 | Banks | |
+| 6211, 6221 | Investment banks and brokers | 1b decides BANK or STANDARD |
+| 6111, 6141, 6153, 6159, 6162, 6163, 6172 | Consumer and commercial credit | |
+| 6199 | multi | Credit only if loans and receivables / total assets ≥50%; otherwise tiers 2–3 |
+| 6311, 6321, 6331, 6351, 6361, 6399 | Insurance carriers | |
+| 6324 | Managed health insurance | Row 2 test decides |
+| 6411 | Insurance brokers and services | Guard: row 2 test still runs (a misclassified carrier passes) |
+| 6798 | multi — numeric split | Mortgage REIT test below; otherwise Property REITs |
+| 6500, 6510, 6512, 6513, 6519 | Property REITs and income real estate | Row 3 test decides |
+| 6531 | Other | Real-estate services |
+| 6552, 1520–1531 | Homebuilders and developers | |
+| 6282 | Asset managers | |
+| 6200 | multi | Exchanges and data by default; tiers 2–3 when the provider says broker |
+| 6726, 6799 | BDCs and credit funds | |
+| 6770, 6189 | SPACs and asset-backed issuers | |
+| 7371, 7372 | Software | |
+| 7373, 7374, 7379 | IT services | |
+| 7370, 7310, 7311 | multi | Internet platforms and advertising when tiers 2–3 confirm; advertising agencies → Other |
+| 3570–3579 | Hardware | |
+| 3674 | Semiconductors | |
+| 3559, 3827 | multi | Semiconductor equipment when tiers 2–3 confirm; otherwise Other |
+| 3661, 3663, 3669 | Communications equipment | |
+| 3670–3679 except 3674 | Electronic components | |
+| 7389 | multi | Payments / internet platforms / other by tiers 2–3 |
+| All others | Other | Tiers 2–3 still run when the provider industry is a candidate industry (e.g., internet platforms under 4700, 5961, 7011, 7841) |
+
+**Mortgage REIT test (SIC 6798, latest year, code):** mortgage REIT when investment property / total assets <50% **and** either interest income / total revenue ≥50% (FIN-190) or (mortgage loans + mortgage-backed securities) / total assets ≥50% (FIN-191). Otherwise Property REITs (row 3 decides; failing → STANDARD). S3a applies. **Undetermined (CL16):** when one of the two measures cannot be computed and the other is below 50%, the test is "undetermined" and tier 2 (provider industry) decides; the test fails only when both measures are computed and both are below 50%. An investment-property line absent from a retrieved balance sheet counts as 0 in this test (as C5).
+
+**BDC identification:** SIC 6726 / 6799, or net asset value per share reported and investments at fair value ≥50% of total assets (FIN-192).
 
 ---
 
@@ -173,7 +222,7 @@ Two layers: **classification** (sector, industry — display and peer comparison
 |---|---|---|---|---|
 | 1 | Is it clear what the company sells? | The main products or services can be named in simple words | Generally clear, but many products or very technical ones | Unclear what is actually sold (holdings, complex financial products) |
 | 2 | Is it clear who the customers are? | The main customer types can be identified (consumers, businesses, governments) | Several different customer types, or sales through intermediaries that hide the customer | Unclear who pays |
-| 3 | Are the revenue sources simple to understand? | Few main sources, with a clear model (sale, subscription, fee) | Several sources, or a model that needs explanation (licensing, advertising, financing) | Many unrelated sources, or a non-transparent model |
+| 3 | Are the revenue sources simple to understand? | Few main sources, each with a model that can be explained in one line (sale, subscription, fee, rent, premium, interest margin); the profile's standard model counts as one model (BANK: interest, investment income and fees; INSURANCE: premiums and investment income; INCOME_REAL_ESTATE: rent) | Several sources that differ in nature, or a material part of revenue (about a quarter or more) depends on something hard to see from outside (trading gains, fair-value remeasurement, gain-on-sale, complex contracts) | Many unrelated sources that cannot be summarized together, or a non-transparent model |
 | 4 | Are the main risks clear? | 2–4 concrete business risks can be named | Very generic risks, or so many that they cannot be ranked | The business depends on a factor that cannot be assessed (single clinical trial, commodity price, open regulation) |
 | 5 | Can the business be explained in one sentence? | A sentence of up to 25 words: what, for whom, and how it makes money | Needs two sentences, or the sentence omits a central part | Not possible |
 
@@ -654,8 +703,9 @@ Two layers: **classification** (sector, industry — display and peer comparison
 | # | AI question | Evidence checked | 2 | 1 | 0 |
 |---|---|---|---|---|---|
 | 3 | Is there a critical dependence on one product, customer or market? | Largest customer share (>10% disclosure), largest product or segment, dependence on a license, patent or single market | No customer above 10% of revenue, and no product or license whose loss would threaten the business; a single reported segment does not by itself reduce the score | A customer at 10%–25%, or a central product, but with a significant additional revenue base | A customer above 25%, a single product, or dependence on one license or market |
-| 4 | Does the company have a proven business position in its industry? | Years in the industry, market share or ranking where reported, scale vs competitors, long-standing material customers | One of the central players in its industry or niche, with evidence | A mid-sized player with a stable but not prominent position | Young company, development stage, or an eroding position |
+| 4 | Does the company have a proven business position in its industry? | Years in the industry, market share or ranking where reported, scale vs competitors, long-standing material customers | One of the central players in its industry or niche, with evidence | A mid-sized player with a stable but not prominent position | Young company, development stage, or no longer a significant player |
 
+- **Question 4 (CL18):** judges how established the position is — years in the industry, rank or share, scale versus competitors. Its direction (gaining or losing) is judged in Buffett 3.2 #4 and is not counted again here.
 - **Size anchor:** Graham (1973) required $100M sales; by CPI-U (1973: 44.4; 2025: 321.9; ratio 7.25) about $725M in 2025 → $750M. Fixed nominal number per model version (base year 2025), updated with the next version.
 - **Inputs:** FIN-060 revenue, FIN-130 FX rates (annual average, year-end), FIN-131 date of the first annual report, TXT-001 Business, TXT-005 segment and customer disclosures.
 - **Roles:** Extracts: code (revenue, FX, filing metadata); report text for the AI. Computes: code. Judges: code (1–2), **AI** (3–4).
@@ -1425,6 +1475,12 @@ The ETL source column is the engine's actual mapping (verification of 2026-10-15
 | FIN-184 | Single-basis items (N-25) | Share-basis override, share of the operating partnership's income, weighted partnership units, whether diluted shares include OP units | Equity note / EPS note | Extraction `shares_basis_override`, `inc_share_of_bplp`, `partnership_units_weighted`, `diluted_includes_op` | **AI** (quote) | RE28 |
 | FIN-185 | Secured debt (N-26) | Secured part of debt | Debt note | `SecuredDebt` (RE) | Code | Debt composition (display) |
 | FIN-186 | Net investment income | Net investment income of an insurer (before realized and unrealized gains) | Income statement | IN engine field `net_investment_income` | Code | INSURANCE inputs (engine) |
+| FIN-187 | R&D expense | Research and development expense | Income statement | `ResearchAndDevelopmentExpense`; alt. `ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost` | Code | Part B row 5b |
+| FIN-188 | SIC code | SEC Standard Industrial Classification code and description (current) | SEC submissions | `sic`, `sicDescription` (submissions JSON) | Code | B.1 tier 1 |
+| FIN-189 | Provider industry | Industry name from the price/data provider | Data provider | yfinance `industry` | Code | B.1 tier 2 |
+| FIN-190 | Interest income (operating) | Interest income reported as operating revenue | Income statement | `InterestAndDividendIncomeOperating`; alt. `InterestIncomeOperating` | Code | B.1 mortgage REIT test |
+| FIN-191 | Mortgage loans and MBS | Mortgage loans held + mortgage-backed securities | Balance sheet / notes | `MortgageLoansOnRealEstate`; MBS tags; extraction when untagged | Code; **AI** when untagged | B.1 mortgage REIT test |
+| FIN-192 | NAV per share; investments at fair value | Net asset value per share and investments owned at fair value | Balance sheet / financial highlights | `NetAssetValuePerShare`; `InvestmentOwnedAtFairValue` | Code | B.1 BDC identification |
 
 ### E.2 Alternatives and ETL notes
 
@@ -1563,6 +1619,10 @@ Implementation status (verification of 2026-10-15): E3, E6 and E12 implemented; 
 | CL8 | 2026-10-17 | BANK / INSURANCE value ≤ 0 → price score 0, as C15 | D.3, D.4 |
 | CL9 | 2026-10-17 | Real-estate Buffett 3.1 keeps the five general AI questions | B3.1 |
 | CL10 | 2026-10-17 | Part E: engine mapping replaces the indicative concepts; FIN-112 / FIN-113 merged; FIN-160 to FIN-185 added; FIN-130 and TXT-001 to TXT-005 kept as required | Part E |
+| CL18 | 2026-10-21 | Graham 3.1 #4: the question judges how established the position is; 0 = young company, development stage, or no longer a significant player (was "an eroding position"); direction is judged only in Buffett 3.2 #4 — no double counting (AI calibration, K5a) | G3.1 |
+| CL17 | 2026-10-21 | Buffett 3.1 #3: the revenue-model scale judges whether an outsider can see what the customer pays for; the profile's standard model (bank, insurer, property owner) counts as one model; 1 = sources that differ in nature or a material part (about a quarter) hard to see from outside; 0 = unrelated sources that cannot be summarized together, or non-transparent (AI calibration, K5a) | B3.1 |
+| CL16 | 2026-10-20 | Router clarifications from implementation: mortgage REIT test "undetermined" when one measure is missing (tier 2 decides); absent investment-property line = 0 in that test; industry from the latest year applies to the window (code stage K4b) | B, B.1 |
+| CL15 | 2026-10-20 | Part B: industry classification in three tiers (SIC → provider industry → AI on the annual report; automatic when two sources agree, admin approval on disagreement); ValueCompass industries and SIC map; mortgage REIT test and BDC identification; SPACs and asset-backed issuers UNSUPPORTED; internet platforms defined; "undetermined" year in stability; gross profit derivation (C4) and S3a in 5b; FIN-187 to FIN-192 (code stage K4a) | Part B, Part E |
 | CL14 | 2026-10-20 | Two kinds of "cannot be valued": computed value ≤ 0 → price score 0 (C15); no valid value (missing input, non-positive base, V6 / V5 conditions) → "not applicable". Corrects the 2026-10-17 wording in D.3 / D.4 P2 that extended price score 0 to every case (found in code stage K3) | D.0, D.3, D.4 |
 | CL13 | 2026-10-20 | FIN-186 net investment income added: read by the INSURANCE engine but missing from the dictionary (found in code stage K2) | Part E |
 | CL12 | 2026-10-19 | C5 extended to preferred stock and preferred dividends (absent line in a retrieved statement = 0, flagged); found in the DB stage: without it ROTCE of a bank without preferred stock would be missing | A.2 |
