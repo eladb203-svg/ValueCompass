@@ -16,6 +16,7 @@ from . import bank as BK
 from . import buffett as B
 from . import graham as G
 from .common import L, growth_item, miss, tail, thresholded, zero
+from .ai_items import ai_item
 from .coverage import (ModelResult, ai_pending, evaluate_criterion, evaluate_model, not_applicable, scored)
 from .interpolate import describe, interpolate
 from .metrics import clean, count_scaled, median, rose, safe_div, smoothed_growth
@@ -39,6 +40,7 @@ class InsuranceInputs:
     reg: dict  # extracted items (scripts/insurance_regulatory.csv)
     price_current: Optional[float] = None
     price_entity_issue: Optional[str] = None  # C16
+    ai_answers: dict = field(default_factory=dict)  # AI answers by skill id (code stage K5a); empty = the AI sub-items stay ai_pending
     price_avg: list = field(default_factory=list)
     first_annual_report: Optional[date] = None
     as_of: Optional[date] = None
@@ -519,6 +521,7 @@ class _View:
         self.n, self.fy, self.end = ii.n, ii.fy, ii.end
         self.price_avg, self.price_current = ii.price_avg, ii.price_current
         self.first_annual_report, self.as_of, self.profile = ii.first_annual_report, ii.as_of, PROFILE
+        self.ai_answers = getattr(ii, "ai_answers", {})
 
     def series(self, name):
         if name == "revenue":
@@ -573,8 +576,8 @@ def b32(ii, d):
     items.append(miss("3", "Persistent operating ROE", 2.0, "fewer than 3 years of operating ROE", a3, inputs={"operating_roe": ro}) if cnt is None else
                  thresholded("3", "Persistent operating ROE", 2.0, cnt, a3, "", "years with operating ROE >= 10% (of 5)", {"operating_roe": ro},
                              ["partial_window"] if part else []))
-    items.append(ai_pending("4", "Stable competitive position", 2.0, note="AI question"))
-    items.append(ai_pending("5", "Clear moat", 1.0, note="AI question x0.5"))
+    items.append(ai_item(ii, "B3.2-Q4", "4", "Stable competitive position", 2.0, note="AI question"))
+    items.append(ai_item(ii, "B3.2-Q5", "5", "Clear moat", 1.0, note="AI question x0.5"))
     return items
 
 
@@ -719,7 +722,7 @@ def b38(ii, d):
     else:
         items.append(thresholded("5", "Margins maintained", 2, (nm[0] + nm[1]) / 2 - (nm[3] + nm[4]) / 2, a5, "", "decline in net margin, avg first 2 -> last 2",
                                  {"net_margin": nm}))
-    items.append(ai_pending("6", "Growth is sustainable", 2, note="AI question"))
+    items.append(ai_item(ii, "B3.8-Q6", "6", "Growth is sustainable", 2, note="AI question"))
     return items
 
 

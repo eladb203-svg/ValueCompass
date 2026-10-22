@@ -23,6 +23,7 @@ from src.providers.bank_facts import build_bank_series, load_regulatory  # noqa:
 from src.providers.sec_companyfacts import SecClient  # noqa: E402
 from src.scoring.bank import BankInputs, bank_path, score_bank  # noqa: E402
 from router_runner import route_company  # noqa: E402
+from ai_runner import attach_ai  # noqa: E402
 
 OUT = ROOT / "scripts" / "output_banks"
 RULE_ISSUES = ROOT / "scripts" / "bank_rule_issues.md"
@@ -56,6 +57,7 @@ def run_bank(sec, reg_all, ticker):
         res = {"ticker": ticker, "state": "sector_not_supported_v1", "reason": "bank profile path not assigned", "path": path}
         (OUT / f"{ticker}.json").write_text(json.dumps(jsonable(res), indent=1), encoding="utf-8")
         return None
+    attach_ai(bi, ticker)
     sc = score_bank(bi)
     d, bq, bp, gq, gp = sc["derived"], sc["buffett_quality"], sc["buffett_price"], sc["graham_quality"], sc["graham_price"]
     lt = d["latest"]

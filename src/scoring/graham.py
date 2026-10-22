@@ -5,6 +5,7 @@ import math
 
 from .buffett import _buy_price, _dilution_item, dilution
 from .common import L, growth_item, miss, paired_totals, tail, thresholded, zero
+from .ai_items import ai_item
 from .coverage import (ModelResult, ai_pending, evaluate_criterion, evaluate_model, scored)
 from .interpolate import describe, interpolate
 from .metrics import (INF, clean, count_scaled, fell_more_than, growth_or_floor, mean, rose,
@@ -30,8 +31,8 @@ def c31(inp, d):
                                  "years since earliest 10-K filing",
                                  {"first_annual_report": str(inp.first_annual_report)},
                                  ["predecessor_history_not_checked"]))
-    items.append(ai_pending("3", "No dependence on one product, customer or market", 2, note="AI question"))
-    items.append(ai_pending("4", "Proven business position in its industry", 2, note="AI question"))
+    items.append(ai_item(inp, "G3.1-Q3", "3", "No dependence on one product, customer or market", 2, note="AI question"))
+    items.append(ai_item(inp, "G3.1-Q4", "4", "Proven business position in its industry", 2, note="AI question"))
     return items
 
 
@@ -302,7 +303,7 @@ def c38(inp, d):
         items.append(thresholded("1", "FCF supports net income", 3, sf / sn, a1, "", "sum FCF / sum NI (5y)",
                                  {"sum_fcf": sf, "sum_ni": sn, "years": n}))
     items.append(_dilution_item("2", "No dilution", 2, inp))
-    items.append(ai_pending("3", "No dependence on one-time items", 2, note="AI question"))
+    items.append(ai_item(inp, "G3.8-Q3", "3", "No dependence on one-time items", 2, note="AI question"))
     a4 = [(0.03, 2), (0.10, 0)]
     ge, go = smoothed_growth(L(inp.series("eps"))), smoothed_growth(L(inp.series("ebit")))
     ins = {"eps": ge, "operating_income": go}

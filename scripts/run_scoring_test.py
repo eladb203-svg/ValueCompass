@@ -24,6 +24,7 @@ from src.scoring.inputs import CompanyInputs  # noqa: E402
 from src.scoring.metrics import median  # noqa: E402
 from src.scoring.profiles import score_company  # noqa: E402
 from router_runner import route_company  # noqa: E402
+from ai_runner import attach_ai  # noqa: E402
 
 OUT = ROOT / "scripts" / "output"
 RULE_ISSUES = ROOT / "scripts" / "rule_issues.md"
@@ -96,6 +97,7 @@ def run_company(sec, ticker, why):
         first_annual_report=raw["first_annual_report"], as_of=date.today(), flags=list(raw["flags"]),
         data_problems=list(raw["problems"]), tag_log=raw["tag_log"], assumed_zero=raw["assumed_zero"])
     inp.data_problems += pr["notes"]
+    attach_ai(inp, ticker)
     sc = score_company(inp)
     if sc["state"] != "scored":
         (OUT / f"{ticker}.json").write_text(json.dumps(jsonable({

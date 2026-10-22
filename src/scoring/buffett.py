@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .common import L, growth_item, miss, paired_totals, thresholded, zero
+from .ai_items import ai_item
 from .coverage import (ModelResult, ai_pending, evaluate_criterion, evaluate_model, not_applicable,
                        scored)
 from .interpolate import describe, interpolate
@@ -23,7 +24,7 @@ Q31 = [
 
 
 def c31(inp, d):
-    return [ai_pending(i, n, 2, note="AI question (not run in this round)") for i, n in Q31]
+    return [ai_item(inp, f"B3.1-Q{i}", i, n, 2, note="AI question (not run in this round)") for i, n in Q31]
 
 
 # ---------------------------------------------------------------- 3.2 Moat
@@ -69,8 +70,8 @@ def c32(inp, d):
     else:
         items.append(thresholded("3", "Persistent ROIC", 2.0, cnt, a3, "", "years with ROIC>=12% (of 5)",
                                  {"roic": ro}, ["partial_window"] if part else []))
-    items.append(ai_pending("4", "Stable competitive position", 2.0, note="AI question"))
-    items.append(ai_pending("5", "Clear moat", 1.0, note="AI question x0.5"))
+    items.append(ai_item(inp, "B3.2-Q4", "4", "Stable competitive position", 2.0, note="AI question"))
+    items.append(ai_item(inp, "B3.2-Q5", "5", "Clear moat", 1.0, note="AI question x0.5"))
     return items
 
 
@@ -286,14 +287,14 @@ def c37(inp, d):
             items.append(scored("3", "M&A created value", 2, 2, metric=0.0, metric_label="acq/FCF",
                                 thresholds="<=10% = 2, above: AI", inputs=ins, note="no acquisitions"))
         elif sf <= 0:
-            items.append(ai_pending("3", "M&A created value", 2, metric="inf", metric_label="acq/FCF",
+            items.append(ai_item(inp, "B3.7-Q3", "3", "M&A created value", 2, metric="inf", metric_label="acq/FCF",
                                     inputs=ins, flags=["fcf_total_nonpositive_gate_open"],
                                     note="acquisitions with FCF<=0: gate treated as >10% -> AI question"))
         elif sa / sf <= 0.10:
             items.append(scored("3", "M&A created value", 2, 2, metric=sa / sf, metric_label="acq/FCF",
                                 thresholds="<=10% = 2, above: AI", inputs=ins))
         else:
-            items.append(ai_pending("3", "M&A created value", 2, metric=sa / sf, metric_label="acq/FCF",
+            items.append(ai_item(inp, "B3.7-Q3", "3", "M&A created value", 2, metric=sa / sf, metric_label="acq/FCF",
                                     inputs=ins, note="acquisitions > 10% of FCF: AI question required"))
     # 4 distributions
     a4 = [(1.0, 2), (1.5, 0)]
@@ -314,7 +315,7 @@ def c37(inp, d):
         else:
             items.append(thresholded("4", "Distributions supported by cash flow", 2, sd / sf2, a4, "",
                                      "(div+buybacks)/FCF (5y)", ins))
-    items.append(ai_pending("5", "Transparent, conservative, consistent management", 2, note="AI question"))
+    items.append(ai_item(inp, "B3.7-Q5", "5", "Transparent, conservative, consistent management", 2, note="AI question"))
     return items
 
 
@@ -397,7 +398,7 @@ def c38(inp, d):
         decline = (nm[0] + nm[1]) / 2 - (nm[3] + nm[4]) / 2
         items.append(thresholded("5", "Margins maintained", 2, decline, a5, "",
                                  "decline in net margin, avg first 2 -> last 2", {"net_margin": nm}))
-    items.append(ai_pending("6", "Growth is sustainable", 2, note="AI question"))
+    items.append(ai_item(inp, "B3.8-Q6", "6", "Growth is sustainable", 2, note="AI question"))
     return items
 
 

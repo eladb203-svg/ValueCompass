@@ -30,6 +30,7 @@ class CompanyInputs:
     tag_log: dict = field(default_factory=dict)  # field -> {fy: {...}}
     assumed_zero: dict = field(default_factory=dict)  # field -> [fy labels assumed 0]
     price_entity_issue: Optional[str] = None  # C16: price and financials of different listed entities (merger / successor price) -> cannot be priced
+    ai_answers: dict = field(default_factory=dict)  # AI answers by skill id (code stage K5a); empty = the AI sub-items stay ai_pending
 
     @property
     def n(self) -> int:

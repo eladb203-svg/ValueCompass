@@ -1,4 +1,4 @@
-"""Code stage K3 - rulebook corrections (Part H.1 of ValueCompass_Rulebook_2026-10-20_10-33). One section per fix; each test fails on the pre-K3 code."""
+"""Code stage K3 - rulebook corrections (Part H.1 of the rulebook as of 2026-10-20; later versions keep Part H). One section per fix; each test fails on the pre-K3 code."""
 import pytest
 
 from src.scoring import bank as BK

@@ -24,6 +24,7 @@ from src.providers.realestate_facts import load_realestate_extracted  # noqa: E4
 from src.providers.sec_companyfacts import SecClient  # noqa: E402
 from src.scoring.realestate import conservative_cap_rate, score_realestate, score_realestate_pricing  # noqa: E402
 from router_runner import route_company  # noqa: E402
+from ai_runner import attach_ai  # noqa: E402
 
 T = ["O", "PLD", "SPG", "FRT", "BXP", "ARE", "EQR", "PSA", "EQIX", "AMT"]
 OUT = ROOT / "scripts" / "output_realestate_pricing_v7"
@@ -68,6 +69,7 @@ def main():
     for t in T:
         try:
             ri, raw = build_ri(sec, reg_all, t)
+            attach_ai(ri, t)
             if t == "EQR":
                 ri.price_entity_issue = "price is the VMRK (Vivmark Residential) close; financials are EQR FY2025 (merger 2026-08-18)"
             sc = score_realestate(ri)

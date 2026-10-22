@@ -464,6 +464,10 @@ def classify(data: RouterData, tables: Tables, ai: Optional[AIAnswer] = None, ov
         if prov_ind and prov_ind != OTHER:
             return Classification(prov_ind, "provider", "decided", reasons + [f"provider industry {prov_raw!r} -> {prov_ind}"])
         if prov and prov[1] == "tier3":
+            if ai is not None:   # tier 3: automatic when it agrees with the SIC result (Other); otherwise an admin must approve (B.1)
+                if ai.approved or ai.industry == OTHER:
+                    return Classification(ai.industry, "ai", "decided", reasons + [f"AI classification (tier 3): {ai.industry}" + ("" if ai.approved else " (agrees with the SIC result)")])
+                return Classification(OTHER, "ai", "classification_pending", reasons + [f"AI (tier 3) says {ai.industry}, SIC says Other: admin approval needed"])
             return Classification(OTHER, "none", "classification_pending", reasons + [f"provider industry {prov_raw!r} may be a candidate: tier 3 (AI) needed"])
         return Classification(OTHER, "sic", "decided", reasons)
     if rule.kind == "auto":

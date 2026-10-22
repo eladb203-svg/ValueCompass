@@ -14,6 +14,7 @@ from typing import Optional
 from . import buffett as B
 from . import graham as G
 from .common import L, miss, tail, thresholded, zero
+from .ai_items import ai_item
 from .coverage import ModelResult, ai_pending, evaluate_criterion, evaluate_model, not_applicable, scored
 from .interpolate import describe, interpolate
 from .metrics import INF, clean, clip, count_scaled, fell_more_than, median, safe_div, smoothed_growth
@@ -41,6 +42,7 @@ class REInputs:
     rental_proxy_note: str = ""
     price_current: Optional[float] = None
     price_entity_issue: Optional[str] = None  # C16: price of a successor entity vs financials of the predecessor -> cannot be priced
+    ai_answers: dict = field(default_factory=dict)  # AI answers by skill id (code stage K5a); empty = the AI sub-items stay ai_pending
     price_date: Optional[str] = None
     price_avg: list = field(default_factory=list)
     first_annual_report: Optional[date] = None
@@ -476,6 +478,7 @@ class _View:
         self.n, self.fy, self.end = ri.n, ri.fy, ri.end
         self.price_avg, self.price_current = ri.price_avg, ri.price_current
         self.first_annual_report, self.as_of, self.profile = ri.first_annual_report, ri.as_of, PROFILE
+        self.ai_answers = getattr(ri, "ai_answers", {})
 
     def series(self, name):
         m = {"net_income": self._d["norm_ffo"], "eps": self._d["nffo_ps"], "revenue": self._d["property_revenue_or_total"] if "property_revenue_or_total" in self._d else self._ri.series("total_revenue"),
@@ -497,7 +500,7 @@ def _median5(vals):
 
 def b31(ri, d):
     # Rulebook C.B3.1 / CL9 (H-08): INCOME_REAL_ESTATE keeps the five general questions (same ids and names as the general model)
-    return [ai_pending(i, nm, 2.0, note="AI question") for i, nm in B.Q31]
+    return [ai_item(ri, f"B3.1-Q{i}", i, nm, 2.0, note="AI question") for i, nm in B.Q31]
 
 
 def b32(ri, d):
@@ -516,8 +519,8 @@ def b32(ri, d):
         else:
             items.append(thresholded("2b", "No normalized FFO margin erosion", 1.0, om[-1] - median(ov), a2b, "", "latest minus 5y median normalized FFO margin", {"nffo_margin": om}))
     items.append(not_applicable("3", "Persistent return", 2.0, note="real estate: measured in Buffett 3.4 (matrix)"))
-    items.append(ai_pending("4", "Stable competitive position", 2.0, note="AI question"))
-    items.append(ai_pending("5", "Clear moat", 1.0, note="AI question x0.5"))
+    items.append(ai_item(ri, "B3.2-Q4", "4", "Stable competitive position", 2.0, note="AI question"))
+    items.append(ai_item(ri, "B3.2-Q5", "5", "Clear moat", 1.0, note="AI question x0.5"))
     return items
 
 

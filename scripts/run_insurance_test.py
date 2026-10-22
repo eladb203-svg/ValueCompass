@@ -23,6 +23,7 @@ from src.providers.sec_companyfacts import SecClient  # noqa: E402
 from src.scoring import insurance as INS
 from src.scoring.router import INS_I, default_tables, insurance_liabilities_ratio, sic_set
 from router_runner import route_company  # noqa: E402
+from ai_runner import attach_ai  # noqa: E402
 from src.scoring.insurance import LINE_OF_BUSINESS, InsuranceInputs, score_insurance  # noqa: E402
 
 OUT = ROOT / "scripts" / "output_insurance"
@@ -69,6 +70,7 @@ def run_company(sec, reg_all, t):
                          flags=list(raw["flags"]), data_problems=list(raw["problems"]) + list(pr["notes"]), tag_log=raw["tag_log"])
     prof = profile_check(raw, ii)
     rr = route_company(sec, t, f=raw["f"], labels=raw["labels"], ends=raw["ends"])
+    attach_ai(ii, t)
     sc = score_insurance(ii)
     d, bq, gq = sc["derived"], sc["buffett_quality"], sc["graham_quality"]
     res = {"ticker": t, "name": raw["name"], "cik": raw["cik"], "profile": "INSURANCE", "line_of_business": LINE_OF_BUSINESS[t],
