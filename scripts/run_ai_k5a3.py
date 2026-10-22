@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from src.ai import assess  # noqa: E402
 from src.ai.client import GeminiClient, RateLimiter  # noqa: E402
-from src.ai.facts import facts_for  # noqa: E402
+from src.ai.facts import discontinued_facts, facts_for  # noqa: E402
 from src.ai.prompt import scoring_skills  # noqa: E402
 from src.ai.sections import find_filing  # noqa: E402
 from src.ai.store import AssessmentStore  # noqa: E402
@@ -56,7 +56,7 @@ def main(argv):
     ap.add_argument("--companies", nargs="*")
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--start-at")
-    ap.add_argument("--prompt-version", default="3", choices=["3", "3.1"])
+    ap.add_argument("--prompt-version", default="3.1", choices=["3", "3.1"])
     ap.add_argument("--thinking-budget", type=int)
     ap.add_argument("--rpm", type=int, default=12)
     ap.add_argument("--rpd", type=int, default=200)   # the real quota cannot be read from the API (AI Studio shows it); 200 until it is known
@@ -82,6 +82,8 @@ def main(argv):
         m = meta(t)
         co = assess.Company(t, m["name"], m["profile"], int(m["fy"][-1][2:]), find_filing(t, str(m["end"][-1])[:10]))
         fd = facts_data(t, m)
+        note = co.sections().get("NOTE-ACQ")
+        fd["discontinued"] = discontinued_facts(getattr(note, "text", note) or "", max_year=2000 + int(m["fy"][-1][2:]))
         co.code_facts = {s: facts_for(s, fd) for s in m["pending"] if facts_for(s, fd)}
         t0 = time.time()
         for s in m["pending"]:

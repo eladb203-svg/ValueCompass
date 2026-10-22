@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import re
+
 from datetime import date
 from typing import Optional
 
@@ -16,7 +18,41 @@ def cagr(first, last, years: int) -> Optional[float]:
 
 
 def _num(v, scale=1e9, unit="bn") -> str:
-    return "n/a" if v is None else f"{v / scale:,.2f}{unit}"
+    return "not reported" if v is None else f"{v / scale:,.2f}{unit}"
+
+
+_DISC = re.compile(r"(goodwill impairment|impairment|loss on (?:the )?sale|gain on (?:the )?sale|loss on (?:the )?disposal|gain on (?:the )?disposal)[^.$]{0,160}?(?:of|was|totaling|totalled|:)\s*\$\s?([\d,]+(?:\.\d+)?)\s*(million|billion)", re.I)
+_YEAR = re.compile(r"(?:year[s]? ended|fiscal year|during)[^.]{0,60}?(20\d\d)|\b(20\d\d)\b")
+
+
+_DISC_TITLE = re.compile(r"^\s*(?:note\s*)?\d{0,2}[\.\):\-– ]*\s*discontinued\s+operations\s*$", re.I)
+_ANY_TITLE = re.compile(r"^\s*(?:note\s*)?\d{1,2}[\.\):\-–]\s*[A-Za-z]", re.I)
+
+
+def discontinued_facts(note_text: str, max_year: int = 2026) -> dict:
+    """Impairments and gains / losses on sale that the notes place in DISCONTINUED operations: {year: [(description, USD)]}, year 0 = not stated in the sentence.
+    Deterministic scan: a sentence counts when it mentions 'discontinued' or sits under a 'Discontinued operations' note title; amounts are taken as stated."""
+    out: dict = {}
+    in_disc = False
+    for line in (note_text or "").split("\n"):
+        if _DISC_TITLE.match(line):
+            in_disc = True
+            continue
+        if _ANY_TITLE.match(line) and len(line.strip()) < 90:
+            in_disc = False
+        for sent in re.split(r"(?<=[.;])\s+", line):
+            if not (in_disc or "discontinued" in sent.lower()):
+                continue
+            m = _DISC.search(sent)
+            if not m:
+                continue
+            ys = [int(next(x for x in t if x)) for t in _YEAR.findall(sent)]
+            ys = [y for y in ys if y <= max_year]
+            amt = float(m.group(2).replace(",", "")) * (1e9 if m.group(3).lower() == "billion" else 1e6)
+            item = (m.group(1).lower(), amt)
+            if item not in out.setdefault(ys[-1] if ys else 0, []):
+                out[ys[-1] if ys else 0].append(item)
+    return out
 
 
 def _series(labels, vals, scale=1e9, unit="bn") -> str:
@@ -75,6 +111,10 @@ def facts_for(skill_id: str, d: dict) -> Optional[str]:
         if acq:
             parts.append(f"Acquisitions (cash paid, USD) per fiscal year: {_series(L, acq)}.")
         if imp:
-            parts.append(f"Goodwill impairment (USD) per fiscal year: {_series(L, imp)}.")
+            parts.append(f"Goodwill impairment (USD) per fiscal year, continuing operations: {_series(L, imp)}.")
+        disc = d.get("discontinued")
+        if disc is not None:
+            lines = [f"{y or 'year not stated'}: " + ", ".join(f"{k} {_num(v)}" for k, v in items) for y, items in sorted(disc.items())]
+            parts.append("Recorded in DISCONTINUED operations (from the notes; not in the series above): " + ("; ".join(lines) if lines else "none found") + ".")
         return "\n".join(parts) or None
     return None

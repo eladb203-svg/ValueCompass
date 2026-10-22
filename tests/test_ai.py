@@ -141,7 +141,7 @@ def test_extra_output_checks_a5_a4_a7_a11():
     assert "main_risks_invalid" in checks.check_judgment(raw(skill_id="B3.1-Q4", main_risks=["a"]), SK["B3.1-Q4"], TEXT, ["TXT-001"]).reasons
     assert checks.check_judgment(raw(skill_id="B3.2-Q5", moat_source="scale"), SK["B3.2-Q5"], TEXT, ["TXT-001"]).ok
     assert "moat_source_not_allowed" in checks.check_judgment(raw(skill_id="B3.2-Q5", moat_source="magic"), SK["B3.2-Q5"], TEXT, ["TXT-001"]).reasons
-    e = {"type": "customer", "name": "X", "share_pct": 12}
+    e = {"type": "customer", "name": "X", "share_pct": 5}
     assert checks.check_judgment(raw(skill_id="G3.1-Q3", largest_exposure=e), SK["G3.1-Q3"], TEXT, ["TXT-001"]).ok
     assert "largest_exposure_invalid" in checks.check_judgment(raw(skill_id="G3.1-Q3"), SK["G3.1-Q3"], TEXT, ["TXT-001"]).reasons
 
@@ -181,7 +181,7 @@ def test_ask_stores_once_and_never_asks_again_for_the_same_company_year_and_vers
     r2 = assess.ask(company(), SK["B3.1-Q1"], cl, store, stats)
     assert cl.n == 1 and stats.calls == 1 and stats.cached == 1 and r1 == r2
     assert r1["state"] == "answered" and r1["answer"] == 2 and r1["model"] == "fake-model" and r1["accession"] == "0001-26-000001" and r1["evidence"]["check_ok"]
-    assert AssessmentStore(tmp_path / "a.jsonl").get("ACM", 2025, "B3.1-Q1", SK["B3.1-Q1"]["version"])["answer"] == 2           # persisted
+    assert AssessmentStore(tmp_path / "a.jsonl").get("ACM", 2025, "B3.1-Q1", assess.prompt_version_of(SK["B3.1-Q1"]))["answer"] == 2           # persisted (default template 3.1)
     assess.ask(company(), SK["B3.1-Q1"], cl, store, stats, force=True)
     assert cl.n == 2
 
@@ -312,7 +312,7 @@ def test_skill_versions_and_template_rules_of_version_3():
     assert {s: sk[s]["version"] for s in sk} == {"B3.1-Q1": 2, "B3.1-Q2": 2, "B3.1-Q3": 3, "B3.1-Q4": 2, "B3.1-Q5": 2, "B3.2-Q4": 2, "B3.2-Q5": 3, "B3.7-Q3": 2, "B3.7-Q5": 2,
                                                   "B3.8-Q6": 2, "G3.1-Q3": 2, "G3.1-Q4": 3, "G3.8-Q3": 2, "G3.3B-Q4": 2}
     t = prompt.scoring_template()
-    for needle in ("is a CLAIM", "Level 2 requires specific evidence", "choose the LOWER one", "FACTS GIVEN BY CODE are provided, they are correct", "one contiguous span", "{code_facts}"):
+    for needle in ("is a CLAIM", "Level 2 requires specific evidence", "choose the LOWER one", "FACTS GIVEN BY CODE are provided, they are correct", "one continuous passage", "{code_facts}"):
         assert needle in t
     assert sk["B3.2-Q4"]["sections"] == ["TXT-001", "TXT-003", "TXT-004"] and "facts_from_code" in sk["B3.2-Q4"] and "NOTE-UNUSUAL" in sk["G3.8-Q3"]["sections"]
     assert "NOTE-ACQ" in sk["B3.7-Q3"]["sections"] and "NOTE-LOANS" in sk["G3.3B-Q4"]["sections"]
@@ -387,9 +387,10 @@ def test_a_quote_found_only_in_the_facts_gets_its_own_reason_and_ellipsis_stays_
 def test_prompt_31_has_facts_check_before_answer_and_the_check_requires_it_when_facts_were_sent():
     s = SK["B3.2-Q4"]
     ctx = {"company_name": "A", "ticker": "A", "fiscal_year": "FY2025", "profile": "STANDARD", "accession": "x", "code_facts": "Revenue: 1"}
-    p3, _, _ = prompt.build_prompt(s, ctx, {"TXT-001": "t1"})
-    p31, _, _ = prompt.build_prompt(s, ctx, {"TXT-001": "t1"}, variant="3.1")
-    assert "facts_check" not in p3 and p31.index('"facts_check"') < p31.index('"answer"')
+    p3, _, _ = prompt.build_prompt(s, ctx, {"TXT-001": "t1"}, variant="3")
+    p31, _, _ = prompt.build_prompt(s, ctx, {"TXT-001": "t1"})                      # 3.1 is the default
+    pnf, _, _ = prompt.build_prompt(s, {**ctx, "code_facts": None}, {"TXT-001": "t1"})
+    assert "facts_check" not in p3 and "facts_check" not in pnf and p31.index('"facts_check"') < p31.index('"answer"')
     assert "never from FACTS GIVEN BY CODE" in p3
     good = raw(skill_id="B3.2-Q4", facts_check="Revenue fell 30%, which does not support level 2.")
     assert checks.check_judgment(good, s, TEXT, ["TXT-001"], facts_text="Revenue: 1", require_facts_check=True).ok
@@ -401,9 +402,9 @@ def test_prompt_31_has_facts_check_before_answer_and_the_check_requires_it_when_
 def test_variant_31_is_stored_under_its_own_prompt_version(tmp_path):
     store, stats = AssessmentStore(tmp_path / "a.jsonl"), assess.Stats()
     cl = FakeClient(good_reply("B3.1-Q1"))
+    assess.ask(company(), SK["B3.1-Q1"], cl, store, stats, variant="3")
     assess.ask(company(), SK["B3.1-Q1"], cl, store, stats)
-    assess.ask(company(), SK["B3.1-Q1"], cl, store, stats, variant="3.1")
-    assert cl.n == 2 and assess.prompt_version_of(SK["B3.1-Q1"], "3.1") == "2.1"
+    assert cl.n == 2 and assess.prompt_version_of(SK["B3.1-Q1"]) == "2.1"
     assert store.get("ACM", 2025, "B3.1-Q1", "2")["prompt_version"] == "2" and store.get("ACM", 2025, "B3.1-Q1", "2.1")["prompt_version"] == "2.1"
 
 
@@ -432,3 +433,52 @@ def test_discontinued_operations_and_the_valuation_allowance_are_in_the_note_sec
     s = split_sections(doc)
     assert "goodwill impairment of $322.0 million" in s["NOTE-ACQ"].text
     assert "released the valuation allowance" in s["NOTE-UNUSUAL"].text and "Lease text" not in s["NOTE-UNUSUAL"].text
+
+
+def test_a11_exposure_consistency_levels():
+    f = checks.exposure_consistent
+    assert f(0, 30) and not f(1, 30) and not f(2, 30)
+    assert f(1, 15) and not f(2, 15) and not f(0, 15) and f(0, 15, "also depends on a single product")
+    assert f(2, 5) and not f(1, 5) and f(1, 5, "relies on a license from the parent")
+
+
+def test_a11_inconsistent_exposure_is_retried_once_with_a_note_then_rejected(tmp_path):
+    e = {"type": "customer", "name": "X", "share_pct": 30}
+    prompts = []
+
+    def reply(p):
+        prompts.append(p)
+        return good_reply("G3.1-Q3", answer=2, largest_exposure=e)
+    r = assess.ask(company(), SK["G3.1-Q3"], FakeClient(reply), AssessmentStore(tmp_path / "a.jsonl"), assess.Stats())
+    assert len(prompts) == 2 and "Your share_pct does not match the level you chose" in prompts[1] and "Your share_pct" not in prompts[0]
+    assert r["state"] == "insufficient_evidence" and "exposure_inconsistent" in r["evidence"]["reasons"]
+    ok = good_reply("G3.1-Q3", answer=0, largest_exposure=e)
+    seq = iter([good_reply("G3.1-Q3", answer=2, largest_exposure=e), ok])
+    r2 = assess.ask(company(), SK["G3.1-Q3"], FakeClient(lambda p: next(seq)), AssessmentStore(tmp_path / "b.jsonl"), assess.Stats())
+    assert r2["state"] == "answered" and r2["answer"] == 0
+
+
+def test_a8_facts_include_discontinued_operations_and_not_reported():
+    from src.ai import facts
+    note = ("21. DISCONTINUED OPERATIONS\nOn January 4, 2024, the Company agreed to sell ATC TIPL. The Company recorded a loss on the sale of ATC TIPL of $1.2 billion, "
+            "which primarily included translation. The Company recorded a goodwill impairment charge of $322.0 million during the three months ended September 30, 2023. ")
+    d = facts.discontinued_facts(note)
+    assert d[0][0][1] == 1.2e9
+    assert d[2023][0] == ("goodwill impairment", 322e6)
+    txt = facts.facts_for("B3.7-Q3", {"labels": ["FY2023", "FY2024"], "acquisitions": [1e9, None], "goodwill_impairment": [None, 0.0], "discontinued": d})
+    assert "DISCONTINUED" in txt and "322.00m" not in txt and "0.32bn" in txt and "1.20bn" in txt and "FY2023: not reported" in txt
+    assert "none found" in facts.facts_for("B3.7-Q3", {"labels": ["FY2023"], "acquisitions": [1e9], "discontinued": {}})
+
+
+def test_quote_not_found_alone_gets_one_retry_with_the_failed_quote_in_the_note(tmp_path):
+    prompts = []
+    bad, good = good_reply("B3.1-Q1").replace("widgets", "gizmos"), good_reply("B3.1-Q1")
+    seq = iter([bad, good])
+
+    def reply(p):
+        prompts.append(p)
+        return next(seq)
+    r = assess.ask(company(), SK["B3.1-Q1"], FakeClient(reply), AssessmentStore(tmp_path / "a.jsonl"), assess.Stats())
+    assert len(prompts) == 2 and "Quote not found verbatim: " in prompts[1] and "gizmos" in prompts[1] and "Quote not found" not in prompts[0] and r["state"] == "answered"
+    always_bad = assess.ask(company(), SK["B3.1-Q2"], FakeClient(lambda p: good_reply("B3.1-Q2").replace("widgets", "gizmos")), AssessmentStore(tmp_path / "b.jsonl"), assess.Stats())
+    assert always_bad["state"] == "insufficient_evidence" and "quote_not_found" in always_bad["evidence"]["reasons"]

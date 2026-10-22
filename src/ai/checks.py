@@ -96,6 +96,20 @@ def _check_quotes(quotes, text_norm: str, sections_sent: list, reasons: list, re
     return out
 
 
+_OTHER_DEPENDENCE = re.compile(r"single product|one product|product dependence|licen[cs]e|one market|single market|sole source|depends? (?:heavily )?on (?:a )?single", re.I)
+
+
+def exposure_consistent(answer: int, share_pct: float, reasoning: str = "") -> bool:
+    """A11 code_check: a customer's share of revenue vs the level. > 25 allows 0; 10-25 allows 1 (or 0 only with another stated dependence: product, license, market);
+    < 10 allows 2 (or 0 / 1 only with such another dependence)."""
+    other = bool(_OTHER_DEPENDENCE.search(reasoning or ""))
+    if share_pct > 25:
+        return answer == 0
+    if share_pct >= 10:
+        return answer == 1 or (answer == 0 and other)
+    return answer == 2 or other
+
+
 def check_judgment(raw: str, skill: dict, text_sent: str, sections_sent: list, facts_text: Optional[str] = None, require_facts_check: bool = False) -> CheckResult:
     """Type A (quality judgment). Checks 1, 2, 3, 6 and the extra-output checks of the skill. ``facts_text`` = the FACTS sent (a quote found only there is `quote_from_facts`);
     ``require_facts_check`` = prompt version x.1: when FACTS were sent, `facts_check` must be a non-empty sentence."""
@@ -159,6 +173,8 @@ def check_judgment(raw: str, skill: dict, text_sent: str, sections_sent: list, f
             sp = e.get("share_pct")
             if sp is not None and (isinstance(sp, bool) or not isinstance(sp, (int, float))):
                 res.reasons.append("largest_exposure_share_invalid")
+            elif e.get("type") == "customer" and sp is not None and not exposure_consistent(ans, float(sp), res.reasoning):
+                res.reasons.append("exposure_inconsistent")      # the caller retries once with a note; a second inconsistency is a rejection (code_check of A11)
         extra["largest_exposure"] = e
     if sid == "G3.8-Q3":
         it = d.get("items")

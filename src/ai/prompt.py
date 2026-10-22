@@ -42,19 +42,23 @@ def txt_sections(skill: dict) -> list:
     return [s for s in skill["sections"] if s.startswith(("TXT-", "NOTE-"))]
 
 
-def build_prompt(skill: dict, ctx: dict, sections: dict, variant: str = "3") -> tuple:
+def build_prompt(skill: dict, ctx: dict, sections: dict, variant: str = "3.1", note: str = "") -> tuple:
     """-> (prompt, text_sent, sections_sent). ``sections`` = {TXT-00x: text}; ``ctx`` = company_name, ticker, fiscal_year, profile, accession, code_facts (optional)."""
     sent = [(sid, sections[sid]) for sid in txt_sections(skill) if sections.get(sid)]
     text = "\n\n".join(f"[{sid}]\n{t}" for sid, t in sent)
     pn = (skill.get("profile_notes") or {}).get(ctx.get("profile"))
     extra = skill.get("extra_output")
-    prompt = scoring_template(variant).format(
+    # template 3.1 (default): the `facts_check` field is part of the OUTPUT only when FACTS are provided (skills document 2026-10-22_13-52)
+    tpl = scoring_template("3.1" if (variant == "3.1" and ctx.get("code_facts")) else "3")
+    prompt = tpl.format(
         skill_id=skill["skill_id"], version=skill["version"], question=skill["question"], card=skill["card"], scale_2=skill["scale_2"], scale_1=skill["scale_1"],
         scale_0=skill["scale_0"], evidence_focus=skill["evidence_focus"], profile_note=(f"Profile note ({ctx.get('profile')}): {pn}" if pn else ""),
         code_facts=ctx.get("code_facts") or "(none provided for this question)",
         company_name=ctx["company_name"], ticker=ctx["ticker"], fiscal_year=ctx["fiscal_year"], profile=ctx.get("profile", ""),
         sections=", ".join(s for s, _ in sent), accession=ctx.get("accession", ""), section_text=text,
         extra_output=(", " + extra) if extra else "")
+    if note:
+        prompt = prompt + "\nNOTE: " + note + "\n"
     return prompt, text, [s for s, _ in sent]
 
 
@@ -68,3 +72,32 @@ def build_classification_prompt(ctx: dict, text: str, industries: list) -> str:
         industry_list_with_definitions=lst, company_name=ctx["company_name"], ticker=ctx["ticker"], fiscal_year=ctx["fiscal_year"], sic=ctx.get("sic") or "",
         sic_description=ctx.get("sic_description") or "", provider_industry=ctx.get("provider_industry") or "", accession=ctx.get("accession", ""),
         section_text=f"[TXT-001]\n{text}", version=skill["version"])
+
+
+# ---------------------------------------------------------------- extraction skills (K5b)
+def extraction_template() -> str:
+    return _load("extraction.yaml")["template"]
+
+
+def extraction_sections() -> dict:
+    return _load("extraction.yaml")["sections"]
+
+
+def extraction_blocks() -> dict:
+    return {b["skill_id"]: b for b in _load("extraction.yaml")["blocks"]}
+
+
+def build_extraction_prompt(block: dict, ctx: dict, sections: dict, items: Optional[list] = None, note: str = "") -> tuple:
+    """-> (prompt, text_sent, sections_sent). ``items`` overrides the block's item list (B14: the items of this company); ``sections`` = {sid: text}."""
+    sent = [(sid, sections[sid]) for sid in block["sections"] if sections.get(sid)]
+    text = "\n\n".join(f"[{sid}]\n{t}" for sid, t in sent)
+    its = items if items is not None else block["items"]
+    table = "\n".join(f"{i['key']} — {i['def']} — expected unit {i['unit']}" for i in its)
+    if block.get("classes"):
+        table += "\nCLASSES:\n" + "\n".join(f"{k}: {v}" for k, v in block["classes"].items())
+    prompt = extraction_template().format(
+        skill_id=block["skill_id"], version=block["version"], task=block["task"], items_table=table, company_name=ctx["company_name"], ticker=ctx["ticker"],
+        fiscal_year=ctx["fiscal_year"], profile=ctx.get("profile", ""), sections=", ".join(s for s, _ in sent), accession=ctx.get("accession", ""), section_text=text)
+    if note:
+        prompt += "\nNOTE: " + note + "\n"
+    return prompt, text, [s for s, _ in sent]

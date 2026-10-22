@@ -1,13 +1,17 @@
 ---
 title: "ValueCompass — AI Scoring Skills (A1–A14)"
-subtitle: "2026-10-21_19-28 · prompts in English (decision: AI spec §10.2) · for approval"
+subtitle: "2026-10-22_14-49 · prompts in English (decision: AI spec §10.2) · approved"
 ---
 
-# AI Scoring Skills A1–A14 — version 3 (calibration)
+# AI Scoring Skills A1–A14 — template 3.1
 
 **גרסה 2 (21.10.2026):** כיול אחרי ק5א — 90 מתוך 101 תשובות היו 2, ו-INTC קיבלה 2 במעמד תחרותי. נוספו לתבנית כללים 6–8 (תיאור עצמי = טענה ולא ראיה; 2 דורש ראיה ספציפית; בין שתי רמות — הנמוכה; עקביות עם עובדות הקוד), ובלוק FACTS GIVEN BY CODE. ל-A6, ‏A7, ‏A10, ‏A12 נוספו עובדות מהנתונים (מגמות הכנסות, מרווחים, תשואה על ההון), ול-A6 ו-A12 גם פרק הדירקטוריון. כל הסקילים עלו לגרסה 2.
 
 **גרסה 3 (21.10.2026, ספר 2026-10-21_19-26):** ‏A3 — סקאלה חדשה (CL17: המודל הרגיל של הפרופיל = מודל אחד). ‏A12 — בודק ביסוס בלבד; 0 = כבר לא שחקנית משמעותית (CL18); הכיוון נשאר רק ב-A6. ‏A7 — רק מקור החפיר והראיות מהדוח; התשואה העקבית נספרת בקוד בסעיף 3 של הכרטיס ולא כאן (בלי ספירה כפולה). שלושתם עלו לגרסה 3.
+
+**תבנית 3.1 (22.10.2026, אושרה אחרי ק5א-3):** התאמה לסט הייחוס 82% → 86%, יציבות 100%. (1) שדה חובה `facts_check` לפני `answer` כשנשלחו FACTS — משפט אחד: מה העובדות מראות והאם הן תומכות ברמה שנבחרה. (2) כלל 3 הורחב: ציטוט = קטע רצוף אחד מטקסט הדוח בלבד, לעולם לא משורת FACTS. (3) A8 — העובדות כוללות גם ירידות ערך ורווח/הפסד ממכירה שנרשמו בפעילויות שהופסקו (AMT). (4) A11 — בדיקת עקביות בקוד בין `share_pct` לרמה. גרסאות הסקילים לא השתנו (הסקאלות זהות); גרסת התבנית נשמרת כ-`prompt_version` = ‏`<גרסת הסקיל>.1`. מודל קבוע: `gemini-3.5-flash-lite`, טמפרטורה 0, ‏seed ‏20261021.
+
+**עדכון 22.10.2026 (אחרי ק5ב חלקי):** (1) כלל הציטוט נוסח מחדש בלי הסימן '...' עצמו ("העתק כל ציטוט כקטע רצוף אחד בדיוק כפי שהוא מופיע, בלי לקצר ובלי לחבר קטעים"); (2) ניסיון חוזר אחד בקוד כשהציטוט לא נמצא, עם הציטוט שנכשל; (3) ‏A11 — ‏`share_pct` = אחוז מההכנסות כפי שדווח, לא נפח מכירות (KO: נפח בקבוק אינו הכנסות). גרסאות הסקילים והסקאלות לא השתנו.
 
 **עברית — מה במסמך:** כאן כתובים 14 סקילי הניקוד (שאלות האיכות 2 / 1 / 0) בדיוק כפי שהקוד ישלח אותם ל-Gemini. כל סקיל = תבנית משותפת (סעיף 1) + בלוק נתונים קצר (סעיף 3). הסקאלה בכל בלוק מועתקת **מילה במילה** מכרטיס בספר הכללים 2026-10-21_19-26; שינוי בכרטיס → גרסת הסקיל עולה. ה-prompts באנגלית (החלטה 2 במפרט ה-AI); ההסברים בעברית. בק5 הבלוקים יישמרו כקובץ נתונים (`src/ai/skills/scoring.yaml`), לא כקוד.
 
@@ -25,7 +29,9 @@ Rules:
 1. Use only the text provided. Do not use outside knowledge, news, or your memory of the company.
 2. Apply the SCALE exactly as written. Choose the single level that fits best.
 3. Every answer except insufficient evidence must be supported by 1–3 quotes copied
-   character for character from the text (no paraphrase, no ellipsis inside a quote).
+   character for character from the TEXT section. Copy each quote as one continuous passage,
+   exactly as it appears, without shortening or joining passages. Quotes must come from the
+   report text, never from FACTS GIVEN BY CODE; you may refer to FACTS in your reasoning.
 4. If the text does not allow an answer, return answer = null and insufficient_evidence = true.
    Do not guess. Do not default to 1.
 5. Do not compute scores, give investment opinions, or mention prices.
@@ -60,16 +66,17 @@ TEXT ({sections}, filing {accession}):
 
 OUTPUT
 {"skill_id": "{skill_id}", "version": {version},
+ "facts_check": "<one sentence: what the FACTS show and whether they support the chosen level>",
  "answer": 2 | 1 | 0 | null, "insufficient_evidence": true | false,
  "reasoning": "<at most 3 sentences>",
  "quotes": [{"text": "<exact quote>", "section": "<TXT-00x>"}]{extra_output}}
 ```
 
-**Model settings:** temperature 0; fixed model version (recorded per answer); one call per skill per company per fiscal year.
+**Model settings:** `gemini-3.5-flash-lite`, temperature 0, seed 20261021, max output 8192 tokens; model and `prompt_version` recorded per answer; one call per skill per company per fiscal year. `facts_check` is sent only when FACTS are provided; it must come before `answer`.
 
 ## 2. Code checks and points (reminder from 2026-10-21_16-00 §4.4)
 
-Code rejects an answer when: invalid JSON (one retry), answer not in {2, 1, 0, null}, any quote not found verbatim in the text sent (after whitespace / quote-mark normalization), no quote for a non-null answer, or `extra` missing when required. Rejected → "insufficient evidence" (missing, R16). Points = code, per the card (column "Points" below).
+Code rejects an answer when: invalid JSON (one retry), answer not in {2, 1, 0, null}, any quote not found verbatim in the text sent (after whitespace / quote-mark normalization), no quote for a non-null answer, `extra` missing when required, a quote found only in FACTS (`quote_from_facts`), `facts_check` missing or empty when FACTS were sent, or (A11) `largest_exposure.share_pct` inconsistent with the level (see A11). **Quote retry (2026-10-22):** when the only failure is `quote_not_found`, code makes ONE retry with the note "Quote not found verbatim: <first 120 characters of the quote>. Copy one continuous passage exactly as it appears in the TEXT." Still not found → rejected. Rejected → "insufficient evidence" (missing, R16). Points = code, per the card (column "Points" below).
 
 | Skill | Card / sub-item | Points from answer (code) |
 |---|---|---|
@@ -218,7 +225,7 @@ scale_0: Material goodwill impairments, overpayment, or acquisitions outside the
 evidence_focus: Acquisitions of the last 5 years, their stated results, integration, and any goodwill impairments.
 sections: [TXT-004, NOTE:business_combinations, NOTE:goodwill]
 when: only when code finds acquisitions material (Σ acquisitions / Σ FCF ≥ 10%, or Σ FCF ≤ 0 with acquisitions; BANK / INSURANCE on net income)
-inputs_from_code: the acquisitions and goodwill-impairment amounts per year (given as facts, not to be recomputed)
+inputs_from_code: the acquisitions and goodwill-impairment amounts per year, INCLUDING impairments and gains/losses on sale recorded in discontinued operations (given as facts, not to be recomputed); a year with no data is shown as 'not reported', never as 0
 extra_output: none
 profile_notes:
   INCOME_REAL_ESTATE: Corporate acquisitions only (mergers, purchases of companies or platforms) — not purchases of individual properties.
@@ -271,7 +278,8 @@ scale_0: A customer above 25%, a single product, or dependence on one license or
 evidence_focus: Largest customer share (>10% disclosure), largest product or segment, dependence on a license, patent or single market.
 sections: [TXT-001, TXT-005]
 when: always
-extra_output: '"largest_exposure": {"type": "customer" | "product" | "license" | "market" | "none", "name": "<as stated>", "share_pct": <number or null>}'
+extra_output: '"largest_exposure": {"type": "customer" | "product" | "license" | "market" | "none", "name": "<as stated>", "share_pct": <number or null>}' — share_pct = percent of total REVENUE as disclosed (not unit volume, not a share of a segment); null when the report gives no revenue share
+code_check: when type = customer and share_pct is given — share_pct > 25 allows 0; 10–25 allows 1 (or 0 only with another stated dependence: single product, license or market); < 10 allows 2 or a product/license/market reason. Inconsistent → one retry with the note "Your share_pct does not match the level you chose"; still inconsistent → rejected (insufficient evidence).
 profile_notes: {}
 ```
 

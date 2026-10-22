@@ -45,12 +45,12 @@ def _row(co: Company, skill: dict, model: str) -> dict:
             "accession": co.filing.accession, "model": model, "approval_status": "approved"}
 
 
-def prompt_version_of(skill: dict, variant: str = "3") -> str:
+def prompt_version_of(skill: dict, variant: str = "3.1") -> str:
     """The stored prompt version: the skill version, plus `.1` for the candidate template with `facts_check` (K5a-3)."""
     return str(skill["version"]) + (".1" if variant == "3.1" else "")
 
 
-def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, force: bool = False, variant: str = "3", thinking_budget=None) -> dict:
+def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, force: bool = False, variant: str = "3.1", thinking_budget=None) -> dict:
     """One skill for one company-year. Returns the stored row. An existing row (same company, year, question, prompt version) is returned without a call unless ``force``."""
     model = client.model if client is not None else ""
     pv = prompt_version_of(skill, variant)
@@ -75,7 +75,13 @@ def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, 
     facts_text = ctx.get("code_facts")
     last = None
     finishes = []
-    for attempt in (1, 2):             # check 1: one retry on invalid JSON (the retry uses another seed: the same seed gave the same truncated answer twice)
+    retry_note = ""
+    used = set()                       # each retry kind at most once: invalid JSON (another seed), A11 inconsistency, a quote not found (AI skills document 14-49)
+    attempt = 0
+    while True:
+        attempt += 1
+        if retry_note:
+            prompt, text_sent, sent = build_prompt(skill, ctx, sections, variant, note=retry_note)
         t0 = time.monotonic()
         rep = client.generate(prompt, seed_offset=attempt - 1, thinking_budget=thinking_budget) if thinking_budget is not None else client.generate(prompt, seed_offset=attempt - 1)
         stats.calls += 1
@@ -85,8 +91,19 @@ def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, 
         finishes.append(rep.finish_reason)
         res = checks.check_judgment(rep.text, skill, text_sent, sent, facts_text, require_facts_check=(variant == "3.1"))
         last = (rep, res)
-        if "invalid_json" not in res.reasons:
-            break
+        if "exposure_inconsistent" in res.reasons and "exposure" not in used:
+            used.add("exposure")
+            retry_note = "Your share_pct does not match the level you chose"
+            continue
+        if res.reasons and set(res.reasons) == {"quote_not_found"} and "quote" not in used:
+            used.add("quote")
+            bad = next((q["text"] for q in res.quotes if not q["found"]), "")
+            retry_note = f"Quote not found verbatim: {bad[:120]}. Copy one continuous passage exactly as it appears in the TEXT."
+            continue
+        if "invalid_json" in res.reasons and "json" not in used:
+            used.add("json")
+            continue
+        break
     rep, res = last
     if not res.ok:
         stats.rejected += 1
