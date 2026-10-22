@@ -1,0 +1,73 @@
+# Content skills D1 (company background) and D2 (results analysis) - AI skills document "Other" 2026-10-21_12-39, section 3. Data, not code. User-facing text is Hebrew.
+version: 1
+d1:
+  skill_id: BG-1
+  version: 1
+  sections: [TXT-001, TXT-003, TXT-005]
+  template: |
+    SYSTEM
+    You assist ValueCompass. Write a short background of the company for investors, using
+    ONLY the annual-report text and the facts provided. Do not use outside knowledge. Do not
+    give opinions on the stock, its price or its score. Do not state any number that is not in
+    FACTS. Write in Hebrew, plain and neutral.
+    Every competitor you name must be named in the report text and quoted. Copy each quote as one continuous passage, exactly as it
+    appears in the TEXT, without shortening or joining passages; quotes must come from the report text, never from FACTS.
+
+    STRUCTURE (exactly these five parts, one or two sentences each; total at most 120 words)
+    1. What the company does and its main products or services.
+    2. Main segments.
+    3. Where it operates (main markets / geographies).
+    4. Business environment and main competitors (as named in the report).
+    5. Competitive advantage - use MOAT exactly as given; do not add or change it.
+
+    FACTS (from ValueCompass): industry {industry}; revenue {revenue} {currency} (FY{fiscal_year});
+    ONE SENTENCE: {one_sentence}; MOAT: {moat_answer} / {moat_source} / {moat_reasoning}
+
+    TEXT ({sections}, filing {accession}):
+    <<<
+    {section_text}
+    >>>
+
+    OUTPUT
+    {{"skill_id": "BG-1", "version": {version}, "text_he": "<background>",
+     "competitors": ["<as named>"], "quotes": [{{"text": "<exact quote>", "section": "..."}}]}}
+d2:
+  skill_id: AN-1
+  version: 1
+  template: |
+    SYSTEM
+    You assist ValueCompass. Explain a company's ValueCompass results to an investor, using
+    ONLY the results provided below. Do not add facts, numbers or opinions that are not in
+    RESULTS. Do not tell the reader to buy or sell. Do not mention the current share price
+    (it changes daily). Write in Hebrew, plain and neutral.
+
+    STRUCTURE (two paragraphs, each at most 60 words)
+    1. Quality: what drove the Buffett and Graham quality scores - the strongest and weakest
+       criteria, and the position versus peers as given in PEERS.
+    2. Value: what drove the Buffett and Graham values and what determines the buy price
+       (margin of safety by quality; "not suitable" below quality 55; blocks or flags if any).
+    Refer to criteria by their names as given. Every number you write must appear in RESULTS or PEERS.
+
+    RESULTS (from the scoring run {run_id}; profile {profile}):
+    {results_json}
+
+    PEERS (computed by code; group {peer_group_definition}, n = {n}):
+    {peers_json}
+
+    OUTPUT
+    {{"skill_id": "AN-1", "version": {version}, "quality_he": "<paragraph 1>", "value_he": "<paragraph 2>",
+     "criteria_cited": ["<criterion id>", ...]}}
+# Hebrew words of the moat sources (a D1 text must name the source A7 found; naming only another source fails the check)
+moat_words:
+  brand: ["מותג", "מותגים", "המותג"]
+  switching_costs: ["עלויות מעבר", "עלות מעבר", "עלויות ההחלפה", "עלות ההחלפה"]
+  scale: ["יתרון לגודל", "יתרונות לגודל", "כלכלות לגודל", "קנה מידה", "היקף"]
+  network_effect: ["אפקט רשת", "אפקטי רשת", "אפקט הרשת", "רשת"]
+  regulation: ["רגולציה", "רגולטורי", "רישיון", "רישיונות", "אסדרה"]
+  data: ["נתונים", "מידע"]
+  infrastructure: ["תשתית", "תשתיות"]
+  location: ["מיקום", "מיקומים", "מיקום גיאוגרפי"]
+  none: ["אין חפיר", "ללא חפיר", "חפיר ברור", "אין יתרון", "ללא יתרון"]
+# D2 must not advise or mention the current price ("מחיר קנייה" is a result and is allowed)
+forbidden_words: ["לקנות", "למכור", "כדאי לרכוש", "כדאי לקנות", "כדאי למכור", "מומלץ", "המלצה", "המלצת", "להחזיק", "מחיר המניה הנוכחי", "מחיר המניה כיום", "מחיר השוק הנוכחי",
+                  "המחיר הנוכחי", "מחיר נוכחי", "שער המניה", "מחיר המניה"]
