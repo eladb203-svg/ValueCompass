@@ -1,0 +1,264 @@
+# AI scoring skills A1-A14 (docs/ai/ValueCompass_AI_Skills_Scoring_2026-10-21_19-28.md, version 3). Data, not code: the scale of every skill is copied verbatim from the Rulebook card.
+# Any change to a skill raises its version (R18).
+template: "SYSTEM\nYou assist ValueCompass, a value-investing scoring system. You answer ONE predefined\nquestion about ONE company, using ONLY the annual-report text provided below.\nRules:\n1. Use only the text provided. Do not use outside knowledge, news, or your memory of the company.\n2. Apply the SCALE exactly as written. Choose the single level that fits best.\n3. Every answer except insufficient evidence must be supported by 1–3 quotes copied\n   character for character from the text (no paraphrase, no ellipsis inside a quote).\n   Each quote must be one contiguous span copied exactly; never use \"...\" or join separate sentences.\n4. If the text does not allow an answer, return answer = null and insufficient_evidence = true.\n   Do not guess. Do not default to 1.\n5. Do not compute scores, give investment opinions, or mention prices.\n6. A company's description of itself (\"leader\", \"strong position\", \"well positioned\") is a CLAIM,\n   not evidence. Count it only when supported\
+  \ by specific facts in the text or in FACTS GIVEN BY CODE\n   (rankings, market shares, customer numbers, trends).\n7. Level 2 requires specific evidence. When the evidence fits two levels, choose the LOWER one.\n8. When FACTS GIVEN BY CODE are provided, they are correct; your answer must be consistent with them\n   (e.g., declining revenue and margins do not fit \"stable or improving position\").\n9. Return ONLY the JSON object described under OUTPUT. No text before or after it.\n\nQUESTION ({skill_id}, version {version})\n{question}\n\nSCALE (ValueCompass Rulebook, card {card} — apply exactly)\n2 = {scale_2}\n1 = {scale_1}\n0 = {scale_0}\n\nWHAT TO LOOK FOR\n{evidence_focus}\n{profile_note}\n\nFACTS GIVEN BY CODE (when provided; from ValueCompass data, already verified)\n{code_facts}\n\nCOMPANY: {company_name} ({ticker}) · FISCAL YEAR: {fiscal_year} · PROFILE: {profile}\nTEXT ({sections}, filing {accession}):\n<<<\n{section_text}\n>>>\n\nOUTPUT\n{{\"skill_id\": \"{skill_id}\", \"version\"\
+  : {version},\n \"answer\": 2 | 1 | 0 | null, \"insufficient_evidence\": true | false,\n \"reasoning\": \"<at most 3 sentences>\",\n \"quotes\": [{{\"text\": \"<exact quote>\", \"section\": \"<TXT-00x>\"}}]{extra_output}}}\n"
+profile_gates:
+  B3.7-Q3: gate by code (acquisitions material)
+  G3.8-Q3:
+  - STANDARD
+  - TECH_ASSET_LIGHT
+  G3.3B-Q4:
+  - BANK
+skills:
+- skill_id: B3.1-Q1
+  version: 2
+  card: 'C.B3.1 #1'
+  question: Is it clear what the company sells?
+  scale_2: The main products or services can be named in simple words
+  scale_1: Generally clear, but many products or very technical ones
+  scale_0: Unclear what is actually sold (holdings, complex financial products)
+  evidence_focus: The description of products and services in the Business section; whether the main ones can be named in plain words.
+  sections:
+  - TXT-001
+  when: always
+  extra_output: null
+  profile_notes:
+    INCOME_REAL_ESTATE: The "products" are the property types leased (e.g., offices, warehouses, apartments). Consider asset types and lease structure.
+  points:
+    mult: 1
+  id: A1
+- skill_id: B3.1-Q2
+  version: 2
+  card: 'C.B3.1 #2'
+  question: Is it clear who the customers are?
+  scale_2: The main customer types can be identified (consumers, businesses, governments)
+  scale_1: Several different customer types, or sales through intermediaries that hide the customer
+  scale_0: Unclear who pays
+  evidence_focus: Statements naming customer types, distribution channels and who ultimately pays.
+  sections:
+  - TXT-001
+  when: always
+  extra_output: null
+  profile_notes:
+    INCOME_REAL_ESTATE: Customers are the tenants; consider tenant types and industries.
+  points:
+    mult: 1
+  id: A2
+- skill_id: B3.1-Q3
+  version: 3
+  card: 'C.B3.1 #3'
+  question: Are the revenue sources simple to understand?
+  scale_2: 'Few main sources, each with a model that can be explained in one line (sale, subscription, fee, rent, premium, interest margin); the profile''s standard model counts as one model (BANK: interest, investment income and fees; INSURANCE: premiums and investment income; INCOME_REAL_ESTATE: rent)'
+  scale_1: Several sources that differ in nature, or a material part of revenue (about a quarter or more) depends on something hard to see from outside (trading gains, fair-value remeasurement, gain-on-sale, complex contracts)
+  scale_0: Many unrelated sources that cannot be summarized together, or a non-transparent model
+  evidence_focus: How the company earns money — revenue streams, segments and the revenue model of each; whether an outsider can see what the customer pays for and when revenue arises. Estimate the share of revenue from hard-to-see sources when reported.
+  sections:
+  - TXT-001
+  - TXT-005
+  when: always
+  extra_output: null
+  profile_notes:
+    INCOME_REAL_ESTATE: Rental income, recoveries and other property income; note corporate complexity (joint ventures, operating partnership) if it obscures the model.
+  points:
+    mult: 1
+  id: A3
+- skill_id: B3.1-Q4
+  version: 2
+  card: 'C.B3.1 #4'
+  question: Are the main risks clear?
+  scale_2: 2–4 concrete business risks can be named
+  scale_1: Very generic risks, or so many that they cannot be ranked
+  scale_0: The business depends on a factor that cannot be assessed (single clinical trial, commodity price, open regulation)
+  evidence_focus: Risk Factors — whether a few concrete business risks stand out from boilerplate.
+  sections:
+  - TXT-002
+  when: always
+  extra_output: '"main_risks": ["<risk 1>", "<risk 2>", ...]   (2–4 items, plain words; required when answer = 2)'
+  profile_notes: {}
+  points:
+    mult: 1
+  id: A4
+- skill_id: B3.1-Q5
+  version: 2
+  card: 'C.B3.1 #5'
+  question: Can the business be explained in one sentence?
+  scale_2: 'A sentence of up to 25 words: what, for whom, and how it makes money'
+  scale_1: Needs two sentences, or the sentence omits a central part
+  scale_0: Not possible
+  evidence_focus: Write the sentence yourself from the text; it must say what is sold, to whom, and how the company makes money.
+  sections:
+  - TXT-001
+  when: always
+  extra_output: '"one_sentence": "<the sentence; code checks ≤ 25 words when answer = 2>"'
+  profile_notes: {}
+  points:
+    mult: 1
+  id: A5
+- skill_id: B3.2-Q4
+  version: 2
+  card: 'C.B3.2 #4'
+  question: Is the competitive position stable?
+  scale_2: Market leader or among the largest, with a stable or improving position
+  scale_1: Stable but not leading, or mixed signals
+  scale_0: Losing market share, or the position is eroding (new entrants, price war)
+  evidence_focus: Evidence of the position and its DIRECTION — rankings, market shares, competitive wins and losses, and the revenue and margin trend in FACTS. Self-descriptions alone are not enough for 2.
+  sections:
+  - TXT-001
+  - TXT-003
+  - TXT-004
+  when: always
+  extra_output: null
+  profile_notes:
+    INCOME_REAL_ESTATE: Judge the durability of the location and asset advantage; do not treat a temporarily rising property market as a stable competitive position.
+  points:
+    mult: 1
+  facts_from_code: revenue for each of the last 5 years and its CAGR; gross and operating margin, first 2 vs last 2 years; segment revenue trend when reported
+  id: A6
+- skill_id: B3.2-Q5
+  version: 3
+  card: 'C.B3.2 #5'
+  question: Is there a clear moat?
+  scale_2: A concrete moat source can be named (brand, switching costs, scale, network effect, regulation, data, infrastructure), with evidence from the report
+  scale_1: A plausible but generic or unproven moat
+  scale_0: No identifiable moat, commodity product
+  evidence_focus: 'The moat source and specific evidence for it in the report — market share, number of users or customers, switching costs, retention, pricing power, licences, cost advantage. A source named only in the company''s own words fits 1. Do not judge return persistence: code scores it in sub-item 3 of this card.'
+  sections:
+  - TXT-001
+  - TXT-003
+  when: always
+  extra_output: '"moat_source": "brand" | "switching_costs" | "scale" | "network_effect" | "regulation" | "data" | "infrastructure" | "location" | "none"'
+  profile_notes:
+    INCOME_REAL_ESTATE: A location or irreplaceable-asset advantage counts ("location"); a rising market does not.
+  points:
+    mult: 0.5
+  id: A7
+- skill_id: B3.7-Q3
+  version: 2
+  card: 'C.B3.7 #3'
+  question: Did M&A create value?
+  scale_2: Acquisitions were integrated and generated growth, with no material goodwill impairments
+  scale_1: Mixed picture, or too early to judge a large recent acquisition
+  scale_0: Material goodwill impairments, overpayment, or acquisitions outside the core business
+  evidence_focus: Acquisitions of the last 5 years, their stated results, integration, and any goodwill impairments.
+  sections:
+  - TXT-004
+  - NOTE-ACQ
+  when: only when code finds acquisitions material (Σ acquisitions / Σ FCF ≥ 10%, or Σ FCF ≤ 0 with acquisitions; BANK / INSURANCE on net income)
+  extra_output: null
+  profile_notes:
+    INCOME_REAL_ESTATE: Corporate acquisitions only (mergers, purchases of companies or platforms) — not purchases of individual properties.
+  inputs_from_code: the acquisitions and goodwill-impairment amounts per year (given as facts, not to be recomputed)
+  points:
+    mult: 1
+  id: A8
+- skill_id: B3.7-Q5
+  version: 2
+  card: 'C.B3.7 #5'
+  question: Is management transparent, conservative and consistent?
+  scale_2: Clear reporting, consistent strategy, no restatements or governance disputes
+  scale_1: 'Mixed signals: heavy use of "adjusted" metrics, frequent strategy changes'
+  scale_0: Restatements, governance problems, aggressive accounting
+  evidence_focus: MD&A tone and consistency, use of non-GAAP metrics, restatements, material weaknesses (Item 9A), governance disputes.
+  sections:
+  - TXT-004
+  when: always
+  extra_output: null
+  profile_notes:
+    INCOME_REAL_ESTATE: Also consider equity issuance relative to value per share and the use of disposal proceeds.
+  points:
+    mult: 1
+  id: A9
+- skill_id: B3.8-Q6
+  version: 2
+  card: 'C.B3.8 #6'
+  question: Does the growth look sustainable?
+  scale_2: 'Clear, durable growth drivers: expanding market, new products, pricing power; not reliant on one-off events'
+  scale_1: Growth partly depends on acquisitions, cyclicality or a single product
+  scale_0: Growth from one-off events, a shrinking market, or only from acquisitions and debt
+  evidence_focus: The growth drivers management describes and whether they are recurring, checked against the actual growth record in FACTS (organic vs acquired where stated).
+  sections:
+  - TXT-001
+  - TXT-004
+  when: always
+  extra_output: null
+  profile_notes:
+    INCOME_REAL_ESTATE: Distinguish organic growth (same-property NOI, rents) from acquisition-led and revaluation-led growth.
+  points:
+    mult: 1
+  facts_from_code: revenue and EPS for each of the last 5 years with CAGR; acquisitions per year
+  id: A10
+- skill_id: G3.1-Q3
+  version: 2
+  card: 'C.G3.1 #3'
+  question: Is there a critical dependence on one product, customer or market?
+  scale_2: No customer above 10% of revenue, and no product or license whose loss would threaten the business; a single reported segment does not by itself reduce the score
+  scale_1: A customer at 10%–25%, or a central product, but with a significant additional revenue base
+  scale_0: A customer above 25%, a single product, or dependence on one license or market
+  evidence_focus: Largest customer share (>10% disclosure), largest product or segment, dependence on a license, patent or single market.
+  sections:
+  - TXT-001
+  - TXT-005
+  when: always
+  extra_output: '"largest_exposure": {"type": "customer" | "product" | "license" | "market" | "none", "name": "<as stated>", "share_pct": <number or null>}'
+  profile_notes: {}
+  points:
+    mult: 1
+  id: A11
+- skill_id: G3.1-Q4
+  version: 3
+  card: 'C.G3.1 #4'
+  question: Does the company have a proven business position in its industry?
+  scale_2: One of the central players in its industry or niche, with evidence
+  scale_1: A mid-sized player with a stable but not prominent position
+  scale_0: Young company, development stage, or no longer a significant player
+  evidence_focus: 'How established the position is — years in the industry, market share or ranking where reported, scale versus competitors, long-standing material customers. Do not judge the direction (gaining or losing): that is A6 (rulebook CL18).'
+  sections:
+  - TXT-001
+  - TXT-003
+  when: always
+  extra_output: null
+  profile_notes: {}
+  points:
+    mult: 1
+  facts_from_code: years since the first annual report; latest-year revenue in USD
+  id: A12
+- skill_id: G3.8-Q3
+  version: 2
+  card: 'C.G3.8 #3'
+  question: Do reported earnings depend on one-time items?
+  scale_2: Immaterial (below ~10% of net income every year)
+  scale_1: One material item, or recurring "one-time" items
+  scale_0: Material items in most years, or earnings rely on them
+  evidence_focus: Impairments, restructuring, asset-sale gains, legal settlements and one-off tax items over the last 5 years, and their size relative to net income.
+  sections:
+  - TXT-004
+  - NOTE-UNUSUAL
+  when: STANDARD and TECH_ASSET_LIGHT
+  extra_output: '"items": [{"year": <FY>, "description": "<as stated>", "amount": <number or null>}]'
+  profile_notes: {}
+  inputs_from_code: net income for each of the 5 years (given as facts, so the AI judges materiality against them)
+  points:
+    mult: 1
+  id: A13
+- skill_id: G3.3B-Q4
+  version: 2
+  card: 'C.G3.3-BANK #4'
+  question: Is the loan book diversified?
+  scale_2: Spread across loan types, industries and regions; no dominant exposure
+  scale_1: A prominent but not dominant exposure to one type, industry or region
+  scale_0: A dominant exposure (CRE, one industry, region or borrower)
+  evidence_focus: Descriptions of the loan portfolio by type, industry and geography, and any stated concentrations.
+  sections:
+  - TXT-001
+  - TXT-004
+  - NOTE-LOANS
+  when: BANK only, and only when no numeric loan breakdown is available (D4)
+  extra_output: null
+  profile_notes: {}
+  points:
+    map:
+      '2': 3
+      '1': 1.5
+      '0': 0
+  id: A14

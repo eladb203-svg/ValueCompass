@@ -1,0 +1,14 @@
+# AI classification skill C1 (docs/ai/ValueCompass_AI_Skills_Other_2026-10-21_12-39.md section 1).
+template: "SYSTEM\nYou assist ValueCompass. Choose the ONE industry, from the closed list below, that best\ndescribes the company's main business, using ONLY the annual-report text provided.\nRules: use only the text; quote 1–3 exact sentences that show the main business; if the\ntext does not allow a choice, return industry = null and insufficient_evidence = true.\nReturn ONLY the JSON object under OUTPUT.\n\nINDUSTRIES (ValueCompass, Rulebook Part B.1 — choose exactly one name as written)\n{industry_list_with_definitions}\n\nCOMPANY: {company_name} ({ticker}) · FISCAL YEAR: {fiscal_year}\nSIC: {sic} {sic_description} · PROVIDER INDUSTRY: {provider_industry}\nTEXT (TXT-001 Business, filing {accession}):\n<<<\n{section_text}\n>>>\n\nOUTPUT\n{{\"skill_id\": \"CLS-1\", \"version\": {version}, \"industry\": \"<name>\" | null,\n \"insufficient_evidence\": true | false, \"reasoning\": \"<at most 3 sentences>\",\n \"quotes\": [{{\"text\": \"<exact quote>\", \"section\": \"TXT-001\"}}]}}\n"
+skills:
+- skill_id: CLS-1
+  id: C1
+  version: 1
+  sections:
+  - TXT-001
+  when: only when tiers 1–2 of Part B.1 did not decide (ambiguous SIC, or provider industry marked tier3)
+  industry_definitions:
+    Internet platforms and advertising: search, social networks, online marketplaces that connect buyers and sellers; NOT online retail that holds its own inventory and logistics (that is Other)
+    Payments: card networks, payment processing and digital wallets
+  decision_by_code: agrees with the provider industry → decided; disagrees → admin approval; until then STANDARD with "classification pending"
+  approval: only on disagreement (always reviewed then)
