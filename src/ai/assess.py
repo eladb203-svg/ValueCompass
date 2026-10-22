@@ -45,16 +45,22 @@ def _row(co: Company, skill: dict, model: str) -> dict:
             "accession": co.filing.accession, "model": model, "approval_status": "approved"}
 
 
-def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, force: bool = False) -> dict:
-    """One skill for one company-year. Returns the stored row. An existing row (same company, year, question, version) is returned without a call unless ``force``."""
+def prompt_version_of(skill: dict, variant: str = "3") -> str:
+    """The stored prompt version: the skill version, plus `.1` for the candidate template with `facts_check` (K5a-3)."""
+    return str(skill["version"]) + (".1" if variant == "3.1" else "")
+
+
+def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, force: bool = False, variant: str = "3", thinking_budget=None) -> dict:
+    """One skill for one company-year. Returns the stored row. An existing row (same company, year, question, prompt version) is returned without a call unless ``force``."""
     model = client.model if client is not None else ""
-    ex = None if force else store.get(co.ticker, co.fiscal_year, skill["skill_id"], skill["version"])
+    pv = prompt_version_of(skill, variant)
+    ex = None if force else store.get(co.ticker, co.fiscal_year, skill["skill_id"], pv)
     if ex is not None:
         stats.cached += 1
         return ex
     secs = co.sections()
     need = txt_sections(skill)
-    base = _row(co, skill, model)
+    base = {**_row(co, skill, model), "prompt_version": pv}
     sections = {sid: secs[sid].text for sid in need if sid in secs and secs[sid].found}
     flags = [f"section_not_found:{sid}" for sid in need if sid not in sections]
     flags += [f"{sid}:{f}" for sid in need if sid in secs for f in secs[sid].flags if f != "section_not_found"]
@@ -65,16 +71,19 @@ def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, 
         return store.put(row)
     ctx = {"company_name": co.name, "ticker": co.ticker, "fiscal_year": f"FY{co.fiscal_year}", "profile": co.profile, "accession": co.filing.accession,
            "code_facts": co.code_facts.get(skill["skill_id"])}
-    prompt, text_sent, sent = build_prompt(skill, ctx, sections)
+    prompt, text_sent, sent = build_prompt(skill, ctx, sections, variant)
+    facts_text = ctx.get("code_facts")
     last = None
-    for attempt in (1, 2):             # check 1: one retry on invalid JSON
+    finishes = []
+    for attempt in (1, 2):             # check 1: one retry on invalid JSON (the retry uses another seed: the same seed gave the same truncated answer twice)
         t0 = time.monotonic()
-        rep = client.generate(prompt)
+        rep = client.generate(prompt, seed_offset=attempt - 1, thinking_budget=thinking_budget) if thinking_budget is not None else client.generate(prompt, seed_offset=attempt - 1)
         stats.calls += 1
         stats.seconds += time.monotonic() - t0
         stats.prompt_tokens += rep.prompt_tokens
         stats.output_tokens += rep.output_tokens
-        res = checks.check_judgment(rep.text, skill, text_sent, sent)
+        finishes.append(rep.finish_reason)
+        res = checks.check_judgment(rep.text, skill, text_sent, sent, facts_text, require_facts_check=(variant == "3.1"))
         last = (rep, res)
         if "invalid_json" not in res.reasons:
             break
@@ -85,7 +94,7 @@ def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, 
            "evidence": {"quotes": res.quotes, "reasoning": res.reasoning, "extra": res.extra, "flags": flags + res.flags, "reasons": res.reasons, "check_ok": res.ok,
                         "sections_sent": sent, "text_chars_sent": len(text_sent)},
            "raw_answer": rep.text, "usage": {"prompt_tokens": rep.prompt_tokens, "output_tokens": rep.output_tokens, "thought_tokens": rep.thought_tokens,
-                                            "latency_s": round(rep.latency, 2), "attempts": rep.attempts}}
+                                            "latency_s": round(rep.latency, 2), "attempts": rep.attempts, "finish_reasons": finishes, "attempt_log": rep.attempt_log}}
     return store.put(row)
 
 

@@ -12,19 +12,25 @@ EXPOSURE_TYPES = ("customer", "product", "license", "market", "none")
 MAX_ONE_SENTENCE_WORDS = 25
 MIN_QUOTE_CHARS = 12
 
-# every quote-like character becomes one apostrophe: curly / straight / double quotes, and U+FFFD, which stands for a lost apostrophe or quote in some cached filings
-_QUOTE_CHARS = "‘’‚′ʼ“”„″«»\"`�"
+# Normalization applied to the quote and to the text sent (check 3). Quote marks of every kind are dropped (a lost apostrophe in a cached filing is U+FFFD, "Company�s");
+# a U+FFFD between two word characters is such a lost apostrophe (dropped), anywhere else it is a lost bullet / quote (a space); bullet glyphs are spaces; dashes are one hyphen.
+_QUOTE_CHARS = "'‘’‚′ʼ“”„″«»\"`"
+_MARKS = "®™©℠"                           # registered / trademark / copyright signs: dropped on both sides
+_BULLETS = "•▪◦●‣⁃■□·∙"
 _DASHES = {"–": "-", "—": "-", "−": "-", "‐": "-", "‑": "-", "‒": "-", "­": ""}
 
 
 def normalize(s: str) -> str:
-    """Whitespace and quote-mark normalization applied to both the quote and the text sent (check 3)."""
+    """Whitespace, quote-mark, bullet and lost-character normalization applied to both the quote and the text sent (check 3)."""
     s = unicodedata.normalize("NFKC", s)
-    s = s.translate({ord(c): "'" for c in _QUOTE_CHARS})
+    s = re.sub(r"(?<=\w)�(?=\w)", "", s)
+    s = s.replace("�", " ")
+    s = s.translate({**{ord(c): None for c in _QUOTE_CHARS + _MARKS}, **{ord(c): " " for c in _BULLETS}})
     s = s.replace("|", " ")                      # table-cell separator inserted by the html -> text conversion
     for k, v in _DASHES.items():
         s = s.replace(k, v)
     return re.sub(r"\s+", " ", s).strip()
+
 
 
 @dataclass
@@ -65,7 +71,7 @@ def _section_of(qn: str, text_norm: str) -> Optional[str]:
     return None
 
 
-def _check_quotes(quotes, text_norm: str, sections_sent: list, reasons: list, reasons_flag: Optional[list] = None) -> list:
+def _check_quotes(quotes, text_norm: str, sections_sent: list, reasons: list, reasons_flag: Optional[list] = None, facts_norm: str = "") -> list:
     out = []
     reasons_flag = reasons_flag if reasons_flag is not None else []
     if not isinstance(quotes, list):
@@ -81,7 +87,8 @@ def _check_quotes(quotes, text_norm: str, sections_sent: list, reasons: list, re
         qn = normalize(q["text"])
         found = len(qn) >= MIN_QUOTE_CHARS and qn in text_norm and "..." not in qn and "…" not in qn
         if not found:
-            reasons.append("quote_not_found")
+            # a quote taken from FACTS GIVEN BY CODE is not a quote from the report (K5a-3): its own reason, so the prompt can be fixed
+            reasons.append("quote_from_facts" if (facts_norm and len(qn) >= MIN_QUOTE_CHARS and qn in facts_norm) else "quote_not_found")
         actual = _section_of(qn, text_norm) if found else None
         if found and q.get("section") and actual and q["section"] != actual:
             reasons_flag.append("quote_section_label_corrected")      # the label is the model's; the section that contains the text is what we store
@@ -89,8 +96,9 @@ def _check_quotes(quotes, text_norm: str, sections_sent: list, reasons: list, re
     return out
 
 
-def check_judgment(raw: str, skill: dict, text_sent: str, sections_sent: list) -> CheckResult:
-    """Type A (quality judgment). Checks 1, 2, 3, 6 and the extra-output checks of the skill."""
+def check_judgment(raw: str, skill: dict, text_sent: str, sections_sent: list, facts_text: Optional[str] = None, require_facts_check: bool = False) -> CheckResult:
+    """Type A (quality judgment). Checks 1, 2, 3, 6 and the extra-output checks of the skill. ``facts_text`` = the FACTS sent (a quote found only there is `quote_from_facts`);
+    ``require_facts_check`` = prompt version x.1: when FACTS were sent, `facts_check` must be a non-empty sentence."""
     res = CheckResult(False, "insufficient_evidence")
     d = parse_json(raw)
     if d is None:
@@ -113,11 +121,17 @@ def check_judgment(raw: str, skill: dict, text_sent: str, sections_sent: list) -
     if isinstance(ans, bool) or ans not in (0, 1, 2):
         res.reasons.append("answer_not_allowed")
         return res
-    res.quotes = _check_quotes(d.get("quotes"), normalize(text_sent), sections_sent, res.reasons, res.flags)
+    res.quotes = _check_quotes(d.get("quotes"), normalize(text_sent), sections_sent, res.reasons, res.flags, normalize(facts_text) if facts_text else "")
     if not res.quotes:
         res.reasons.append("no_quote")                               # check 6
     sid = skill["skill_id"]
     extra: dict = {}
+    if require_facts_check and facts_text:
+        fc = d.get("facts_check")
+        if not (isinstance(fc, str) and fc.strip()):
+            res.reasons.append("facts_check_missing")
+        else:
+            extra["facts_check"] = fc.strip()
     if sid == "B3.1-Q4" and ans == 2:
         r = d.get("main_risks")
         if not (isinstance(r, list) and 2 <= len(r) <= 4 and all(isinstance(x, str) and x.strip() for x in r)):

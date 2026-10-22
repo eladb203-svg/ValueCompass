@@ -161,7 +161,7 @@ class FakeClient:
     def __init__(self, reply):
         self.reply, self.n = reply, 0
 
-    def generate(self, prompt_text):
+    def generate(self, prompt_text, seed_offset=0, thinking_budget=None):
         self.n += 1
         return Reply(self.reply if isinstance(self.reply, str) else self.reply(prompt_text), self.model, 100, 20, 0, 0.1)
 
@@ -359,4 +359,76 @@ def test_reference_stub_item_is_replaced_by_the_exhibit_and_marked():
 
 def test_seed_and_patient_retries_are_configured():
     from src.ai import client as C
-    assert C.SEED and C.MAX_RETRIES >= 8
+    assert C.SEED == C.AI_SEED and C.MAX_RETRIES >= 8
+    assert C.AI_MODEL == "gemini-3.5-flash-lite" and C.AI_TEMPERATURE == 0 and C.GeminiClient(api_client=object()).model == C.AI_MODEL
+
+
+# ------------------------------------------------------------------ K5a-3: rejections fixed mechanically, notes, prompt 3.1, attempt log
+def test_normalization_bullets_lost_characters_and_quote_marks():
+    n = checks.normalize
+    assert n("x �Investment Banking up 7%") == n("x • Investment Banking up 7%") == "x Investment Banking up 7%"
+    assert n("the Company�s plan") == n("the Company's plan") == n("the Company’s plan")
+    assert n("a ▪Client CPUs.") == n("a Client CPUs.")
+    assert n("revenue | 100 | 120") == "revenue 100 120"
+    assert n("Realty Income®, an S&P 500 company") == n("Realty Income, an S&P 500 company")
+
+
+def test_a_quote_found_only_in_the_facts_gets_its_own_reason_and_ellipsis_stays_rejected():
+    facts = "Revenue per fiscal year (USD): FY2021: 79.02bn; FY2022: 63.05bn."
+    r = checks.check_judgment(raw(skill_id="B3.8-Q6", quotes=[{"text": "Revenue per fiscal year (USD): FY2021: 79.02bn; FY2022: 63.05bn.", "section": "TXT-001"}]),
+                              SK["B3.8-Q6"], TEXT, ["TXT-001"], facts_text=facts)
+    assert not r.ok and r.reasons == ["quote_from_facts"]
+    r2 = checks.check_judgment(raw(quotes=[{"text": "We sell industrial widgets ... to manufacturers.", "section": "TXT-001"}]), SK["B3.1-Q1"], TEXT, ["TXT-001"])
+    assert "quote_not_found" in r2.reasons and "quote_from_facts" not in r2.reasons
+    r3 = checks.check_judgment(raw(quotes=[{"text": "A completely invented sentence about nothing.", "section": "TXT-001"}]), SK["B3.1-Q1"], TEXT, ["TXT-001"], facts_text=facts)
+    assert "quote_not_found" in r3.reasons
+
+
+def test_prompt_31_has_facts_check_before_answer_and_the_check_requires_it_when_facts_were_sent():
+    s = SK["B3.2-Q4"]
+    ctx = {"company_name": "A", "ticker": "A", "fiscal_year": "FY2025", "profile": "STANDARD", "accession": "x", "code_facts": "Revenue: 1"}
+    p3, _, _ = prompt.build_prompt(s, ctx, {"TXT-001": "t1"})
+    p31, _, _ = prompt.build_prompt(s, ctx, {"TXT-001": "t1"}, variant="3.1")
+    assert "facts_check" not in p3 and p31.index('"facts_check"') < p31.index('"answer"')
+    assert "never from FACTS GIVEN BY CODE" in p3
+    good = raw(skill_id="B3.2-Q4", facts_check="Revenue fell 30%, which does not support level 2.")
+    assert checks.check_judgment(good, s, TEXT, ["TXT-001"], facts_text="Revenue: 1", require_facts_check=True).ok
+    bad = checks.check_judgment(raw(skill_id="B3.2-Q4"), s, TEXT, ["TXT-001"], facts_text="Revenue: 1", require_facts_check=True)
+    assert not bad.ok and "facts_check_missing" in bad.reasons
+    assert checks.check_judgment(raw(skill_id="B3.2-Q4"), s, TEXT, ["TXT-001"], facts_text=None, require_facts_check=True).ok       # no FACTS sent: not required
+
+
+def test_variant_31_is_stored_under_its_own_prompt_version(tmp_path):
+    store, stats = AssessmentStore(tmp_path / "a.jsonl"), assess.Stats()
+    cl = FakeClient(good_reply("B3.1-Q1"))
+    assess.ask(company(), SK["B3.1-Q1"], cl, store, stats)
+    assess.ask(company(), SK["B3.1-Q1"], cl, store, stats, variant="3.1")
+    assert cl.n == 2 and assess.prompt_version_of(SK["B3.1-Q1"], "3.1") == "2.1"
+    assert store.get("ACM", 2025, "B3.1-Q1", "2")["prompt_version"] == "2" and store.get("ACM", 2025, "B3.1-Q1", "2.1")["prompt_version"] == "2.1"
+
+
+def test_invalid_json_retry_uses_another_seed_and_the_attempt_log_records_error_codes():
+    seeds = []
+
+    class C:
+        model = "m"
+
+        def generate(self, p, seed_offset=0, thinking_budget=None):
+            seeds.append(seed_offset)
+            return Reply("oops" if seed_offset == 0 else good_reply("B3.1-Q1"), "m", 1, 1, 0, 0.1)
+    import tempfile
+    r = assess.ask(company(), SK["B3.1-Q1"], C(), AssessmentStore(Path(tempfile.mkdtemp()) / "a.jsonl"), assess.Stats())
+    assert seeds == [0, 1] and r["state"] == "answered"
+    from src.ai.client import error_code
+    assert error_code(Exception("503 UNAVAILABLE. high demand")) == "503" and error_code(Exception("DEADLINE_EXCEEDED")) == "504" and error_code(KeyError("x")) == "KeyError"
+
+
+def test_discontinued_operations_and_the_valuation_allowance_are_in_the_note_sections():
+    doc = ("Item 1. Business\n" + BIZ + "Item 1A. Risk Factors\n" + RISK + "Item 8. Financial Statements\n"
+           "Note 1 - Basis\n" + "Policies. " * 150 + "\nNote 2 - Revenue\n" + "Revenue text. " * 100 + "\nNote 3 - Leases\n" + "Lease text. " * 100 +
+           "\nNote 4 - Income Taxes\n" + "Tax text here. " * 80 + "\nIn 2025 we released the valuation allowance on deferred tax assets of $5.0 billion.\nThis was a one-time benefit.\n" + "More tax text. " * 80 +
+           "\nNote 5 - Discontinued Operations\n" + "We sold the India business and recorded a goodwill impairment of $322.0 million and a loss on sale. " * 20 +
+           "\nNote 6 - Other\n" + "Other text. " * 100 + "\nItem 9A. Controls and Procedures\n" + "Controls effective. " * 100 + "\nItem 9B. Other\n")
+    s = split_sections(doc)
+    assert "goodwill impairment of $322.0 million" in s["NOTE-ACQ"].text
+    assert "released the valuation allowance" in s["NOTE-UNUSUAL"].text and "Lease text" not in s["NOTE-UNUSUAL"].text
