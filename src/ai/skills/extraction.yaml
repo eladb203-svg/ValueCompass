@@ -1,0 +1,289 @@
+# Extraction skills B1-B14 (AI skills document "Other" 2026-10-21_12-39, section 2). Data, not code: one call per skill per report, all items and all periods shown in the report.
+version: 1
+template: |
+  SYSTEM
+  You assist ValueCompass. Extract the requested figures from the annual-report text below.
+  You do not compute, convert, estimate or fill gaps.
+  Rules:
+  1. Report each figure exactly as stated in the text, with its unit and scale
+     (e.g., "in millions"). Do not convert units or currencies.
+  2. Every figure must come with a quote copied character for character from the TEXT that CONTAINS the figure.
+     Copy each quote as one continuous passage, exactly as it appears, without shortening or joining passages.
+     Use the shortest continuous passage that contains the figure (one table row or one sentence); keep the reply short.
+  3. If a figure is not disclosed, return value = null with value_state = "not_disclosed".
+     If the text says it does not apply, value_state = "NA". Never guess.
+  4. Report the period the figure refers to (fiscal year end, or "Q4 average" etc. as stated). Give one entry per item AND per period shown in the report
+     (for example the current year and the comparative years of a table); do not leave out a period that is shown.
+  5. When the text states the basis (consolidated / company share / group / a regulatory
+     approach), report it in "basis".
+  6. Return ONLY the JSON object under OUTPUT.
+
+  TASK ({skill_id}, version {version})
+  {task}
+
+  ITEMS
+  {items_table}
+
+  COMPANY: {company_name} ({ticker}) · FISCAL YEAR: {fiscal_year} · PROFILE: {profile}
+  TEXT ({sections}, filing {accession}):
+  <<<
+  {section_text}
+  >>>
+
+  OUTPUT
+  {{"skill_id": "{skill_id}", "version": {version}, "items": [
+    {{"item_key": "<key>", "period": "<as stated>", "value": <number | null>,
+     "unit": "USD" | "percent" | "count" | "ratio" | "sq_ft" | "MW",
+     "scale": 1 | 1000 | 1000000 | 1000000000, "basis": "<as stated or null>",
+     "value_state": "value" | "NA" | "not_disclosed",
+     "quote": {{"text": "<exact quote containing the figure>", "section": "<section>"}}}} ]}}
+
+# Section specs: a section is found by TITLE (a numbered note title, or a heading line) and, failing that, by ANCHORS (windows of text around key phrases anywhere in the filing).
+# kind: note = numbered note whose title matches `notes`; windows = text around the `anchors`; statement = the financial statement around the `anchors`.
+sections:
+  X-BANKCAP: {title: "Bank regulatory capital and liquidity", notes: 'regulatory\s+(?:capital|matters|requirements)|capital\s+(?:adequacy|requirements|ratios)|regulatory', anchors: ['CET1\s+capital\s+ratio', 'Common\s+Equity\s+Tier\s+1', 'risk-weighted\s+assets', 'liquidity\s+coverage\s+ratio', 'stress\s+capital\s+buffer', 'uninsured\s+deposits', 'G-SIB\s+surcharge'], window: 2500, cap: 45000}
+  X-LOANS: {title: "Loans", notes: '^loans?\b|\bloans\b.*(?:allowance|credit|portfolio)|financing\s+receivables', anchors: ['total\s+loans', 'loans\s+by\s+(?:class|portfolio|type|category)', 'loan\s+portfolio'], window: 3000, cap: 45000}
+  X-INSCAP: {title: "Insurance statutory capital and reserve rollforward", notes: 'statutory|regulatory|reserves?|liability\s+for\s+unpaid|claims|insurance\s+(?:subsidiaries|regulation)', anchors: ['risk-based\s+capital', 'authorized\s+control\s+level', 'company\s+action\s+level', 'solvency\s+(?:capital|ratio)', 'prior\s+(?:accident\s+)?years?', '(?:favorable|unfavorable|adverse)\s+(?:prior|development)', 'reserve\s+development', 'market\s+risk\s+benefit'], window: 2500, cap: 50000}
+  X-INSINV: {title: "Insurance investments and credit quality", notes: 'investments?|fixed\s+maturit|fair\s+value', anchors: ['fixed\s+maturit', 'investment\s+grade', 'NAIC\s+designation', 'credit\s+quality', 'catastrophe\s+losses', 'duration', 'asset[- ]liability'], window: 2500, cap: 50000}
+  X-REOPS: {title: "Real-estate operations: occupancy, tenants, same-property NOI, yields", notes: 'properties|real\s+estate|segment', anchors: ['occupancy', '(?:%|percent)\s+leased', 'same[- ](?:property|store)', 'largest\s+tenant|top\s+(?:ten\s+)?tenants?|ten\s+largest', 'stabilized\s+yield|initial\s+cash\s+yield|yield\s+on', 'development\s+(?:yield|completions)'], window: 2000, cap: 45000}
+  X-AFFO: {title: "FFO / AFFO reconciliation in the MD&A", notes: 'capital\s+expenditures|real\s+estate', anchors: ['funds\s+from\s+operations', 'adjusted\s+funds\s+from\s+operations|AFFO', 'recurring\s+capital|maintenance\s+capital|tenant\s+improvements|leasing\s+commissions|capital\s+improvement', 'straight[- ]line\s+rent'], window: 3500, cap: 55000}
+  X-REVAL: {title: "Real-estate fair value", notes: 'fair\s+value|real\s+estate|investments?\s+in\s+real|properties', anchors: ['fair\s+value\s+of\s+(?:our\s+)?(?:real\s+estate|investment\s+propert|properties)', 'estimated\s+fair\s+value', 'stabilized', 'under\s+development|development\s+and\s+land'], window: 2500, cap: 40000}
+  X-DEBT: {title: "Debt and maturities", notes: 'debt|borrowings|notes\s+payable|credit\s+facilit|indebtedness', anchors: ['(?:undrawn|available)\s+(?:capacity|borrowing)|available\s+under', 'credit\s+facilit', 'scheduled\s+(?:principal\s+)?(?:payments|maturities)|maturities\s+of\s+(?:long-term\s+)?debt', 'unencumbered', 'secured\s+debt'], window: 3000, cap: 55000}
+  X-EQNCI: {title: "Equity, noncontrolling interests and EPS", notes: 'equity|noncontrolling|non-controlling|earnings\s+per\s+share|per\s+share|partners', anchors: ['operating\s+partnership', 'OP\s+units|common\s+units|limited\s+partner', 'noncontrolling\s+interests?', 'weighted[- ]average\s+(?:common\s+)?(?:shares|units)', 'diluted'], window: 2500, cap: 45000}
+  X-FFO: {title: "FFO reconciliation and non-recurring items", notes: 'real\s+estate|impairment|gains?|dispositions?|investments?|foreign\s+currency|derivative', anchors: ['funds\s+from\s+operations|\bFFO\b', 'gains?\s+(?:\(loss(?:es)?\)\s+)?on\s+(?:the\s+)?sales?', 'impairment', 'foreign\s+currency\s+(?:exchange|remeasurement|translation)', 'extinguishment', 'transaction\s+costs'], window: 3500, cap: 60000}
+  X-BS: {title: "Balance sheet", notes: 'xxxxx-none', anchors: ['total\s+assets'], window: 6000, cap: 18000, statement: balance_sheet}
+  X-IS: {title: "Income statement", notes: 'xxxxx-none', anchors: ['total\s+revenues?|net\s+revenues?|total\s+net\s+revenue', 'net\s+income'], window: 4000, cap: 14000, statement: income_statement}
+  X-CF: {title: "Cash-flow statement", notes: 'xxxxx-none', anchors: ['operating activities'], window: 4000, cap: 14000, statement: cash_flow}
+  X-REAL: {title: "Real-estate note", notes: 'real\s+estate|properties|investments?\s+in\s+real', anchors: ['rental\s+(?:revenue|income)', 'real\s+estate'], window: 2500, cap: 30000}
+
+blocks:
+  - skill_id: EXT-BANK-CAP
+    block: B1
+    version: 1
+    profile: BANK
+    task: "Extract the bank's regulatory capital and liquidity figures for the fiscal year end."
+    sections: [X-BANKCAP]
+    items:
+      - {key: cet1_ratio_standardized, def: "CET1 capital ratio, Standardized approach", unit: percent}
+      - {key: cet1_ratio_advanced, def: "CET1 capital ratio, Advanced approach (only if the bank reports it)", unit: percent}
+      - {key: cet1_required_standardized, def: "CET1 requirement incl. buffers, Standardized approach (V9)", unit: percent}
+      - {key: cet1_required_advanced, def: "CET1 requirement incl. buffers, Advanced approach (V9)", unit: percent}
+      - {key: cet1_capital, def: "Common Equity Tier 1 capital (amount)", unit: USD}
+      - {key: total_capital_standardized, def: "Total regulatory capital, Standardized (FIN-141)", unit: USD}
+      - {key: total_capital_advanced, def: "Total regulatory capital, Advanced (FIN-141)", unit: USD}
+      - {key: rwa_standardized, def: "Risk-weighted assets, Standardized (FIN-144)", unit: USD}
+      - {key: rwa_advanced, def: "Risk-weighted assets, Advanced (FIN-144)", unit: USD}
+      - {key: lcr_q4_average, def: "Liquidity coverage ratio, Q4 average; basis = measurement type as stated (V10); NA when exempt (V11)", unit: percent}
+      - {key: scb, def: "Stress capital buffer (percent) (FIN-171)", unit: percent}
+      - {key: gsib_surcharge, def: "G-SIB surcharge (percent) (FIN-171)", unit: percent}
+      - {key: uninsured_deposits, def: "Uninsured deposits, display only (FIN-170)", unit: USD}
+    control: cet1_vs_rwa
+    approval: automatic
+
+  - skill_id: EXT-BANK-LOANS
+    block: B2
+    version: 1
+    profile: BANK
+    task: "List the loan portfolio lines exactly as the bank reports them, with amounts, at fiscal year end. One entry per line (item_key \"loan_line\", the line name as stated in \"basis\"), plus the reported total as item_key \"total_loans\". Do not list sub-totals twice."
+    sections: [X-LOANS]
+    items:
+      - {key: loan_line, def: "One reported loan line (name as stated in basis; amount); code maps lines to the 5 categories", unit: USD}
+      - {key: total_loans, def: "Total loans as reported", unit: USD}
+    control: loans_sum
+    approval: automatic
+
+  - skill_id: EXT-INS-CAP
+    block: B3
+    version: 1
+    profile: INSURANCE
+    task: "Extract the insurer's regulatory capital ratio and prior-year reserve development."
+    sections: [X-INSCAP]
+    items:
+      - {key: reg_capital_ratio, def: "The regulatory capital ratio as reported (percent); basis = regime and level (RBC % of ACL, CAL, SCR, SMR), entity (group / lead subsidiary) and period; a stated floor is reported as the floor, flagged", unit: percent}
+      - {key: prior_year_dev, def: "(Un)favorable prior-period reserve development (USD; sign as stated)", unit: USD}
+      - {key: ldti_remeasurement, def: "Adverse LDTI remeasurement (USD), when untagged", unit: USD}
+    control: none
+    approval: automatic
+
+  - skill_id: EXT-INS-INV
+    block: B4
+    version: 1
+    profile: INSURANCE
+    task: "Extract the investment portfolio by category and credit quality, catastrophe losses and whether asset-liability matching is disclosed."
+    sections: [X-INSINV]
+    items:
+      - {key: inv_cash, def: "Cash within invested assets", unit: USD}
+      - {key: inv_short_term, def: "Short-term investments", unit: USD}
+      - {key: inv_fixed_maturities, def: "Fixed maturities", unit: USD}
+      - {key: inv_equity, def: "Equity securities", unit: USD}
+      - {key: inv_illiquid_loans, def: "Mortgage and other loans", unit: USD}
+      - {key: inv_real_estate, def: "Real estate investments", unit: USD}
+      - {key: inv_other, def: "Other invested assets", unit: USD}
+      - {key: inv_total, def: "Total investments as stated", unit: USD}
+      - {key: inv_ig_fixed, def: "Investment-grade fixed income (BBB-/Baa3 or better, NAIC 1-2); unrated is NOT investment grade", unit: USD}
+      - {key: inv_ig_share, def: "Investment-grade share of fixed income, when stated instead of an amount", unit: percent}
+      - {key: cat_loss_latest, def: "Catastrophe losses of the year", unit: USD}
+      - {key: alm_disclosed, def: "1 when asset-liability (duration) matching is disclosed, else 0", unit: count}
+    control: inv_sum
+    approval: automatic
+
+  - skill_id: EXT-RE-OPS
+    block: B5
+    version: 1
+    profile: INCOME_REAL_ESTATE
+    task: "Extract occupancy, largest tenant, same-property NOI growth and new-investment yields. Figures that appear only in the supplemental package are not in the text: return not_disclosed."
+    sections: [X-REOPS]
+    items:
+      - {key: occupancy, def: "Occupancy / leased percentage of the portfolio (data centers: leased / available capacity); basis = the company's primary reported basis (RE21)", unit: percent}
+      - {key: largest_tenant_share, def: "Largest independent tenant share of rent or NOI; basis = rent or NOI", unit: percent}
+      - {key: same_property_noi_growth, def: "Like-for-like NOI growth; basis = the company's primary basis (RE21)", unit: percent}
+      - {key: acquisition_yield, def: "Stabilized yield on acquisitions", unit: percent}
+      - {key: development_yield, def: "Stabilized yield on developments", unit: percent}
+      - {key: acquisition_invested, def: "Amount invested in acquisitions", unit: USD}
+      - {key: development_invested, def: "Amount invested in developments", unit: USD}
+    control: bounds_0_100
+    approval: automatic
+
+  - skill_id: EXT-RE-MAINT
+    block: B6
+    version: 1
+    profile: INCOME_REAL_ESTATE
+    task: "Extract recurring maintenance capital expenditure and income-preserving tenant improvements and leasing commissions, as the company defines them in its AFFO reconciliation."
+    sections: [X-AFFO]
+    items:
+      - {key: maint_capex, def: "Recurring / maintenance capex (towers - AFFO capital improvement + corporate capex, RE20a)", unit: USD}
+      - {key: ti_lc, def: "Income-preserving TI and leasing commissions; residential and self-storage: NA (RE20)", unit: USD}
+      - {key: straight_line_rent_affo, def: "Straight-line rent adjustment as shown in the AFFO reconciliation (sign as stated)", unit: USD}
+    control: q6
+    approval: by_control
+
+  - skill_id: EXT-RE-VALUE
+    block: B7
+    version: 1
+    profile: INCOME_REAL_ESTATE
+    task: "Extract the disclosed fair value of investment property and the split between stabilized income property and development / land."
+    sections: [X-REVAL]
+    items:
+      - {key: fair_value_real_estate, def: "Economic property value; basis REQUIRED (consolidated or company share; with or without joint ventures - RP2c)", unit: USD}
+      - {key: stabilized_value, def: "Stabilized income property value", unit: USD}
+      - {key: other_property_value, def: "Development / land value", unit: USD}
+      - {key: stabilized_noi, def: "NOI of stabilized property, when disclosed", unit: USD}
+    control: value_basis_range
+    approval: by_control
+
+  - skill_id: EXT-RE-LIQ
+    block: B8
+    version: 1
+    profile: INCOME_REAL_ESTATE
+    task: "Extract committed undrawn credit facilities and debt maturing in the next 12 and 24 months."
+    sections: [X-DEBT]
+    items:
+      - {key: committed_undrawn_facilities, def: "Committed AND available (undrawn) amount - not the total facility size", unit: USD}
+      - {key: debt_maturity_year1, def: "Principal maturing within 12 months", unit: USD}
+      - {key: debt_maturity_year2, def: "Principal maturing in months 13-24", unit: USD}
+    control: coverage_band
+    approval: by_control
+
+  - skill_id: EXT-RE-UNENC
+    block: B9
+    version: 1
+    profile: INCOME_REAL_ESTATE
+    task: "Extract the share of NOI and of assets that is unencumbered (free of secured debt). Figures that appear only in the supplemental package are not in the text: return not_disclosed."
+    sections: [X-DEBT]
+    items:
+      - {key: unencumbered_noi_share, def: "Unencumbered NOI share", unit: percent}
+      - {key: unencumbered_assets_share, def: "Unencumbered assets share", unit: percent}
+    control: bounds_0_100
+    approval: automatic
+
+  - skill_id: EXT-RE-NAV
+    block: B10
+    version: 1
+    profile: INCOME_REAL_ESTATE
+    task: "Assign EVERY line of the balance sheet's asset side to one class of Rulebook RP2a. Report each line as stated (item_key = the class, e.g. bsa_noi; the line name as stated in basis), with its amount and a quote."
+    sections: [X-BS, X-REAL]
+    classes:
+      bsa_noi: "already in the capitalized NOI -> counted as 0 (real estate in place, acquired lease intangibles, straight-line rent receivable, deferred leasing costs, ground-lease right-of-use assets)"
+      bsa_carry: "carrying value - development, construction in progress, land"
+      bsa_inre: "carrying value - equity-method interests in real-estate joint ventures"
+      bsa_carryfin: "carrying value - notes and loans receivable, financial investments"
+      bsa_wc: "working capital - excluded (receivables, prepaid and other current assets; mixed lines that cannot be split)"
+      bsa_excl: "excluded - cash (already in net debt), goodwill"
+      bsa_other: "none of the above (unidentified)"
+    items:
+      - {key: bsa_noi, def: "Balance-sheet asset line of class bsa_noi", unit: USD}
+      - {key: bsa_carry, def: "Balance-sheet asset line of class bsa_carry", unit: USD}
+      - {key: bsa_inre, def: "Balance-sheet asset line of class bsa_inre", unit: USD}
+      - {key: bsa_carryfin, def: "Balance-sheet asset line of class bsa_carryfin", unit: USD}
+      - {key: bsa_wc, def: "Balance-sheet asset line of class bsa_wc", unit: USD}
+      - {key: bsa_excl, def: "Balance-sheet asset line of class bsa_excl", unit: USD}
+      - {key: bsa_other, def: "Balance-sheet asset line of class bsa_other", unit: USD}
+      - {key: total_assets, def: "Total assets as stated", unit: USD}
+    control: assets_sum
+    approval: always
+
+  - skill_id: EXT-RE-OPU
+    block: B11
+    version: 1
+    profile: INCOME_REAL_ESTATE
+    task: "Extract the operating-partnership (OP) units and the facts needed to put FFO, deductions and share count on one basis (RE28, RP2b). Only REITs with an operating partnership have these; otherwise return not_disclosed."
+    sections: [X-EQNCI]
+    items:
+      - {key: op_units_count, def: "OP units outstanding held by others", unit: count}
+      - {key: op_units_book_value, def: "Carrying value of OP-unit noncontrolling interest", unit: USD}
+      - {key: diluted_includes_op, def: "1 when diluted shares include OP units, else 0 (quote required)", unit: count}
+      - {key: partnership_units_weighted, def: "Weighted OP units, when stated", unit: count}
+      - {key: shares_basis_override, def: "Share basis stated by the company for per-share FFO, when it differs", unit: count}
+      - {key: inc_share_of_bplp, def: "The company's share of the operating partnership's income, when stated", unit: percent}
+    control: none
+    approval: always
+
+  - skill_id: EXT-RE-FFO
+    block: B12
+    version: 1
+    profile: INCOME_REAL_ESTATE
+    task: "Extract the company's FFO reconciliation lines and the non-recurring items of RE30, each with the sign as it affects net income. Report each amount as a gain (+) or loss (-) as it affects net income. Do not decide whether an item is already removed in the company's FFO - code does that."
+    sections: [X-FFO]
+    items:
+      - {key: recon_net_income, def: "FFO reconciliation: net income (USD, sign as shown)", unit: USD}
+      - {key: recon_re_da, def: "FFO reconciliation: real-estate depreciation and amortization", unit: USD}
+      - {key: recon_nci_jv, def: "FFO reconciliation: noncontrolling-interest / joint-venture adjustments", unit: USD}
+      - {key: recon_gi_net, def: "FFO reconciliation: gains / impairments net", unit: USD}
+      - {key: reported_ffo, def: "Reported FFO (USD)", unit: USD}
+      - {key: reported_core_ffo, def: "Reported core / normalized FFO (USD)", unit: USD}
+      - {key: reported_affo, def: "Reported AFFO (USD)", unit: USD}
+      - {key: reported_ebitdare, def: "Reported EBITDAre (USD)", unit: USD}
+      - {key: core_ffo_ps_reported, def: "Core FFO per share when stated (USD/share)", unit: USD}
+      - {key: re29_re_sale_gains, def: "Gains / losses on sales of real estate incl. development property and land (RE29)", unit: USD}
+      - {key: re29_nonre_impairments, def: "Impairments of non-real-estate assets and investments", unit: USD}
+      - {key: re29a_nonre_inv, def: "Realized and unrealized results of non-real-estate investments (RE29a)", unit: USD}
+      - {key: re29b_fx_net, def: "Unrealized FX remeasurement NET of the related hedging derivatives (RE29b); without a net line, the amount the company itself adds back", unit: USD}
+      - {key: debt_extinguishment, def: "Debt extinguishment (RE30 item 5; sign as stated)", unit: USD}
+      - {key: transaction_costs, def: "Transaction costs (RE30 item 5; sign as stated)", unit: USD}
+    control: e11_re29b
+    approval: by_control
+
+  - skill_id: EXT-PROFILE
+    block: B13
+    version: 1
+    profile: any
+    task: "Extract the figures the profile router needs when they are not tagged. For the real-estate test give every year shown in the report (property incl. acquired lease intangibles, RE15)."
+    sections: [X-BS, X-IS, X-REAL]
+    items:
+      - {key: profile_total_assets, def: "Total assets (real-estate test)", unit: USD}
+      - {key: profile_property_value, def: "Real-estate property incl. acquired lease intangibles (RE11, RE15)", unit: USD}
+      - {key: profile_rental_revenue, def: "Rental revenue (real-estate test)", unit: USD}
+      - {key: profile_total_revenue, def: "Total revenue (real-estate test)", unit: USD}
+      - {key: mortgage_loans_mbs, def: "Mortgage loans held + mortgage-backed securities (FIN-191)", unit: USD}
+    control: router_band
+    approval: by_control
+
+  - skill_id: EXT-GENERAL
+    block: B14
+    version: 1
+    profile: any
+    task: "Extract the listed dictionary items for the fiscal years shown in the financial statements. Only items the engine needs and no XBRL tag provided are listed. One entry per item and year."
+    sections: [X-BS, X-IS]
+    items: []     # filled per company by code (items with no tag value, the statement named in the dictionary)
+    control: neighbours_3x
+    approval: by_feed

@@ -371,3 +371,110 @@ def section_report(ticker: str, end_date: Optional[str] = None) -> dict:
     secs = split_sections(f.text)
     return {"ticker": ticker, "filing": {"accession": f.accession, "report_date": f.report_date, "path": f.path, "chars": len(f.text)},
             "sections": {k: {"found": s.found, "chars": s.chars, "full_chars": s.full_chars, "flags": s.flags} for k, s in secs.items()}}
+
+
+# ---------------------------------------------------------------- extraction sections (code stage K5b): found by TITLE, then by ANCHORS
+def _ext_spec(sid: str) -> dict:
+    from .prompt import extraction_sections
+    return extraction_sections()[sid]
+
+
+def _merge_windows(spans: list) -> list:
+    spans = sorted(spans)
+    out: list = []
+    for a, b in spans:
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+_NUMTOK = re.compile(r"\d[\d,]*\.?\d*")
+
+
+def _statement_window(text: str, kind: str, spec: dict) -> Optional[str]:
+    """The balance sheet or the income statement: the span of numeric rows around 'Total liabilities' (balance sheet: from the 'Assets' heading / first cash line) or 'Net income' with
+    per-share lines after it (income statement: from the revenue lines). Works for pipe tables and for one-cell-per-line tables."""
+    if kind == "balance_sheet":
+        for m in re.finditer(r"total\s+liabilities", text, re.I):
+            p = m.start()
+            if not re.search(r"equity", text[p:p + 3500], re.I):
+                continue
+            pre = text[max(0, p - 7000):p]
+            starts = [x.start() for x in re.finditer(r"^[\s|]*(?:current\s+)?assets\s*:?[\s|]*$|^[\s|]*cash\s+and\s+(?:cash\s+equivalents|due\s+from)", pre, re.I | re.M)]
+            if not starts or len(_NUMTOK.findall(pre[starts[0]:])) < 25:
+                continue
+            a = max(0, p - 7000) + starts[0]
+            return text[max(0, a - 200):p + 3000]
+        return None
+    if kind == "cash_flow":
+        for m in re.finditer(r"net\s+cash\s+(?:provided\s+by|used\s+in|\(used\s+in\)|from)[^\n]{0,40}financing\s+activities", text, re.I):
+            p = m.start()
+            pre = text[max(0, p - 9000):p]
+            starts = [x.start() for x in re.finditer(r"operating\s+activities", pre, re.I)]
+            if starts and len(_NUMTOK.findall(pre[starts[0]:])) >= 40:
+                return text[max(0, p - 9000) + starts[0] - 300:p + 1500]
+        return None
+    for m in re.finditer(r"\bnet\s+(?:income|earnings)\b", text, re.I):
+        p = m.start()
+        if not re.search(r"per\s+(?:common\s+)?(?:share|unit)|earnings\s+per", text[p:p + 2500], re.I):
+            continue
+        pre = text[max(0, p - 4500):p]
+        starts = [x.start() for x in re.finditer(r"^[\s|]*(?:total\s+|net\s+)?(?:revenues?|sales)\b[^\n]{0,60}$", pre, re.I | re.M)]
+        if not starts or len(_NUMTOK.findall(pre[starts[0]:])) < 25:
+            continue
+        a = max(0, p - 4500) + starts[0]
+        return text[max(0, a - 300):p + 2500]
+    return None
+
+
+def ext_section(text: str, sid: str) -> Section:
+    """One extraction section of a filing, found by the title of a numbered note (kind 'note') and, failing that or in addition, by windows of text around the anchor phrases."""
+    spec = _ext_spec(sid)
+    cap = int(spec["cap"])
+    flags: list = []
+    if spec.get("statement"):
+        t = _statement_window(text, spec["statement"], spec)
+        return Section(sid, t[:cap], min(len(t), cap), len(t), []) if t else Section(sid, None, 0, 0, ["section_not_found"])
+    parts: list = []                                         # (priority, pos, text)
+    chain = _note_chain(text)
+    if chain and spec.get("notes"):
+        key = re.compile(spec["notes"], re.I)
+        for title, body in _note_texts(text, chain, key, cap_each=min(cap, NOTE_CAP)):
+            parts.append((0, text.find(body[:200]), body[:min(cap, NOTE_CAP)]))
+    spans = []
+    for k, rx in enumerate(spec.get("anchors") or []):
+        for m in re.finditer(rx, text, re.I):
+            spans.append((max(0, m.start() - 400), min(len(text), m.start() + int(spec["window"]))))
+    # windows ranked by how many anchor hits fall inside them (a table next to its caption beats one stray mention), document order afterwards
+    merged = _merge_windows(spans)
+    hits = lambda a, b: sum(1 for s in spans if a <= s[0] < b)  # noqa: E731
+    for a, b in sorted(merged, key=lambda w: -hits(*w) * 1000 - (w[1] - w[0]) // 100)[:40]:
+        parts.append((1, a, text[a:b]))
+    chosen, used = [], 0
+    for pr, pos, body in sorted(parts, key=lambda p: (p[0], -len(p[2]) if p[0] == 0 else 0)):
+        if used + len(body) > cap:
+            body = body[:max(0, cap - used)]
+            if len(body) < 600:
+                break
+            flags.append("trimmed")
+        chosen.append((pos, body))
+        used += len(body)
+        if used >= cap:
+            break
+    if not chosen:
+        return Section(sid, None, 0, 0, ["section_not_found"])
+    chosen.sort(key=lambda p: p[0])
+    out, seen = [], ""
+    for _, body in chosen:                                   # drop text already inside an earlier part
+        b = body.strip()
+        if b and b[:300] not in seen:
+            out.append(b)
+            seen += b
+    full = "\n\n----\n\n".join(out)
+    return Section(sid, full, len(full), len(full), flags + (["anchors_only"] if not chain else []))
+
+
+def ext_sections(text: str, ids: list) -> dict:
+    return {sid: ext_section(text, sid) for sid in ids}

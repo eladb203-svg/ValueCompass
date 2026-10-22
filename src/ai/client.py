@@ -99,11 +99,24 @@ class GeminiClient:
         self.limiter = limiter or RateLimiter(int(os.environ.get("GEMINI_RPM", DEFAULT_RPM)), int(os.environ.get("GEMINI_TPM", DEFAULT_TPM)),
                                               int(os.environ.get("GEMINI_RPD", DEFAULT_RPD)))
         self._api = api_client
+        # decision 2026-10-22: a real client (no injected api) counts every attempt in the shared daily counter (cap 450 for all processes) and runs one process at a time
+        self.shared = (api_client is None) and not os.environ.get("VC_AI_NO_SHARED")
+        self._usage = self._single = None
         self.calls = 0
         self.retries = 0
         self.failures = 0
         self.total_latency = 0.0
         self.prompt_tokens = self.output_tokens = 0
+
+    def _shared_guard(self) -> None:
+        if not self.shared:
+            return
+        from .usage import DailyCounter, SingleProcess
+        if self._usage is None:
+            self._single, self._usage = SingleProcess(), DailyCounter()
+            self._single.acquire()
+        self._usage.reserve()
+        self._single.touch()
 
     def _client(self):
         if self._api is None:
@@ -128,6 +141,7 @@ class GeminiClient:
         err: Optional[Exception] = None
         log: list = []
         for attempt in range(1, MAX_RETRIES + 1):
+            self._shared_guard()
             self.limiter.wait(self.estimate_tokens(prompt))
             t0 = time.monotonic()
             try:
