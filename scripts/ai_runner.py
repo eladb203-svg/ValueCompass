@@ -8,10 +8,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.ai.store import AssessmentStore  # noqa: E402
+from src.scoring.ext_items import attach_ext  # noqa: E402
 
 
 def attach_ai(inp, ticker):
     path = os.environ.get("VC_AI_STORE")
     if path:
         inp.ai_answers = AssessmentStore(Path(path)).answers_for(ticker, int(inp.fy[-1][2:]))
+    kind = {"BankInputs": "bank", "InsuranceInputs": "insurance", "REInputs": "realestate"}.get(type(inp).__name__)
+    if kind:
+        attach_ext(inp, ticker, kind)       # no-op unless VC_AI_EXT_STORE is set (code stage K5b)
     return inp

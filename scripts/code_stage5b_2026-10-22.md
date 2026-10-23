@@ -1,6 +1,271 @@
 # דוח שלב ק5ב — תבנית 3.1 לשאלות הניקוד, וחילוץ נתונים ב-AI (B1–B14)
 
-תאריך: 2026-10-22 · מודל מקובע: `gemini-3.5-flash-lite` (טמפרטורה 0, seed 20261021) · **הדוח חלקי: הרצות המודל נעצרו בגלל מכסה יומית (ראו סעיף 0).**
+תאריך: 2026-10-22 · מודל מקובע: `gemini-3.5-flash-lite` (טמפרטורה 0, seed 20261021) · **הרצות המודל הושלמו ב-23.10 (ראו "תוצאות הרצה אמיתית"); הסעיפים שמתחתיו משקפים את המצב לפני האיפוס.**
+
+## תוצאות הרצה אמיתית (23.10.2026, שעון ישראל 13:00–13:10) — מחליף את הערות "לא הורץ" שלמטה
+
+**מכסה:** המונה המשותף (`usage.json`, יום פסיפיק 2026-10-23, תקרה 450) הסתיים ב-**168 קריאות** — ללא 429. תהליך אחד בכל פעם (ניקוד, ואז חילוץ). קובץ הניקוד הישן הועבר ל-`assessments_pre_fix.jsonl` (לא נמחק) וכל 108 התשובות נשאלו מחדש. שום כתיבה ל-Supabase, `.env` לא שונה, golden קיים לא שונה.
+
+**תיקונים שנעשו תוך כדי (שני באגים שלי שנחשפו רק עם נתוני אמת):**
+1. `src/ai/ext_checks.py` — הבקרות `loans_sum` ו-`bounds_0_100` קראו `row["item"]` שלא קיים בשורות האמיתיות (בבדיקות היחידה כן); ההרצה הראשונה התרסקה אחרי 3 קריאות של JPM (נשמרו ולא נשאלו שוב). הוספתי `_fld` שקורא את השדה השטוח או המקונן.
+2. `scripts/ai_runner.py` — `attach_ext` מעולם לא נקרא מהמנוע, ולכן golden עם `VC_AI_EXT_STORE` הראה השפעה אפס. כעת `attach_ai` קורא גם ל-`attach_ext` (Bank/Insurance/REInputs; no-op בלי המשתנה). golden ההשפעה נבנו מחדש אחרי התיקון.
+
+### א. ניקוד, תבנית 3.1 (סעיף 2) — 108/108 תשובות, 118 קריאות (7 ניסיונות חוזרים; שגיאות רשת ConnectError 6, ReadError 1)
+
+| Run | Rows | Agreement (not low) | Agreement + close | Distribution 2/1/0 | Checks passed | Quotes found | Insufficient | Latency (sum) | Tokens in / out |
+|---|---|---|---|---|---|---|---|---|---|
+| K5a-3 (v3.1) | 108/108 | 91/106 = 86% | 96/106 = 91% | 97/4/3 | 104/108 = 96% | 200/205 = 98% | 4 | 229 s | 2,219,390 / 26,625 |
+| K5b (3.1 default) | 108/108 | 92/106 = 87% | 98/106 = 92% | 94/4/6 | 104/108 = 96% | 196/198 = 99% | 4 | 1564 s | 2,216,440 / 27,384 |
+
+התאמה לפי skill:
+
+| Skill | K5a-3 (v3.1) | K5b (3.1 default) |
+|---|---|---|
+| A1 | 9/9 | 9/9 |
+| A2 | 9/9 | 9/9 |
+| A3 | 8/9 | 8/9 |
+| A4 | 9/9 | 9/9 |
+| A5 | 8/9 | 9/9 |
+| A6 | 9/9 | 9/9 |
+| A7 | 8/9 | 8/9 |
+| A8 | 2/4 | 1/4 |
+| A9 | 7/9 | 8/9 |
+| A10 | 4/8 | 4/8 |
+| A11 | 8/9 | 6/9 |
+| A12 | 9/9 | 9/9 |
+| A13 | 1/4 | 3/4 |
+
+* **התאמה כוללת 87% (92/106) מול 86% בק5א-3; עם "קרוב" 92% מול 91%.** שיפור שולי, בתוך הרעש. התפלגות 2/1/0: 94/4/6 (ק5א-3: 97/4/3).
+* **דחיות: 4 מתוך 108** (כמו בק5א-3), לעומת 8/36 בהרצה החלקית הקודמת — **נסיגת הציטוטים (`...`) נעלמה** עם הנוסח החדש וניסיון החוזר היחיד. ציטוטים נמצאו: 196/198 (99%).
+* הזמן המצטבר (1564 שניות מול 229) נובע מ-`--rpm 20` ושגיאות רשת, לא מהמודל.
+
+דחיות לפי סיבה:
+
+| Company | Question | Reasons |
+|---|---|---|
+| KO | G3.1-Q3 (A11) | exposure_inconsistent |
+| INTC | B3.7-Q3 (A8) | quote_from_facts |
+| INTC | B3.8-Q6 (A10) | quote_from_facts |
+| UBER | G3.1-Q3 (A11) | no_quote |
+
+By reason: quote_from_facts 2, exposure_inconsistent 1, no_quote 1
+
+**ארבע השורות המיוחדות:**
+
+| Company | Skill | Expected (alt) | K5a-3 (v3.1): answer / result | K5b (3.1 default): answer / result | K5b reasoning (200) | K5b facts_check (200) |
+|---|---|---|---|---|---|---|
+| AMT | A8 | 0 (1) | 2 / differ | 1 / close | The company completed smaller asset acquisitions in 2025 and prior years, such as communications sites and data center facilities, while also engaging in significant divestitures like the sale of its … | The facts show no reported cash payments for acquisitions or continuing goodwill impairments in FY2021-FY2025, but report a goodwill impairment in discontinued operations in 2023 and a loss on the sal… |
+| INTC | A11 | 1 | 0 / differ | 0 / differ | The company discloses that three customers account for 19%, 12%, and 12% of its net revenue, respectively. Because one or more customers exceed 25% of revenue? Wait, 19%, 12%, 12% do not exceed 25%. H… |  |
+| UBER | A13 | 0 | 2 / differ | 0 / match | Reported earnings rely significantly on material one-time items, notably a $5.0 billion deferred tax valuation allowance release in 2025 and substantial unrealized gains and losses on equity securitie… | The facts show net income of -$0.50bn in FY2021, -$9.14bn in FY2022, $1.89bn in FY2023, $9.86bn in FY2024, and $10.05bn in FY2025, while the text details significant one-time items such as the $5.0 bi… |
+| O | A10 | 1 (0) | 2 / differ | 2 / differ | Management details recurring and durable growth drivers including embedded contractual rent escalations, geographic expansion into international platforms, and portfolio diversification across propert… | The FACTS show consistent top-line revenue growth (5-year CAGR of 28.9%) and stable EPS growth with no reported acquisition cash outflows in the table, supporting clear and durable growth drivers desc… |
+
+* **AMT A8:** 1 (קרוב; ציפייה 0, חלופה 1) — השתפר מ-2 (לא תואם). ✔
+* **UBER A13:** 0 — תואם (בק5א-3: 2). ✔
+* **INTC A11:** 0 — **לא תואם** (ציפייה 1). שלושה לקוחות 19/12/12%; הנימוק מכיל "Wait, ..." (חשיבה בקול בתוך השדה). **לא תוקן.**
+* **O A10:** 2 — **לא תואם** (ציפייה 1, חלופה 0). לא השתנה.
+* INTC A8 נדחה (`quote_from_facts` — המודל ציטט את שורת ה-FACTS); UBER A8 = 2 (ציפייה 1).
+
+A11 (חשיפה):
+
+| Company | Answer | largest_exposure | attempts |
+|---|---|---|---|
+| MSFT | 2 (answered) | {'name': 'None above 10%', 'share_pct': None, 'type': 'customer'} | 1 / 1 calls |
+| KO | None (insufficient_evidence) | {'name': 'one bottler', 'share_pct': 10, 'type': 'customer'} | 6 / 2 calls |
+| INTC | 0 (answered) | {'name': 'Customer A', 'share_pct': 19, 'type': 'customer'} | 1 / 2 calls |
+| UBER | None (insufficient_evidence) | {'name': None, 'share_pct': None, 'type': 'none'} | 1 / 1 calls |
+| JPM | 2 (answered) | {'name': 'None', 'share_pct': None, 'type': 'none'} | 1 / 1 calls |
+| CB | 2 (answered) | {'name': 'None', 'share_pct': None, 'type': 'none'} | 1 / 1 calls |
+| PGR | 2 (answered) | {'name': 'Personal Lines', 'share_pct': 87.0, 'type': 'product'} | 1 / 1 calls |
+| O | 2 (answered) | {'name': '7-Eleven', 'share_pct': 3.3, 'type': 'customer'} | 1 / 1 calls |
+| AMT | 1 (answered) | {'name': 'T-Mobile', 'share_pct': 18, 'type': 'customer'} | 1 / 1 calls |
+
+KO: עדיין `exposure_inconsistent` (בקבוק אחד = 10% בדיוק; הכלל במסמך מול ציפיית הייחוס 2 — שאלה פתוחה #2 נשארת). UBER: `no_quote`.
+
+אי-התאמות מול קבוצת הייחוס:
+
+| Company | Question | Expected (alt) | Answer | First quote (150) | Reasoning (150) | facts_check (150) |
+|---|---|---|---|---|---|---|
+| MSFT | G3.8-Q3 (A13) | 2 (1) | 0 | Other income (expense), net included $6.5 billion of net gains, $4.8 billion of net losses, and $1.5 billion of net losses for fiscal years 2026, 2025… | Reported earnings rely on or include material one-time and recurring items such as net gains and losses from investments in OpenAI across multiple yea… | The facts show net income of $72.74bn in FY2022, $72.36bn in FY2023, $88.14bn in FY2024, $101.83bn in FY2025, and $133.75bn in FY2026. Reported earnin… |
+| KO | G3.1-Q3 (A11) | 2 | insufficient | For the year ended December 31, 2025, one bottler accounted for 10% of our net operating revenues, which are reflected in our EMEA and Asia Pacific op… | For the year ended December 31, 2025, one bottler accounted for exactly 10 percent of net operating revenues, which does not exceed the 10 percent thr… |  |
+| INTC | B3.7-Q3 (A8) | 0 | insufficient | Goodwill impairment (USD) per fiscal year, continuing operations: FY2021: 0.29bn; FY2022: 0.15bn; FY2023: 0.04bn; FY2024: 2.98bn; FY2025: 0.00bn. | The company recognized significant non-cash goodwill impairment charges in recent fiscal years, particularly in 2024 associated with Mobileye and Inte… | The FACTS show material goodwill impairments of $2.98bn in FY2024 and smaller impairments in other recent years, which indicates a mixed picture regar… |
+| INTC | B3.8-Q6 (A10) | 0 (1) | insufficient | Revenue per fiscal year (USD): FY2021: 79.02bn; FY2022: 63.05bn; FY2023: 54.23bn; FY2024: 53.10bn; FY2025: 52.85bn; 5-year CAGR: -9.6%. | While the company describes ongoing expansion efforts and new technology drivers such as AI workloads and advanced process nodes, the actual growth re… | The facts show declining revenues over the 5-year period (CAGR of -9.6%), and fluctuating EPS and heavy reliance on acquisitions and external financin… |
+| INTC | G3.1-Q3 (A11) | 1 | 0 | Customer A 19 % 19 % 19 % Customer B 12 % 14 % 11 % Customer C 12 % 12 % 10 % | The company discloses that three customers account for 19%, 12%, and 12% of its net revenue, respectively. Because one or more customers exceed 25% of… |  |
+| UBER | B3.7-Q3 (A8) | 1 | 2 | On June 17, 2025, we completed the acquisition of an 85% controlling stake in Trendyol GO in an all-cash transaction, allowing us to expand our Delive… | The company completed acquisitions such as the Trendyol GO online meal and grocery delivery business in Türkiye during 2025 to expand its Delivery bus… | The facts given by code show acquisitions in FY2021 ($2.31bn), FY2022 ($0.06bn), and FY2025 ($0.81bn), with minimal goodwill impairments (only $0.07bn… |
+| UBER | G3.1-Q3 (A11) | 2 | insufficient |  | The company operates across multiple reportable segments (Mobility, Delivery, and Freight) and a broad international geographic footprint without disc… |  |
+| O | B3.8-Q6 (A10) | 1 (0) | 2 | This structure, together with our analytics-supported underwriting, is designed to generate a stable and predictable revenue stream, provide built-in … | Management details recurring and durable growth drivers including embedded contractual rent escalations, geographic expansion into international platf… | The FACTS show consistent top-line revenue growth (5-year CAGR of 28.9%) and stable EPS growth with no reported acquisition cash outflows in the table… |
+
+### ב. חילוץ (סעיף 5) — 7 חברות, **43 קריאות** (3 מההרצה הראשונה + 40), 0 כשלי API; בהרצה השנייה 467,499 טוקני קלט / 66,398 פלט
+
+| חברה | פרופיל | קריאות | בלוקים (שורות) |
+|---|---|---|---|
+| JPM | בנק | 3 | CAP 26, LOANS 8, GENERAL 3 |
+| USB | בנק | 4 | CAP 19, LOANS 26, GENERAL 0 (`invalid_json` גם בניסיון השני — קריאה מבוזבזת) |
+| CB | ביטוח | 3 | CAP 9, INV 24, GENERAL 7 |
+| PGR | ביטוח | 3 | CAP 5, INV 20, GENERAL 22 |
+| O | נדל"ן | 10 | OPS 7, MAINT 6, VALUE 4, LIQ 4, UNENC 2, NAV 22, OPU 10, FFO 25, PROFILE 11, GENERAL 20 |
+| AMT | נדל"ן | 10 | 9, 9, 4, 3, 2, 24, 6, 21, 12, 22 |
+| PLD | נדל"ן | 10 | 12, 6, 8, 4, 2, 18, 12, 24, 11, 14 |
+
+סה"כ 503 שורות: **196 approved, 127 pending, 158 n/a (not_disclosed/NA), 22 rejected**.
+
+**נדחו בבדיקות (22):** `quote_not_found` 12 (B1 7, B4 2, B8 2, B3 1), `number_not_in_quote` 6 (B11 3, B3 2, B4 1), `period_mismatch` 4 (B8), `value_state_inconsistent` 1 (B4).
+
+**בקרות:** נכשלו — PGR INS-INV (קטגוריות 87.4 מיליארד מול סך 97.4, פער 10.3%); O FFO (פער E11 ‎-10.9%); O GENERAL (`sale_proceeds` 2023 מול שכנים). לא ניתנות לחישוב (`na`) — JPM CAP (CET1/RWA/יחס לא כולם בדוח), CB INV, VALUE ב-O/AMT/PLD (אין שווי הוגן), PLD MAINT (Q6). שאר הבקרות עברו.
+
+**pending (127):** B10 54 (תמיד), B14 32, B12 21, B11 14 (תמיד), B4 6. **approved אוטומטי (196):** B2 34, B1 32, B13 30, B12 30, B5 19, B14 15, B6 14, B4 13, B8 6, B3 3. לא הורד 8-K (`supplemental_only` לא נבדק).
+
+**השוואה ל-CSV (`ai_k5b_compare.py`):**
+
+| בלוק | match | differ | class differs | חסר ב-AI | חסר ב-CSV |
+|---|---|---|---|---|---|
+| B1 | 13 | 0 | 0 | 4 | 19 |
+| B2 | 1 | 1 | 0 | 0 | 6 |
+| B3 | 0 | 0 | 0 | 0 | 3 |
+| B4 | 4 | 4 | 0 | 4 | 11 |
+| B5 | 5 | 5 | 0 | 10 | 8 |
+| B6 | 4 | 4 | 0 | 10 | 2 |
+| B8 | 2 | 1 | 0 | 4 | 2 |
+| B9 | 0 | 0 | 0 | 1 | 0 |
+| B10 | 16 | 0 | 5 | 34 | 33 |
+| B11 | 2 | 2 | 0 | 2 | 10 |
+| B12 | 23 | 11 | 0 | 27 | 17 |
+| B13 | 4 | 0 | 0 | 0 | 26 |
+| total | 74 | 28 | 5 | 96 | 137 |
+
+מתוך 107 פריטים שקיימים בשני הצדדים: **74 תואמים (69%)**, 28 שונים, 5 הבדלי סיווג (B10). **96 פריטי CSV חסרים ב-AI**, ו-137 פריטי AI אינם ב-CSV.
+
+#### Differing items (AI value, CSV value, AI quote)
+
+| company | block | item | year | AI | CSV | AI quote |
+|---|---|---|---|---|---|---|
+| AMT | B12 | recon_nci_jv | 2024 | -3.527e+08 | 9.818e+08 |  / Adjustments and distributions for unconsolidated affiliates and noncontrolling interests (3) / / (450.7) / / / (352.7) / / / 28 / |
+| AMT | B6 | maint_capex | 2024 | 1.574e+08 | 1.713e+08 | Capital improvement capital expenditures / / (185.2) / / / (157.4) |
+| AMT | B6 | maint_capex | 2025 | 1.852e+08 | 1.956e+08 | Capital improvement capital expenditures / / (185.2) / / / (157.4) |
+| CB | B4 | cat_loss_latest | 2025 | 5.84e+08 | 2.805e+09 |  / Net catastrophe losses / $ / 584 / / / $ / 1,103 / / / $ / 710 / |
+| CB | B4 | inv_equity | 2025 | 5.282e+09 | 1.08e+10 | Equity securities (1)  / 5,163 / / / — / / / 119 / / / 5,282 |
+| CB | B4 | inv_fixed_maturities | 2025 | 1.227e+11 | 1.308e+11 |  / / $ / 124,726 / / / $ / (52) / / / $ / 1,954 / / / $ / (3,948) / / / $ / 122,680 / / / / |
+| CB | B4 | inv_other | 2025 | 1.075e+10 | 2.234e+10 | Total / $ / 10,749 / / / $ / 8,597 |
+| JPM | B2 | loan_line | 2025 | 1.493e+12 | 1.409e+12 | Loans retained / $ / 1,408,905 / / / $ / 1,299,590 / / / $ / 8,273 / / $ / 7,175 |
+| O | B11 | op_units_count | 2025 | 2.682e+06 | 2.76e+06 | (1) 2,681,808 units were outstanding as of both December 31, 2025 and 2024. 1,795,167 units were outstanding as of December 31, 2023. |
+| O | B12 | recon_nci_jv | 2024 | 2.912e+07 | -3.902e+06 | Proportionate share of adjustments for unconsolidated entities 33,345 29,124 |
+| O | B12 | recon_nci_jv | 2025 | 3.334e+07 | -1.005e+07 | Proportionate share of adjustments for unconsolidated entities 33,345 |
+| O | B12 | recon_re_da | 2024 | 2.396e+09 | 2.422e+09 | Depreciation and amortization 2,524,200 2,395,644 |
+| O | B12 | recon_re_da | 2025 | 2.524e+09 | 2.555e+09 | Depreciation and amortization 2,524,200 |
+| O | B5 | acquisition_invested | 2025 | 4.152e+09 | 6.3e+09 |  / Total real estate acquisitions / 268 / / / / / $ / 4,152.1 / / / 10.1 / |
+| O | B5 | acquisition_yield | 2025 | 7 | 7.3 | Initial weighted average cash yield (1)  / / / / / 7.0 / % / / / |
+| O | B5 | occupancy | 2025 | 99 | 98.9 |  / Total/average / 15,511 / / 99 / % / / 355,035 / / 100.0 / % |
+| O | B6 | straight_line_rent_affo | 2024 | -1.719e+08 | 1.719e+08 | Straight-line rent and expenses, net / / / / / (169,217) / / / (171,887) |
+| O | B6 | straight_line_rent_affo | 2025 | -1.692e+08 | 1.692e+08 | Straight-line rent and expenses, net / / / / / (169,217) / / / (171,887) |
+| PLD | B11 | op_units_count | 2025 | 1.49e+07 | 2.176e+07 | There were limited partnership units in the OP, excluding the Class A Units, that were exchangeable into cash or, at our option, 14.9 million and 9.0 million shares of the Parent’s common stock, at... |
+| PLD | B12 | re29_re_sale_gains | 2024 | -4.14e+08 | 4.14e+08 | Gains on dispositions of development properties and land, net (258 ) (414 ) |
+| PLD | B12 | re29_re_sale_gains | 2025 | -2.58e+08 | 2.58e+08 | Gains on dispositions of development properties and land, net (258 ) (414 ) |
+| PLD | B12 | re29b_fx_net | 2024 | -6.8e+07 | 6.734e+07 | Unrealized foreign currency, derivative and other losses (gains), net 125 (68 ) |
+| PLD | B12 | re29b_fx_net | 2025 | 1.25e+08 | -1.257e+08 | Unrealized foreign currency, derivative and other losses (gains), net 125 (68 ) |
+| PLD | B12 | recon_re_da | 2024 | 2.504e+09 | 2.999e+09 | Real estate related depreciation and amortization 2,539 2,504 |
+| PLD | B12 | recon_re_da | 2025 | 2.539e+09 | 3.09e+09 | Real estate related depreciation and amortization 2,539 2,504 |
+| PLD | B5 | development_invested | 2024 | 1.235e+09 | 4.13e+09 | TEI $ 2,943 $ 1,235 |
+| PLD | B5 | development_invested | 2025 | 2.943e+09 | 2.271e+09 | TEI $ 2,943 $ 1,235 |
+| PLD | B8 | committed_undrawn_facilities | 2025 | 6.431e+09 | 6.5e+09 | Current availability $ 6,431 |
+| O | B10 | bsa_inre [consolidated] (CSV class bsa_carry) | 2025 | 1.256e+09 | 1.256e+09 | Investment in unconsolidated entities / 1,256,456 / / / 1,229,699 |
+| AMT | B10 | bsa_wc [CONSOLIDATED BALANCE SHEETS] (CSV class bsa_excl) | 2025 | 1.475e+09 | 1.475e+09 | Cash and cash equivalents / / $ / 1,474.8 |
+| AMT | B10 | bsa_carryfin [CONSOLIDATED BALANCE SHEETS] (CSV class bsa_wc) | 2025 | 8.769e+08 | 8.769e+08 | NOTES RECEIVABLE AND OTHER NON-CURRENT ASSETS / / 876.9 |
+| PLD | B10 | bsa_inre [consolidated] (CSV class bsa_carry) | 2025 | 1.109e+10 | 1.109e+10 | Investments in and advances to unconsolidated entities 11,093,936 |
+| PLD | B10 | bsa_other [consolidated] (CSV class bsa_noi) | 2025 | 2.033e+08 | 2.033e+08 | Assets held for sale or contribution 203,344 |
+
+תבניות בולטות בהבדלים: (1) **סימן** — O/PLD ב-B12 וב-B6 (`straight_line_rent_affo`, `re29_re_sale_gains`, `re29b_fx_net`): ה-AI שומר את הסימן כפי שבציטוט (סוגריים) והמנוע/ה-CSV מצפים לסימן הפוך; (2) **שנה** — PLD/O: בטבלה דו-שנתית המודל הצמיד עמודה לא נכונה (`recon_re_da`, `development_invested`); (3) **CB B4** — נלקחה שורת "Total" אחרת; (4) **JPM B2** — ברוטו מול "retained". ייתכן שחלק מהפערים הם טעויות CSV (למשל PLD `recon_re_da`); **לא נבדקו אחד-אחד**.
+
+### ג. השפעה על ציון
+
+**ניקוד AI בלבד (9 חברות; לפני = golden 2026-10-20 ללא AI):**
+
+| Company | Model | Score before | Score after | Range before | Range after | Coverage before / after | Buy price before | Buy price after |
+|---|---|---:|---:|---|---|---|---:|---:|
+| MSFT | buffett | 96.18 | 96.12 | 78.12–97.12 | 96.12–96.12 | full 1.00 / full 1.00 | 306.03 | 305.96 |
+| MSFT | graham | 94.04 | 92.38 | 88.38–94.38 | 92.38–92.38 | full 1.00 / full 1.00 | 85.74 | 85.14 |
+| KO | buffett | 84.57 | 87.38 | 70.38–87.38 | 87.38–87.38 | full 1.00 / full 1.00 | 26.43 | 26.79 |
+| KO | graham | 68.89 | 67.23 | 63.23–69.23 | 65.23–67.23 | full 1.00 / full 0.98 | 11.57 | 11.27 |
+| INTC | buffett | 15.92 | 25.24 | 12.22–31.22 | 24.22–28.22 | full 1.00 / full 0.96 | - | - |
+| INTC | graham | 48.39 | 45.64 | 43.64–49.64 | 45.64–45.64 | full 1.00 / full 1.00 | - | - |
+| UBER | buffett | 61.82 | 69.84 | 49.84–69.84 | 69.84–69.84 | full 1.00 / full 1.00 | 5.51 | 5.97 |
+| UBER | graham | 41.73 | 40.96 | 37.21–43.21 | 39.21–41.21 | full 1.00 / full 0.98 | - | - |
+| JPM | buffett | 91.40 | 94.04 | 76.04–94.04 | 94.04–94.04 | full 1.00 / full 1.00 | 241.97 | 244.56 |
+| JPM | graham | 87.03 | 87.03 | 83.03–87.03 | 87.03–87.03 | full 1.00 / full 1.00 | 122.36 | 122.36 |
+| CB | buffett | 92.75 | 94.24 | 71.67–94.24 | 94.24–94.24 | full 0.90 / full 0.90 | 282.09 | 283.78 |
+| CB | graham | 89.64 | 89.64 | 84.94–89.64 | 89.64–89.64 | full 0.85 / full 0.85 | 148.82 | 148.82 |
+| PGR | buffett | 91.56 | 93.56 | 72.67–93.56 | 93.56–93.56 | full 0.90 / full 0.90 | 119.13 | 120.10 |
+| PGR | graham | 90.40 | 90.40 | 85.06–90.40 | 90.40–90.40 | partial 0.75 / partial 0.75 | - | - |
+| O | buffett | 79.38 | 84.93 | 59.27–85.10 | 82.74–85.10 | full 0.83 / full 0.83 | 46.95 | 49.23 |
+| O | graham | 84.76 | 84.76 | 76.50–85.39 | 80.94–85.39 | full 0.86 / full 0.86 | 31.24 | 31.24 |
+| AMT | buffett | 78.29 | 82.83 | 56.59–84.19 | 80.66–83.01 | full 0.83 / full 0.83 | 101.93 | 106.02 |
+| AMT | graham | 92.14 | 90.81 | 86.81–92.14 | 90.81–90.81 | partial 0.75 / partial 0.75 | - | - |
+
+השינויים ברמת הקריטריון מפורטים בפלט `scripts/ai_report_k5b.py scripts/output_k5b/golden_scoring`. הציונים הפכו מטווחים לערך בודד.
+
+**חילוץ AI מול CSV (7 חברות; ניקוד ה-AI זהה בשלוש העמודות):**
+
+| Company | Model | Score CSV | AI approved | AI incl. pending | Cov CSV / approved / all | Buy price CSV | approved | all |
+|---|---|---:|---:|---:|---|---:|---:|---:|
+| JPM | buffett | 94.04 | 94.04 | 94.04 | 1.00 / 1.00 / 1.00 | 244.56 | 244.56 | 244.56 |
+| JPM | graham | 87.03 | 87.03 | 87.03 | 1.00 / 1.00 / 1.00 | 122.36 | 122.36 | 122.36 |
+| USB | buffett | 74.97 | 74.97 | 74.97 | 1.00 / 1.00 / 1.00 | 40.55 | 40.55 | 40.55 |
+| USB | graham | 70.75 | 70.75 | 70.75 | 1.00 / 1.00 / 1.00 | 30.72 | 30.72 | 30.72 |
+| CB | buffett | 94.24 | 94.24 | 94.24 | 0.90 / 0.90 / 0.90 | 283.78 | 283.78 | 283.78 |
+| CB | graham | 89.64 | 90.05 | 90.05 | 0.85 / 0.85 / 0.85 | 148.82 | 149.10 | 149.10 |
+| PGR | buffett | 93.56 | 93.56 | 93.56 | 0.90 / 0.90 / 0.90 | 120.10 | 120.10 | 120.10 |
+| PGR | graham | 90.40 | 90.40 | 90.40 | 0.75 / 0.75 / 0.75 | - | - | - |
+| O | buffett | 84.93 | 88.72 | 80.09 | 0.83 / 0.83 / 0.83 | 49.23 | - | - |
+| O | graham | 84.76 | 84.76 | 81.96 | 0.86 / 0.86 / 0.86 | 31.24 | 31.24 | 31.90 |
+| AMT | buffett | 82.83 | 76.21 | 76.21 | 0.83 / 0.83 / 0.83 | 106.02 | 79.14 | 79.14 |
+| AMT | graham | 90.81 | 85.92 | 85.92 | 0.75 / 0.75 / 0.75 | - | - | - |
+| PLD | buffett | 77.93 | 71.03 | 71.03 | 0.98 / 0.98 / 0.98 | 47.14 | 43.90 | 43.90 |
+| PLD | graham | 94.68 | 93.77 | 93.77 | 0.75 / 0.75 / 0.75 | - | - | - |
+
+קריטריונים שהשתנו:
+
+| Company | Model | Criterion | CSV | AI approved | AI incl. pending |
+|---|---|---|---:|---:|---:|
+| CB | graham | 3.7 Quality of equity and assets | 5.23 | 5.57 | 5.57 |
+| O | buffett | 3.2 Moat | 9.18 | 9.18 | 5.82 |
+| O | buffett | 3.5 Owner earnings | 11.65 | 13.92 | 11.93 |
+| O | buffett | 3.8 Quality, sustainable growth | 9.58 | 10.52 | 8.53 |
+| O | graham | 3.5 Dividend history | 9.30 | 9.30 | 9.15 |
+| O | graham | 3.6 Moderate earnings growth | 12.57 | 12.57 | 10.21 |
+| AMT | buffett | 3.2 Moat | 9.00 | 6.90 | 6.90 |
+| AMT | buffett | 3.3 Consistent profitability | 13.97 | 12.97 | 12.97 |
+| AMT | buffett | 3.5 Owner earnings | 10.83 | 10.13 | 10.13 |
+| AMT | buffett | 3.7 Management and capital allocation | 8.09 | 8.54 | 8.54 |
+| AMT | buffett | 3.8 Quality, sustainable growth | 9.28 | 7.00 | 7.00 |
+| AMT | graham | 3.4 Earnings stability | 15.00 | 13.02 | 13.02 |
+| AMT | graham | 3.5 Dividend history | 9.00 | 8.84 | 8.84 |
+| AMT | graham | 3.6 Moderate earnings growth | 12.11 | 11.83 | 11.83 |
+| AMT | graham | 3.8 Earnings quality and dilution | 10.00 | 8.75 | 8.75 |
+| PLD | buffett | 3.2 Moat | 6.54 | 1.04 | 1.04 |
+| PLD | buffett | 3.4 Return on capital | 11.28 | 11.32 | 11.32 |
+| PLD | buffett | 3.5 Owner earnings | 11.93 | 9.96 | 9.96 |
+| PLD | buffett | 3.6 Balance sheet and debt | 9.71 | 9.70 | 9.70 |
+| PLD | buffett | 3.8 Quality, sustainable growth | 9.02 | 10.24 | 10.24 |
+| PLD | graham | 3.2 Financial condition and liquidity | 14.82 | 14.79 | 14.79 |
+| PLD | graham | 3.5 Dividend history | 9.59 | 9.66 | 9.66 |
+| PLD | graham | 3.8 Earnings quality and dilution | 7.79 | 7.08 | 7.08 |
+
+* **JPM, USB, PGR, CB buffett:** אפס שינוי. CB graham +0.41.
+* **נדל"ן — שינוי ממשי:** AMT buffett ‎82.83→76.21 (מחיר קנייה 106.02→79.14), PLD buffett ‎77.93→71.03 (47.14→43.90), O buffett ‎84.93→88.72 (מאושרים בלבד) / 80.09 (כולל pending), ומחיר הקנייה של O buffett **נעלם** כשערכי ה-AI נכנסים. חלק מהכיוון נובע מהבדלי הסימן/שנה שלמעלה — **אין להפעיל חילוץ AI בנדל"ן לפני תיקון והשוואה פריט-פריט**.
+* מאושרים מול pending: בבנקים/ביטוח אין הבדל; ב-O ההבדל גדול (88.72 מול 80.09).
+
+### ד. קריאות בפועל וקיבולת (מדידה, מחליפה את ההערכה בסעיף 6)
+
+* **ניקוד:** 118 קריאות ל-9 חברות = **13.1 לחברה** (בלי סיווג, שמוסיף 1).
+* **חילוץ, דוח אחרון:** בנק 3.5 (JPM 3, USB 4), ביטוח 3, נדל"ן 10; חברה כללית — לא הורצה (B14 בלבד, 0–1).
+* **לחברה (ניקוד + סיווג + חילוץ):** כללית ≈ 15; בנק ≈ 17.6; ביטוח ≈ 17; נדל"ן ≈ 24.
+* **חברות ליום עם 450:** כללית ≈ 30; בנק ≈ 25; ביטוח ≈ 26; נדל"ן ≈ 18 (דוח אחרון בלבד; טעינת 5 שנים מוסיפה ~50–100% לחילוץ ← נדל"ן ≈ 13–15, בנק/ביטוח ≈ 20–22). היום נוצלו 168 מתוך 450.
+
+**pytest מלא אחרי התיקונים: 545 עברו.**
+
+### ה. מה נשאר פתוח
+1. לפני שימוש בחילוץ AI: נירמול סימן לפי שם פריט (O/PLD B12/B6); בדיקת שיוך עמודת שנה בטבלאות דו-שנתיות; USB GENERAL `invalid_json`; INTC A11 "Wait,..." בנימוק. **לא בוצע** (מעבר לטווח הריצה האוטומטית).
+2. שאלות #2 (KO A11) ו-#5 (רשימת B14) — ללא שינוי.
+
+---
 
 ## עדכון לאחר ההחלטות (22.10, ‏~15:00) — הוחל בקוד, **עדיין לא נבדק מול המודל**
 
@@ -10,7 +275,7 @@
 4. **מכסה:** `src/ai/usage.py` — מונה יומי משותף בקובץ (`scripts/ai_store/usage.json`, יום לפי שעון פסיפיק, תקרה **450** לכל התהליכים יחד, כל ניסיון בקשה נספר) ונעילת תהליך יחיד (`run.lock`; תהליך חדש לא מתחיל כשיש פעיל ורענן). פעיל בלקוח אמיתי בלבד (לא בבדיקות). אותחל ל-500 להיום (מוצה).
 5. **B14:** `src/ai/b14.py` — הרשימה נגזרת ממילון Part E לפי פרופיל: פריטי מנוע על דוח רווח והפסד / מאזן / תזרים (נוסף מקטע `X-CF`), נשלפים בקוד מתג (לא C5), שאינם מכוסים ב-B1–B13, וחסרי ערך מתג באותה שנה (מאזן: שתי שנים אחרונות). כולם בקריאה אחת לדוח. ספירה (פריט-שנה, 3 שנים אחרונות): JPM 66 נדרשו / 63 מכוסים בתגים / 3 נשאלים; USB 66/63/3; CB 87/80/7; PGR 87/65/22; O 93/73/20; AMT 93/71/22; PLD 93/79/14. פריט B14 שאינו ברשימת "מזין תת-פריט יחיד" → `pending`.
 
-## 0. מצב השלב בקצרה
+## 0. מצב השלב בקצרה (22.10, לפני האיפוס — הוחלף בסעיף "תוצאות הרצה אמיתית" למעלה)
 
 | חלק | מצב |
 |---|---|
@@ -99,7 +364,7 @@
 
 מועמדי B14 / מחוץ לבלוקים: כל מה שבעמודת "לא מכוסות" (לא ידוע אם המנוע זקוק להם בהכרח; `funding:*` ו-`nonaccrual`/`past_due` נכנסו לרשימת B14 של הבנקים). הערות: (א) שורות רבעוניות (`*_q`) ב-RE מסוכמות בטוען ל-שנה; ה-AI מחלץ שנתי — ההשוואה מדלגת על `_q`. (ב) `alm_disclosed` ב-CSV הוא טקסט, ב-AI 1/0. (ג) ב-B12, `recon_jv_other_adjust` ו-`recon_nci_adjust` ממופים ל-`recon_nci_jv` (שני עמודות CSV → פריט אחד ב-AI) ולכן השוואה לפי סכום.
 
-## 5. הרצת חילוץ (סעיף 5) — לא הורצה
+## 5. הרצת חילוץ (סעיף 5) — תכנון (הורץ ב-23.10; ראו תוצאות למעלה)
 
 תכנון ההרצה (חברות: JPM, USB; CB, PGR; O, AMT, PLD; דוח אחרון בלבד כולל תקופות ההשוואה): בנק 2 בלוקים + B14 = 3 קריאות; מבטחת 2 + B14 = 3; נדל"ן 9 בלוקים (B5–B13) + B14 = 10. סה"כ **42 קריאות** (+ ניסיונות חוזרים), מתחת ל-70. הפקודה (אחרי איפוס המכסה):
 

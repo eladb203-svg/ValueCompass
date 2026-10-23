@@ -184,6 +184,11 @@ def _by_year(rows: list, key: str) -> dict:
     return {r["year"]: r for r in rows if r["item_key"] == key and r.get("value_full") is not None}
 
 
+def _fld(r: dict, k: str):
+    """Field of an item row: flat in stored rows, nested under ``item`` in the older test rows."""
+    return r[k] if k in r else (r.get("item") or {}).get(k)
+
+
 def _group(rows: list, key: str) -> dict:
     out: dict = {}
     for r in rows:
@@ -215,7 +220,7 @@ def control_loans_sum(rows: list) -> dict:
     lines = _group(rows, "loan_line")
     out, bad = [], []
     for y in sorted(set(tot) & set(lines)):
-        ls = [r for r in lines[y] if not re.match(r"\s*total\b", str(r["item"].get("basis") or ""), re.I)]
+        ls = [r for r in lines[y] if not re.match(r"\s*total\b", str(_fld(r, "basis") or ""), re.I)]
         s = sum(r["value_full"] for r in ls)
         diff = abs(s - tot[y]["value_full"]) / abs(tot[y]["value_full"]) if tot[y]["value_full"] else 1.0
         (out if diff <= 0.01 else bad).append(f"{y}: sum of {len(ls)} lines {s:,.0f} vs total {tot[y]['value_full']:,.0f} ({diff:.2%})")
@@ -242,7 +247,7 @@ def control_inv_sum(rows: list) -> dict:
 
 
 def control_bounds(rows: list) -> dict:
-    bad = [f"{r['item_key']} {r['year']}: {r['value_full']}" for r in rows if r["item"].get("unit") == "percent" and r.get("value_full") is not None and not (0.0 <= r["value_full"] <= 100.0)]
+    bad = [f"{r['item_key']} {r['year']}: {r['value_full']}" for r in rows if _fld(r, "unit") == "percent" and r.get("value_full") is not None and not (0.0 <= r["value_full"] <= 100.0)]
     return ctl("bounds_0_100", "fail" if bad else "pass", "; ".join(bad) or "all percentages within 0-100", [])
 
 
