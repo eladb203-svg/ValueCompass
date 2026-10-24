@@ -2,31 +2,35 @@
 version: 1
 d1:
   skill_id: BG-1
-  version: 2
+  version: 3
   sections: [TXT-001, TXT-003, TXT-005]
+  caps: {TXT-001: 35000, TXT-003: 12000, TXT-005: 12000}       # characters per section when the prompt is cut
+  moat_prefix: {2: "יתרון תחרותי ברור:", 1: "יתרון תחרותי לא מוכח:", 0: "אין יתרון תחרותי מזוהה"}
   template: |
     SYSTEM
     You assist ValueCompass. Write a short background of the company for investors, using
     ONLY the annual-report text and the facts provided. Do not use outside knowledge. Do not
     give opinions on the stock, its price or its score. Do not state any number that is not in
-    FACTS. Write ALL of the text in Hebrew, plain and neutral: do not copy English sentences from
-    FACTS or from the report (only names of companies and products may stay in Latin letters), and
-    translate the facts into your own Hebrew wording. Keep each of the five parts to ONE sentence
-    and the whole text under 120 words.
+    FACTS; copy numbers exactly as formatted in FACTS. Write ALL of the text in Hebrew, plain and
+    neutral: do not copy English sentences from FACTS or from the report, and translate the facts
+    into your own Hebrew wording. The only Latin letters allowed are the names of the company and
+    of its competitors exactly as they appear in the report (for example Chubb, never a Hebrew
+    transliteration), tickers, and terms given in FACTS. Segment names, product names and every other term must be translated into Hebrew. Never mix scripts inside one word. Never use the ASCII double-quote character inside the Hebrew text (write abbreviations with ״, for example נדל״ן). Keep
+    each of the five parts to ONE sentence and the whole text under 120 words.
     "competitors" lists only companies named BY NAME in the report text (an empty list when none is named;
-    never a category such as "other banks"). Every competitor you name must be named in the report text and quoted. Copy each quote as one continuous passage, exactly as it
-    appears in the TEXT, without shortening or joining passages; quotes must come from the report text, never from FACTS.
+    never a category such as "other banks"). Every competitor you name must be quoted. Copy each quote as one
+    continuous passage, exactly as it appears in the TEXT, without shortening or joining passages; quotes must
+    come from the report text, never from FACTS.
 
     STRUCTURE (exactly these five parts, one or two sentences each; total at most 120 words)
     1. What the company does and its main products or services.
     2. Main segments.
     3. Where it operates (main markets / geographies).
     4. Business environment and main competitors (as named in the report).
-    5. Competitive advantage - use MOAT exactly as given; do not add or change it.
+    5. Competitive advantage. Level {moat_answer}: {moat_instruction}
 
-    FACTS (from ValueCompass): industry {industry}; revenue {revenue} {currency} (FY{fiscal_year});
-    ONE SENTENCE: {one_sentence}; MOAT: {moat_answer} / {moat_source} / {moat_reasoning}
-    MOAT in Hebrew: write the competitive advantage with this Hebrew term: "{moat_term_he}"
+    FACTS (from ValueCompass): industry {industry}; revenue {revenue} (FY{fiscal_year}); company name: {company_name} (write it in Latin letters with exactly this spelling and capitalization; never in capitals, never transliterated);
+    ONE SENTENCE: {one_sentence}; MOAT: level {moat_answer} / source {moat_source} / {moat_reasoning}
 
     TEXT ({sections}, filing {accession}):
     <<<
@@ -38,7 +42,7 @@ d1:
      "competitors": ["<as named>"], "quotes": [{{"text": "<exact quote>", "section": "..."}}]}}
 d2:
   skill_id: AN-1
-  version: 3
+  version: 4
   template: |
     SYSTEM
     You assist ValueCompass. Explain a company's ValueCompass results to an investor, using
@@ -47,25 +51,29 @@ d2:
     (it changes daily), the price score, the current margin of safety, a discount, an upside
     or a conclusion; they are not in RESULTS. Write in Hebrew, plain and neutral.
 
-    You compose; code has prepared the words. Use the Hebrew names of the criteria, the metrics and
+    You compose; code has prepared the words and the numbers. Use the Hebrew names of the criteria, the metrics and
     the labels EXACTLY as they appear in RESULTS and PEERS (no synonyms, no English names). The words
     for strength ("strength_he") and for the position among peers ("position_he") are given by code:
-    copy them, do not choose your own.
+    copy them, do not choose your own. Never use the ASCII double-quote character inside the Hebrew text (use ״ in abbreviations). Copy every number EXACTLY as formatted in RESULTS (for example "$33.16",
+    "331.8 מיליארד $", "21.0%"); never write a number in another format. Scores that are a range are written as the range
+    with the word "משוער", exactly as given in "score_display".
 
     STRUCTURE (two paragraphs, each at most 60 words; fill the frames in this order, at most one
     connecting sentence of your own per paragraph)
     1. Quality. Frame:
-       "ציון האיכות לפי באפט: {{X}}/100 ({{label}}); לפי גרהם: {{Y}}/100 ({{label}}). הקריטריונים החזקים: {{...}}. החלשים: {{...}}. ביחס ל-{{n}} עמיתים ({{group}}): {{position}}."
+       "ציון האיכות לפי באפט: {{score_display}} ({{label}}); לפי גרהם: {{score_display}} ({{label}}). הקריטריונים החזקים: {{...}}. הנמוך ביותר: {{name}} ({{strength_he}}) לפי באפט, {{name}} ({{strength_he}}) לפי גרהם. ביחס ל-{{n}} עמיתים ({{group}}): {{position}} לפי באפט, {{position}} לפי גרהם."
+       Omit "({{label}})" when label_he is null. The last sentence (the comparison with peers) is written ONLY when PEERS.compare is true; otherwise write
+       nothing about peers. When there is no strong criterion write "הקריטריונים החזקים: אין".
     2. Value. Frame:
-       "השווי לפי באפט: {{value}} ({{method}}); מחיר הקנייה: {{buy price}}, במרווח ביטחון נדרש של {{mos}}%. לפי גרהם: {{value}} ({{method}}); מחיר הקנייה: {{buy price}}."
+       "השווי לפי באפט: {{value}} ({{method}}); מחיר הקנייה: {{buy price}}, במרווח ביטחון נדרש של {{mos}}. לפי גרהם: {{value}} ({{method}}); מחיר הקנייה: {{buy price}}."
        Then blocks, flags, or "לא מתאים לרכישה" when they apply (state in RESULTS). When a buy price is
        not shown for a model, write its state in words instead of the buy price.
     Every number you write must appear in RESULTS, PEERS or CHANGES.
     criteria_cited lists ONLY the criteria you actually name in the two paragraphs (by their id).
 
     WORKED EXAMPLE (a fictional company; it shows the style, not the content)
-    quality_he: "ציון האיכות לפי באפט: 81.0/100 (עסק טוב); לפי גרהם: 66.5/100 (גבולית). הקריטריונים החזקים: רווחיות עקבית, מאזן חזק וחוב סביר. החלשים: צמיחה איכותית ובת קיימא. ביחס ל-9 עמיתים (אותו פרופיל ואותו ענף): מעל החציון."
-    value_he: "השווי לפי באפט: 40.00 (תזרים מהוון); מחיר הקנייה: 31.60, במרווח ביטחון נדרש של 21.0%. לפי גרהם: 25.00 (מספר גרהם); מחיר הקנייה: 17.80."
+    quality_he: "ציון האיכות לפי באפט: 81.0/100 (עסק טוב); לפי גרהם: 62.0–66.0/100, משוער. הקריטריונים החזקים: רווחיות עקבית, מאזן חזק וחוב סביר. הנמוך ביותר: צמיחה איכותית וברת קיימא (חלש) לפי באפט, צמיחת רווחים מתונה (חלש) לפי גרהם. ביחס ל-9 עמיתים (אותו פרופיל ואותו ענף): מעל החציון לפי באפט, מתחת לחציון לפי גרהם."
+    value_he: "השווי לפי באפט: $40.00 (תזרים מהוון); מחיר הקנייה: $31.60, במרווח ביטחון נדרש של 21.0%. לפי גרהם: $25.00 (מספר גרהם); מחיר הקנייה: $17.80."
     change_he: "לעומת הריצה הקודמת (2026-01-15): חפיר עלה מ-3.0 ל-6.5 — דוח שנתי חדש."
 
     RESULTS (from the scoring run {run_id}; profile {profile}):
@@ -77,9 +85,9 @@ d2:
     OUTPUT
     {{"skill_id": "AN-1", "version": {version}, "quality_he": "<paragraph 1>", "value_he": "<paragraph 2>",
      "criteria_cited": ["<criterion id>", ...]{change_field}}}
-# fixed words of the frames: each must appear, in order, in its paragraph (not required when the model has no score / no price: the frame then names the state)
+# fixed words of the frames: each must appear, in order, in its paragraph
 frames:
-  quality: ["ציון האיכות לפי באפט", "לפי גרהם", "הקריטריונים החזקים", "החלשים", "ביחס ל"]
+  quality: ["ציון האיכות לפי באפט", "לפי גרהם", "הקריטריונים החזקים", "הנמוך ביותר"]
   value: ["השווי לפי באפט", "לפי גרהם"]
 # Hebrew words of the moat sources (a D1 text must name the source A7 found; naming only another source fails the check)
 moat_words:
@@ -99,21 +107,21 @@ forbidden_words: ["לקנות", "למכור", "כדאי לרכוש", "כדאי �
 glossary:
   criteria:
     B-3.1: "עסק פשוט ומובן"
-    B-3.2: "חפיר"
+    B-3.2: "יתרון תחרותי / חפיר"
     B-3.3: "רווחיות עקבית"
-    B-3.4: "תשואה על ההון"
-    B-3.5: "FCF / owner earnings"
+    B-3.4: "תשואה גבוהה על ההון / הון מושקע"
+    B-3.5: "תזרים מזומנים חופשי / רווחי בעלים"
     B-3.6: "מאזן חזק וחוב סביר"
     B-3.7: "הנהלה והקצאת הון"
-    B-3.8: "צמיחה איכותית ובת קיימא"
-    G-3.1: "גודל ויציבות העסק"
+    B-3.8: "צמיחה איכותית וברת קיימא"
+    G-3.1: "גודל חברה ויציבות עסקית"
     G-3.2: "מצב פיננסי ונזילות"
     G-3.3: "חוב נמוך ושמרנות מאזנית"
     G-3.4: "יציבות רווחים"
-    G-3.5: "היסטוריית דיבידנדים"
+    G-3.5: "היסטוריית דיבידנד"
     G-3.6: "צמיחת רווחים מתונה"
     G-3.7: "איכות ההון והנכסים"
-    G-3.8: "איכות רווחים ודילול"
+    G-3.8: "איכות רווחים ודילול מניות"
   metrics:
     STANDARD: {revenue: "הכנסות", net_income: "רווח נקי", eps: "רווח למניה", roe: "תשואה על ההון", fcf: "תזרים חופשי", leverage: "חוב / הון"}
     BANK: {revenue: "הכנסות הבנק", net_income: "רווח נקי", eps: "רווח למניה", roe: "תשואה על ההון המוחשי (ROTCE)", fcf: null, leverage: "יחס CET1"}
@@ -126,12 +134,13 @@ glossary:
   methods:
     dcf: "תזרים מהוון"
     two_stage_excess_returns: "תשואה עודפת דו-שלבית"
+    two_stage_excess_returns_on_adjusted_equity: "תשואה עודפת דו-שלבית על הון מתואם"
+    dcf_oe_per_share_no_debt_subtraction: "היוון Owner earnings"
     graham_number: "מספר גרהם"
+    graham_tech: "מכפיל FCF מותאם (גרהם לטכנולוגיה)"
     graham_number_tangible_book_10y_eps: "מספר גרהם על הון מוחשי"
     graham_number_operating_eps_adjusted_tbvps: "מספר גרהם תפעולי"
-    dcf_oe_per_share_no_debt_subtraction: "היוון Owner earnings"
-    nav: "שווי נכסי נקי (NAV)"
-    default: "שיטת הפרופיל"
+    conservative_nav: "NAV שמרני"
   states:
     not_suitable: "לא מתאים לרכישה"
     blocked: "חסום"

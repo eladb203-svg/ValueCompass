@@ -49,3 +49,12 @@ def test_a_quality_range_enters_with_its_middle_and_is_marked():
     c["buffett"] = {"score": 55.0, "range_min": 50.0, "range_max": 90.0, "status": "partial"}
     assert P.score_of(c["buffett"]) == (70.0, True)
     assert P.score_of({"score": 55.0, "range_min": 55.0, "range_max": 55.0}) == (55.0, False) and P.score_of(None) == (None, False)
+
+
+def test_peers_with_a_final_score_are_counted_for_the_comparison():
+    R = [rec("A")] + [rec(f"P{i}") for i in range(4)]
+    rng = rec("RNG")
+    rng["buffett"] = {"score": 50.0, "range_min": 40.0, "range_max": 60.0, "status": "full"}
+    R.append(rng)
+    q = P.peer_percentiles(R[0], P.peer_group(R[0], R), R)["quality"]["buffett"]
+    assert q["n"] == 5 and q["n_final"] == 4 and q["range_midpoint"] is False

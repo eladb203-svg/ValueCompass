@@ -39,7 +39,7 @@ def d1_inputs(rec: dict, store: AssessmentStore) -> tuple:
     ex5, ex7 = (a5.get("evidence") or {}).get("extra") or {}, (a7.get("evidence") or {}).get("extra") or {}
     moat_source = ex7.get("moat_source") or ("none" if a7.get("answer") == 0 else None)
     missing = [q for q, a in (("B3.1-Q5 (one_sentence)", ex5.get("one_sentence")), ("B3.2-Q5 (moat)", ex7.get("moat_source") or a7)) if not a]
-    facts = C.d1_facts(rec["industry"], rec["metrics"].get("revenue"), "USD", fy, ex5.get("one_sentence"), a7.get("answer"), moat_source, (a7.get("evidence") or {}).get("reasoning"))
+    facts = C.d1_facts(rec["industry"], rec["metrics"].get("revenue"), "USD", fy, ex5.get("one_sentence"), a7.get("answer"), moat_source, (a7.get("evidence") or {}).get("reasoning"), company_name=rec["name"])
     return facts, moat_source, missing
 
 
@@ -66,6 +66,7 @@ def main(argv=None) -> None:
     ap.add_argument("--out-root", default=str(ROOT / "scripts" / "ai_store" / "k5c"))
     ap.add_argument("--rpm", type=int, default=20)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--kind", choices=["both", "d1", "d2"], default="both")
     ap.add_argument("--recheck", action="store_true", help="no calls: re-run the current checks on the stored raw answers of failed D1 texts")
     ap.add_argument("--seed-shift", type=int, default=0, help="seed offset added to the calls (to retry failed texts with other seeds)")
     a = ap.parse_args(argv)
@@ -107,12 +108,12 @@ def main(argv=None) -> None:
             print(f"  {t}: group n={g['n']} fallback={g['fallback']}; D1 prompt {len(d1_prompt)} chars (sections {sent}, missing inputs {missing}); D2 prompt {len(d2_prompt)} chars", flush=True)
             continue
         if a.recheck:
-            r1 = C.recheck_background(co, facts, secs, moat_source, store)
+            r1 = C.recheck_background(co, facts, secs, store)
             print(f"  {t}: D1 {r1['state'] if r1 else None} (recheck) {r1['checks']['reasons'] if r1 else ''}", flush=True)
             continue
-        r1 = C.generate_background(co, facts, secs, moat_source, client, store, force=a.force)
-        r2 = C.generate_analysis(t, co.fiscal_year, inputs, client, store, force=a.force)
-        print(f"  {t}: D1 {r1['state']} {r1['checks']['reasons']}; D2 {r2['state']} {r2['checks']['reasons']}", flush=True)
+        r1 = C.generate_background(co, facts, secs, client, store, force=a.force) if a.kind in ("both", "d1") else {"state": "-", "checks": {"reasons": []}}
+        r2 = C.generate_analysis(t, co.fiscal_year, inputs, client, store, force=a.force) if a.kind in ("both", "d2") else {"state": "-", "checks": {"reasons": []}}
+        print(f"  {t}: D1 {r1['state']} {r1['checks']['reasons']} {r1.get('regeneration_failed', '')}; D2 {r2['state']} {r2['checks']['reasons']}", flush=True)
     write_peer_groups(out / "peer_groups.jsonl", groups)
     if a.no_calls:
         (out / "dry_run.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in dry) + "\n", encoding="utf-8")

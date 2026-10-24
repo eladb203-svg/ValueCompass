@@ -67,7 +67,8 @@ def peer_percentiles(company: dict, group: dict, records: list) -> dict:
     for model in ("buffett", "graham"):
         s, rng = score_of(company.get(model))
         vals = [score_of(m.get(model))[0] for m in members]
-        out["quality"][model] = {"score": None if s is None else round(s, 1), "range_midpoint": rng, "percentile": percentile(s, vals), "n": sum(1 for v in vals if v is not None)}
+        n_final = sum(1 for m in members if score_of(m.get(model))[0] is not None and not score_of(m.get(model))[1])
+        out["quality"][model] = {"score": None if s is None else round(s, 1), "range_midpoint": rng, "percentile": percentile(s, vals), "n": sum(1 for v in vals if v is not None), "n_final": n_final}
     higher = HIGHER_IS_BETTER_BY_PROFILE.get(company["profile"], ())
     for k in METRICS:
         v = company.get("metrics", {}).get(k)
