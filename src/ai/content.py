@@ -226,10 +226,13 @@ def language_issues(text: str, allowed: list) -> list:
         issues.append("cyrillic_letters")
     if _ARB.search(t):
         issues.append("arabic_letters")
+    foreign = sorted({ch for ch in t if ch.isalpha() and not (_HEB.match(ch) or ch.isascii() or "À" <= ch <= "ɏ" or _CYR.match(ch) or _ARB.match(ch))})
+    if foreign:
+        issues.append(f"foreign_script_letters ({''.join(foreign)})")          # Thai, Greek, CJK ... : the model sometimes drops such letters inside a Hebrew word
     for a in sorted({x for x in allowed if x}, key=len, reverse=True):
         t = re.sub(re.escape(a), " ", t, flags=re.I)
     for tok in _WORDTOK.findall(t):
-        scripts = sum(bool(r.search(tok)) for r in (_HEB, _LAT, _CYR, _ARB))
+        scripts = sum(bool(r.search(tok)) for r in (_HEB, _LAT, _CYR, _ARB)) + (1 if any(ch.isalpha() and not (_HEB.match(ch) or ch.isascii() or "À" <= ch <= "ɏ" or _CYR.match(ch) or _ARB.match(ch)) for ch in tok) else 0)
         if scripts > 1:
             issues.append(f"mixed_script ({tok})")
     run = best = 0
@@ -255,6 +258,10 @@ def _company_token(name: str) -> str:
 # ---------------------------------------------------------------- checks
 def _is_year(v: float, dec: int, mult: float) -> bool:
     return dec == 0 and mult == 1.0 and 1900 <= v <= 2100
+
+
+WORD_LIMIT = 140          # check limit of a D1 text; the prompt asks for about 90-100 words
+MAX_COMPETITORS = 5
 
 
 def number_signature(text: str) -> list:
@@ -315,8 +322,8 @@ def check_background_en(raw: str, facts: dict, text_sent: str, sent: list, fisca
         return res
     if _HEB.search(text):
         res.reasons.append("not_english")
-    if count_words(text) > 120:
-        res.reasons.append(f"over_120_words ({count_words(text)})")
+    if count_words(text) > WORD_LIMIT:
+        res.reasons.append(f"over_{WORD_LIMIT}_words ({count_words(text)})")
     bad = unsupported_numbers(text, text_sent + "\n" + d1_facts_text(facts), (fiscal_year,) if fiscal_year else ())
     if bad:
         res.reasons.append("number_not_in_report (" + ", ".join(str(int(b) if b == int(b) else b) for b in bad) + ")")
@@ -327,6 +334,8 @@ def check_background_en(raw: str, facts: dict, text_sent: str, sent: list, fisca
         comps = []
     if not res.quotes and comps:
         res.reasons.append("no_quote")
+    if len(comps) > MAX_COMPETITORS:
+        res.reasons.append(f"too_many_competitors ({len(comps)})")
     qtext = " ".join(checks.normalize(q["text"]).casefold() for q in res.quotes if q["found"])
     res.reasons += [f"competitor_is_a_category ({c})" for c in comps if c[:1].islower()]
     res.reasons += [f"competitor_not_in_quote ({c})" for c in comps if checks.normalize(c).casefold() not in qtext]
@@ -356,8 +365,8 @@ def check_translation(raw: str, en_text: str, facts: dict, competitors: list) ->
     if not isinstance(text, str) or not text.strip():
         res.reasons.append("text_missing")
         return res
-    if count_words(text) > 120:
-        res.reasons.append(f"over_120_words ({count_words(text)})")
+    if count_words(text) > WORD_LIMIT:
+        res.reasons.append(f"over_{WORD_LIMIT}_words ({count_words(text)})")
     disp = facts.get("company_display") or facts.get("company_name", "")
     names = [disp] + list(competitors)
     res.reasons += language_issues(text, names + latin_terms())
@@ -540,6 +549,22 @@ def _call(client, prompt: str, seed_offset: int):
     return client.generate(prompt, seed_offset=seed_offset + SEED_SHIFT)
 
 
+def retry_note(reasons: list, facts: dict, text_words: Optional[int] = None) -> str:
+    """The note of the single retry of a stage: the generic list of failed checks, plus (decision 2026-10-24) the actual word count with a request to shorten to about 100 words, and the
+    competitive-advantage source / phrase that must appear."""
+    d1 = content_cfg()["d1"]
+    note = "Your previous answer failed these checks: " + "; ".join(reasons) + ". Fix them and answer again."
+    m = next((re.search(r"over_\d+_words \((\d+)\)", r) for r in reasons if r.startswith("over_")), None)
+    if m:
+        note += f" Your text has {m.group(1)} words: shorten it to about 100 words, one sentence per part."
+    if any(r.startswith(("moat_source_not_in_text", "moat_level_phrase_missing")) for r in reasons) and facts.get("moat_level") in (1, 2):
+        note += (f' The competitive-advantage sentence must begin with "{d1["moat_prefix_en"][facts["moat_level"]]}" (in Hebrew "{d1["moat_prefix"][facts["moat_level"]]}") and name this source: '
+                 f'{facts["moat_term_en"]} (in Hebrew "{facts["moat_term_he"]}").')
+    if any(r.startswith("too_many_competitors") for r in reasons):
+        note += " Name at most 5 main competitors."
+    return note
+
+
 class BudgetExceeded(RuntimeError):
     pass
 
@@ -584,7 +609,7 @@ def generate_background(co, facts: dict, sections: dict, client, store: TextStor
                 attempts.append({"attempt": attempt, "ok": res.ok, "reasons": list(res.reasons), "prompt_chars": len(prompt)})
                 if res.ok:
                     break
-                note = "Your previous answer failed these checks: " + "; ".join(res.reasons) + ". Fix them and answer again."
+                note = retry_note(res.reasons, facts)
             en = store.put(_row(co, "en", res.parsed.get("text_en") if res.ok else None, res.state, pv, rep, res, attempts, {"trimmed": trimmed, "stage": "A"}))
             if not res.ok:
                 return {**en, "stage_failed": "A"}
@@ -596,7 +621,7 @@ def generate_background(co, facts: dict, sections: dict, client, store: TextStor
             attempts.append({"attempt": attempt, "ok": res.ok, "reasons": list(res.reasons), "prompt_chars": len(prompt)})
             if res.ok:
                 break
-            note = "Your previous translation failed these checks: " + "; ".join(res.reasons) + ". Fix them and answer again."
+            note = retry_note(res.reasons, facts)
         row = _row(co, "he", res.parsed.get("text_he") if res.ok else None, res.state, pv, rep, res, attempts, {"stage": "B", "competitors": comps, "quotes": en.get("quotes", [])})
         if not res.ok and he is not None and he.get("state") == "stored":
             return {**he, "regeneration_failed": [a["reasons"] for a in attempts]}

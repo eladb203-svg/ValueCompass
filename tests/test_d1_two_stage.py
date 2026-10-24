@@ -57,7 +57,7 @@ def test_stage_a_checks_numbers_quotes_competitors_company_name_and_wording():
     assert any(x.startswith("company_name_wrong_case") for x in run_en(en(text_en=EN["text_en"].replace("Acme", "acme"))).reasons)
     assert any(x.startswith("forbidden_word (buy)") for x in run_en(en(text_en=EN["text_en"] + " Investors should buy.")).reasons)
     assert "not_english" in run_en(en(text_en=EN["text_en"] + " מותג")).reasons
-    assert any(x.startswith("over_120_words") for x in run_en(en(text_en=EN["text_en"] + " " + " ".join(["word"] * 120))).reasons)
+    assert any(x.startswith("over_140_words") for x in run_en(en(text_en=EN["text_en"] + " " + " ".join(["word"] * 120))).reasons)
     assert run_en(en(competitors=[], quotes=[])).ok
 
 
@@ -88,7 +88,7 @@ def test_stage_b_translation_keeps_the_numbers_the_names_and_is_hebrew_only():
     assert any(x.startswith("unformatted_number") for x in run_he(he(text_he=HE_TEXT.replace("12.5 מיליארד $", "12,500,000,000 $"))).reasons)
     assert any(x.startswith("moat_level_phrase_missing") for x in run_he(he(text_he=HE_TEXT.replace("יתרון תחרותי ברור", "יתרון נראה"))).reasons)
     assert any(x.startswith("moat_other_source") for x in run_he(he(text_he=HE_TEXT.replace("מותג מוכר", "מותג מוכר ועלויות מעבר גבוהות"))).reasons)
-    assert any(x.startswith("over_120_words") for x in run_he(he(text_he=HE_TEXT + " " + " ".join(["מילה"] * 120))).reasons)
+    assert any(x.startswith("over_140_words") for x in run_he(he(text_he=HE_TEXT + " " + " ".join(["מילה"] * 120))).reasons)
 
 
 def test_stage_b_repairs_the_hebrew_abbreviation_quote():
@@ -200,3 +200,38 @@ def test_recheck_applies_the_current_checks_to_the_stored_raw_answers_without_a_
     store.put({**store.get("ACM", 2025, "background", 4, "", "he"), "raw_answer": bad_he})                         # the stored answer would pass the current checks
     r = C.recheck_background(CO, FACTS, SECTIONS, store)
     assert r["he"]["state"] == "stored" and r["he"]["text"] and r["he"]["rechecked"] and cl.n == 3
+
+
+def test_length_limit_is_140_words_competitors_at_most_5_and_retry_notes_say_what_to_fix():
+    ok = " ".join(["word"] * 50)
+    assert run_en(en(text_en=EN["text_en"] + " " + ok)).ok                                       # ~85 + 50 = ~135 words: within the check limit
+    assert any(x.startswith("over_140_words") for x in run_en(en(text_en=EN["text_en"] + " " + " ".join(["word"] * 120))).reasons)
+    six = ["Globex", "Initech", "Umbrella", "Hooli", "Soylent", "Vandelay"]
+    q = [{"text": "We compete with Globex, Initech, Umbrella, Hooli, Soylent and Vandelay in North America and Europe.", "section": "TXT-001"}]
+    secs = {"TXT-001": TXT + " We compete with Globex, Initech, Umbrella, Hooli, Soylent and Vandelay in North America and Europe."}
+    _, text, sent = C.build_d1_prompt(FACTS, "acc", secs)
+    r = C.check_background_en(en(competitors=six, quotes=q), FACTS, text, sent, 2025)
+    assert any(x.startswith("too_many_competitors (6)") for x in r.reasons)
+    n = C.retry_note(["over_140_words (151)"], FACTS)
+    assert "Your text has 151 words: shorten it to about 100 words" in n
+    m = C.retry_note(["moat_source_not_in_text (brand)"], FACTS)
+    assert 'Clear competitive advantage:' in m and "brand" in m and "מותג" in m
+    assert "about 90-100 words" in C.build_d1_prompt(FACTS, "acc", SECTIONS)[0] and "at most 5 main competitors" in C.build_d1_prompt(FACTS, "acc", SECTIONS)[0]
+
+
+def test_the_retry_prompt_carries_the_actual_word_count_and_a_failure_stays_failed(tmp_path):
+    store = C.TextStore(tmp_path / "t.jsonl")
+    long = en(text_en=EN["text_en"] + " " + " ".join(["word"] * 120))
+    cl = Seq([long, en(), he()])
+    row = C.generate_background(CO, FACTS, SECTIONS, cl, store)
+    assert "shorten it to about 100 words" in cl.prompts[1] and row["state"] == "stored"
+    store2 = C.TextStore(tmp_path / "t2.jsonl")
+    cl2 = Seq([long, long])
+    r = C.generate_background(CO, FACTS, SECTIONS, cl2, store2)
+    assert r["state"] == "failed" and r["text"] is None and store2.get("ACM", 2025, "background", 4, "", "he") is None
+
+
+def test_letters_of_any_other_script_inside_hebrew_text_are_rejected():
+    assert any(x.startswith("foreign_script_letters") for x in C.language_issues("העסק מדווח דרך פาวנדרי של Intel", ["Intel"]))
+    assert any(x.startswith("mixed_script") for x in C.language_issues("פาวנדרי", []))
+    assert not C.language_issues("חברת Nestlé מתחרה ב-Intel.", ["Nestlé", "Intel"])
