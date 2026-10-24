@@ -67,12 +67,6 @@ def forbidden_in(text: str) -> list:
 
 
 # ---------------------------------------------------------------- prompts
-def d1_revenue_text(revenue: Optional[float]) -> str:
-    """Revenue as ready formatted text ("331.8 מיליארד $"): the model copies it."""
-    from .d2 import money
-    return money(revenue) or "not available"
-
-
 _SUFFIX = {"corp", "corporation", "co", "inc", "ltd", "plc", "company", "holdings", "group", "ma", "the", "n.v.", "s.a.", "ag"}
 
 
@@ -85,37 +79,65 @@ def display_name(edgar_name: str) -> str:
     return " ".join(fixed.get(t.lower(), t if (t != t.upper() and t != t.lower()) else t.capitalize()) for t in toks)
 
 
+def d1_revenue_text(revenue: Optional[float]) -> str:
+    """Revenue as ready formatted Hebrew text ("331.8 מיליארד $"): the translation copies it."""
+    from .d2 import money
+    return money(revenue) or "not available"
+
+
+def d1_revenue_en(revenue: Optional[float]) -> str:
+    if revenue is None:
+        return "not available"
+    a = abs(revenue)
+    return f"${revenue / 1e9:.1f} billion" if a >= 1e9 else (f"${revenue / 1e6:.0f} million" if a >= 1e6 else f"${revenue:,.2f}")
+
+
 def d1_facts(industry: str, revenue: Optional[float], currency: str, fiscal_year, one_sentence: str, moat_answer, moat_source: str, moat_reasoning: str, company_name: str = "") -> dict:
     d1 = content_cfg()["d1"]
     words = content_cfg()["moat_words"]
     src = moat_source if moat_answer in (1, 2) else "none"
     term = (words.get(src or "none") or ["-"])[0]
-    prefix = d1["moat_prefix"].get(moat_answer)
+    term_en = d1["moat_terms_en"].get(src or "none", "none")
+    prefix, prefix_en = d1["moat_prefix"].get(moat_answer), d1["moat_prefix_en"].get(moat_answer)
     if moat_answer in (1, 2):
-        instr = (f'open the sentence with exactly "{prefix}" and then name ONE source only (the one in FACTS: source {src}, Hebrew term "{term}") in your own words; '
-                 "no list of sources and no other source.")
+        instr_en = (f'open the sentence with exactly "{prefix_en}" and then name ONE source only (the one in FACTS: source {src}, the English word "{term_en}") in your own words; '
+                    "no list of sources and no other source.")
+        translation = f'"{prefix}" and then the single source with the Hebrew term "{term}"'
     elif moat_answer == 0:
-        instr = f'write exactly "{prefix}" and nothing more about it.'
+        instr_en = f'write exactly "{prefix_en}" and nothing more about it.'
+        translation = f'"{prefix}" and nothing more about it'
     else:
-        instr = "the competitive-advantage answer is not available: do not write about a competitive advantage."
-    return {"industry": industry, "revenue": d1_revenue_text(revenue), "currency": currency, "fiscal_year": fiscal_year, "one_sentence": one_sentence or "not available",
-            "moat_answer": moat_answer if moat_answer is not None else "not available", "moat_level": moat_answer, "moat_source": src or "none", "moat_reasoning": moat_reasoning or "",
-            "moat_term_he": term, "moat_prefix_he": prefix, "moat_instruction": instr, "company_name": company_name, "company_display": display_name(company_name)}
+        instr_en = "the competitive-advantage answer is not available: do not write about a competitive advantage."
+        translation = "(no competitive-advantage sentence)"
+    return {"industry": industry, "revenue": d1_revenue_text(revenue), "revenue_en": d1_revenue_en(revenue), "currency": currency, "fiscal_year": fiscal_year,
+            "one_sentence": one_sentence or "not available", "moat_answer": moat_answer if moat_answer is not None else "not available", "moat_level": moat_answer,
+            "moat_source": src or "none", "moat_reasoning": moat_reasoning or "", "moat_term_he": term, "moat_term_en": term_en, "moat_prefix_he": prefix, "moat_prefix_en": prefix_en,
+            "moat_instruction_en": instr_en, "moat_translation": translation, "company_name": company_name, "company_display": display_name(company_name)}
 
 
 def d1_facts_text(f: dict) -> str:
-    return (f"industry {f['industry']}; revenue {f['revenue']} (FY{f['fiscal_year']}); company {f.get('company_name', '')}; ONE SENTENCE: {f['one_sentence']}; "
+    return (f"industry {f['industry']}; revenue {f['revenue_en']} / {f['revenue']} (FY{f['fiscal_year']}); company {f.get('company_display', '')}; ONE SENTENCE: {f['one_sentence']}; "
             f"MOAT: level {f['moat_answer']} / source {f['moat_source']} / {f['moat_reasoning']}")
 
 
 def build_d1_prompt(facts: dict, accession: str, sections: dict, note: str = "") -> tuple:
+    """Stage A (English). -> (prompt, text_sent, sections_sent)."""
     d1 = content_cfg()["d1"]
     sent = [(s, sections[s]) for s in d1["sections"] if sections.get(s)]
     text = "\n\n".join(f"[{s}]\n{t}" for s, t in sent)
-    p = d1["template"].format(industry=facts["industry"], revenue=facts["revenue"], fiscal_year=facts["fiscal_year"], one_sentence=facts["one_sentence"], company_name=facts.get("company_display") or facts.get("company_name", ""),
-                              moat_answer=facts["moat_answer"], moat_source=facts["moat_source"], moat_reasoning=facts["moat_reasoning"], moat_instruction=facts["moat_instruction"],
-                              sections=", ".join(s for s, _ in sent), accession=accession, section_text=text, version=d1["version"])
+    p = d1["template_en"].format(industry=facts["industry"], revenue_en=facts["revenue_en"], fiscal_year=facts["fiscal_year"], one_sentence=facts["one_sentence"],
+                                 company_name=facts.get("company_display") or facts.get("company_name", ""), moat_answer=facts["moat_answer"], moat_source=facts["moat_source"],
+                                 moat_reasoning=facts["moat_reasoning"], moat_instruction_en=facts["moat_instruction_en"], sections=", ".join(s for s, _ in sent), accession=accession,
+                                 section_text=text, version=d1["version"])
     return (p + f"\nNOTE: {note}\n" if note else p), text, [s for s, _ in sent]
+
+
+def build_d1_translation_prompt(facts: dict, text_en: str, competitors: list, note: str = "") -> str:
+    """Stage B (Hebrew translation of the checked English text)."""
+    d1 = content_cfg()["d1"]
+    p = d1["template_he"].format(moat_translation=facts["moat_translation"], company_name=facts.get("company_display") or facts.get("company_name", ""),
+                                 competitors=", ".join(competitors) or "(none)", text_en=text_en, version=d1["version"])
+    return p + f"\nNOTE: {note}\n" if note else p
 
 
 def trim_d1_sections(facts: dict, accession: str, sections: dict) -> tuple:
@@ -159,6 +181,12 @@ def parse_content_json(raw: str) -> tuple:
         t = raw or ""
         for key, nxt in (("text_he", "competitors"), ("quality_he", "value_he"), ("value_he", "criteria_cited")):
             m = re.search(r'("%s"\s*:\s*")(.*?)("\s*,\s*"%s")' % (key, nxt), t, re.S)
+            if m:
+                inner = m.group(2).replace('\\"', '"').replace('"', "״")
+                t = t[:m.start(2)] + json.dumps(inner, ensure_ascii=False)[1:-1] + t[m.end(2):]
+                repaired = True
+        if not repaired:                                                 # the text is the last key (the translation answer)
+            m = re.search(r'("text_he"\s*:\s*")(.*)("\s*}\s*$)', t, re.S)
             if m:
                 inner = m.group(2).replace('\\"', '"').replace('"', "״")
                 t = t[:m.start(2)] + json.dumps(inner, ensure_ascii=False)[1:-1] + t[m.end(2):]
@@ -225,9 +253,95 @@ def _company_token(name: str) -> str:
 
 
 # ---------------------------------------------------------------- checks
-def check_background(raw: str, facts: dict, text_sent: str, sent: list, fiscal_year: Optional[int] = None) -> checks.CheckResult:
-    """D1: <= 120 words, numbers from FACTS only (formatted by code), quotes verbatim, competitors in quotes, Hebrew only, the company name in Latin letters, the competitive advantage
-    matches the A7 level (prefix) and names the A7 source only (one source, no list)."""
+def _is_year(v: float, dec: int, mult: float) -> bool:
+    return dec == 0 and mult == 1.0 and 1900 <= v <= 2100
+
+
+def number_signature(text: str) -> list:
+    """Sorted list of the numbers of a text as full values (value x scale word, English or Hebrew), without plain years: the translation must carry exactly the numbers of the English text."""
+    return sorted(round(v * mult, 6) for v, d, mult, _p in numbers_in(text) if not _is_year(v, d, mult))
+
+
+def years_of(text: str) -> set:
+    return {int(v) for v, d, mult, _p in numbers_in(text) if _is_year(v, d, mult)}
+
+
+def _moat_check(text: str, level, source: str, prefixes: dict, terms: dict, reasons: list) -> None:
+    """The competitive-advantage sentence matches the A7 level (prefix) and names the A7 source only (one source, no list)."""
+    if level not in (0, 1, 2):
+        return
+    prefix = prefixes[level]
+    i = text.find(prefix)
+    if i < 0:
+        reasons.append(f"moat_level_phrase_missing ({prefix})")
+        return
+    if level in (1, 2):
+        sentence = text[i + len(prefix):].split(".")[0]
+        own = terms.get(source, [])
+        if own and not any(w.lower() in sentence.lower() for w in own):
+            reasons.append(f"moat_source_not_in_text ({source})")
+        others = [v[0] for k, v in terms.items() if k not in (source, "none", "data", "infrastructure", "location") and not any(v[0].lower() in o.lower() for o in own)]   # data / infrastructure / location are too generic words to prove a second source
+        hit = [w for w in others if (w in sentence if _HEB.search(w) else re.search(r"(?<![\w])%s(?![\w])" % re.escape(w.lower()), sentence.lower()))]       # Hebrew prefixes (ו, ב, ל) attach to the word
+        if hit:
+            reasons.append(f"moat_other_source ({hit[0]})")
+
+
+def _name_case(text: str, tok: str, reasons: list) -> None:
+    if not tok:
+        return
+    m = re.search(re.escape(tok), text, re.I)
+    if not m:
+        reasons.append(f"company_name_not_in_latin ({tok})")
+    elif m.group(0).islower() or (m.group(0).isupper() and len(tok) > 5):
+        reasons.append(f"company_name_wrong_case ({m.group(0)})")           # as written in the report, not in lower case or in capitals
+
+
+def check_background_en(raw: str, facts: dict, text_sent: str, sent: list, fiscal_year: Optional[int] = None) -> checks.CheckResult:
+    """D1 stage A: the English text against the report - <= 120 words, numbers from the report text or FACTS, quotes verbatim, competitors named and quoted, the company name, the competitive
+    advantage matching the A7 level and its single source, no investment wording."""
+    res = checks.CheckResult(False, "failed")
+    d = checks.parse_json(raw)
+    if d is None:
+        res.reasons.append("invalid_json")
+        return res
+    res.parsed = d
+    cfg = content_cfg()
+    d1 = cfg["d1"]
+    if d.get("skill_id") != d1["skill_id"]:
+        res.reasons.append("skill_id_mismatch")
+    text = d.get("text_en")
+    if not isinstance(text, str) or not text.strip():
+        res.reasons.append("text_missing")
+        return res
+    if _HEB.search(text):
+        res.reasons.append("not_english")
+    if count_words(text) > 120:
+        res.reasons.append(f"over_120_words ({count_words(text)})")
+    bad = unsupported_numbers(text, text_sent + "\n" + d1_facts_text(facts), (fiscal_year,) if fiscal_year else ())
+    if bad:
+        res.reasons.append("number_not_in_report (" + ", ".join(str(int(b) if b == int(b) else b) for b in bad) + ")")
+    res.quotes = checks._check_quotes(d.get("quotes"), checks.normalize(text_sent), sent, res.reasons, res.flags)
+    comps = d.get("competitors")
+    if not isinstance(comps, list) or not all(isinstance(c, str) for c in comps):
+        res.reasons.append("competitors_invalid")
+        comps = []
+    if not res.quotes and comps:
+        res.reasons.append("no_quote")
+    qtext = " ".join(checks.normalize(q["text"]).casefold() for q in res.quotes if q["found"])
+    res.reasons += [f"competitor_is_a_category ({c})" for c in comps if c[:1].islower()]
+    res.reasons += [f"competitor_not_in_quote ({c})" for c in comps if checks.normalize(c).casefold() not in qtext]
+    _name_case(text, _company_token(facts.get("company_display") or facts.get("company_name", "")), res.reasons)
+    _moat_check(text, facts.get("moat_level"), facts["moat_source"], d1["moat_prefix_en"], {k: [v] for k, v in d1["moat_terms_en"].items()}, res.reasons)
+    res.reasons += [f"forbidden_word ({w})" for w in d1["forbidden_en"] if re.search(r"\b%s\b" % re.escape(w), text, re.I)]
+    res.extra = {"competitors": comps, "words": count_words(text)}
+    res.ok = not res.reasons
+    res.state = "stored" if res.ok else "failed"
+    return res
+
+
+def check_translation(raw: str, en_text: str, facts: dict, competitors: list) -> checks.CheckResult:
+    """D1 stage B: the Hebrew translation against the checked English text - the same numbers, the same names, Hebrew only (Latin letters only for the names), no mixed scripts, the competitive
+    advantage phrase of the A7 level and its single source in Hebrew, <= 120 words."""
     res = checks.CheckResult(False, "failed")
     d, repaired = parse_content_json(raw)
     if d is None:
@@ -238,58 +352,28 @@ def check_background(raw: str, facts: dict, text_sent: str, sent: list, fiscal_y
     res.parsed = d
     cfg = content_cfg()
     d1 = cfg["d1"]
-    facts_text = d1_facts_text(facts)
-    if d.get("skill_id") != d1["skill_id"]:
-        res.reasons.append("skill_id_mismatch")
     text = d.get("text_he")
     if not isinstance(text, str) or not text.strip():
         res.reasons.append("text_missing")
         return res
     if count_words(text) > 120:
         res.reasons.append(f"over_120_words ({count_words(text)})")
-    bad = unsupported_numbers(text, facts_text, (fiscal_year,) if fiscal_year else ())
-    if bad:
-        res.reasons.append("number_not_in_facts (" + ", ".join(str(int(b) if b == int(b) else b) for b in bad) + ")")
+    disp = facts.get("company_display") or facts.get("company_name", "")
+    names = [disp] + list(competitors)
+    res.reasons += language_issues(text, names + latin_terms())
     if unformatted_numbers(text):
         res.reasons.append("unformatted_number (" + ", ".join(unformatted_numbers(text)) + ")")
-    res.quotes = checks._check_quotes(d.get("quotes"), checks.normalize(text_sent), sent, res.reasons, res.flags)
-    comps = d.get("competitors")
-    if not isinstance(comps, list) or not all(isinstance(c, str) for c in comps):
-        res.reasons.append("competitors_invalid")
-        comps = []
-    if not res.quotes and comps:                       # the quotes support the named competitors; a text that names none needs no quote
-        res.reasons.append("no_quote")
-    qtext = " ".join(checks.normalize(q["text"]).casefold() for q in res.quotes if q["found"])
-    res.reasons += [f"competitor_is_a_category ({c})" for c in comps if c[:1].islower()]          # "other banks", "large carriers": not a company named in the report
-    for c in comps:
-        if checks.normalize(c).casefold() not in qtext:
-            res.reasons.append(f"competitor_not_in_quote ({c})")
-    res.reasons += language_issues(text, [facts.get("company_name", "")] + comps + latin_terms())
-    tok = _company_token(facts.get("company_display") or facts.get("company_name", ""))
-    if tok:
-        m = re.search(re.escape(tok), text, re.I)
-        if not m:
-            res.reasons.append(f"company_name_not_in_latin ({tok})")
-        elif m.group(0).islower() or (m.group(0).isupper() and len(tok) > 5):
-            res.reasons.append(f"company_name_wrong_case ({m.group(0)})")           # as written in the report, not in lower case or in capitals ("coca cola", "MICROSOFT")
-    level = facts.get("moat_level")
-    words = cfg["moat_words"]
-    if level in (0, 1, 2):
-        prefix = d1["moat_prefix"][level]
-        i = text.find(prefix)
-        if i < 0:
-            res.reasons.append(f"moat_level_phrase_missing ({prefix})")
-        elif level in (1, 2):
-            sentence = text[i + len(prefix):].split(".")[0]
-            own = words.get(facts["moat_source"], [])
-            if own and not any(w in sentence for w in own):
-                res.reasons.append(f"moat_source_not_in_text ({facts['moat_source']})")
-            others = [v[0] for k, v in words.items() if k not in (facts["moat_source"], "none") and not any(v[0] in o for o in own)]
-            hit = [w for w in others if w in sentence]
-            if hit:
-                res.reasons.append(f"moat_other_source ({hit[0]})")
+    en_sig, he_sig = number_signature(en_text), number_signature(text)
+    if en_sig != he_sig:
+        res.reasons.append(f"numbers_differ (english {en_sig}, hebrew {he_sig})")
+    extra_years = years_of(text) - years_of(en_text) - {facts.get("fiscal_year")}
+    if extra_years:
+        res.reasons.append(f"year_not_in_english ({sorted(extra_years)})")
+    res.reasons += [f"name_missing ({n})" for n in names if n and n in en_text and n not in text]
+    _name_case(text, _company_token(disp), res.reasons)
+    _moat_check(text, facts.get("moat_level"), facts["moat_source"], d1["moat_prefix"], cfg["moat_words"], res.reasons)
     res.reasons += [f"forbidden_word ({w})" for w in forbidden_in(text)]
-    res.extra = {"competitors": comps, "words": count_words(text)}
+    res.extra = {"words": count_words(text)}
     res.ok = not res.reasons
     res.state = "stored" if res.ok else "failed"
     return res
@@ -456,50 +540,93 @@ def _call(client, prompt: str, seed_offset: int):
     return client.generate(prompt, seed_offset=seed_offset + SEED_SHIFT)
 
 
+class BudgetExceeded(RuntimeError):
+    pass
+
+
+class BudgetClient:
+    """A hard cap on the number of model calls, enforced here (the shared daily counter still applies on top): the call that would exceed the cap is not sent."""
+
+    def __init__(self, client, cap: int):
+        self._client, self.cap, self.calls = client, cap, 0
+        self.model = getattr(client, "model", "")
+
+    def generate(self, *a, **kw):
+        if self.calls >= self.cap:
+            raise BudgetExceeded(f"call cap of {self.cap} reached")
+        self.calls += 1
+        return self._client.generate(*a, **kw)
+
+
+def _row(co, language: str, text, state: str, pv: str, rep, res, attempts: list, extra: Optional[dict] = None) -> dict:
+    return {"ticker": co.ticker, "fiscal_year": co.fiscal_year, "kind": "background", "language": language, "text": text, "model": getattr(rep, "model", ""), "prompt_version": pv, "run_id": "",
+            "state": state, "accession": co.filing.accession, "quotes": res.quotes if res else [], "competitors": (res.extra.get("competitors", []) if res else []),
+            "checks": {"ok": bool(res and res.ok), "reasons": res.reasons if res else [], "flags": res.flags if res else [], "attempts": attempts}, "raw_answer": getattr(rep, "text", None), **(extra or {})}
+
+
 def generate_background(co, facts: dict, sections: dict, client, store: TextStore, force: bool = False) -> dict:
-    """D1 once per annual report. ``co`` needs ticker, fiscal_year, filing.accession."""
-    d1 = content_cfg()["d1"]
-    pv = str(d1["version"])
-    prev = store.get(co.ticker, co.fiscal_year, "background", pv)
-    ex = None if force else prev
-    if ex is not None and ex.get("state") == "stored":                # a failed text is asked again in a later run
-        return ex
-    sections, trimmed = trim_d1_sections(facts, co.filing.accession, sections)
-    note, attempts = "", []
-    for attempt in (1, 2):
-        prompt, text_sent, sent = build_d1_prompt(facts, co.filing.accession, sections, note)
-        rep = _call(client, prompt, attempt - 1)
-        res = check_background(rep.text, facts, text_sent, sent, co.fiscal_year)
-        attempts.append({"attempt": attempt, "ok": res.ok, "reasons": list(res.reasons)})
-        if res.ok:
-            break
-        note = "Your previous answer failed these checks: " + "; ".join(res.reasons) + ". Fix them and answer again."
-    p = res.parsed or {}
-    if not res.ok and prev is not None and prev.get("state") == "stored":                 # a forced regeneration that fails keeps the text that passed before
-        return {**prev, "regeneration_failed": [a["reasons"] for a in attempts]}
-    return store.put({"ticker": co.ticker, "fiscal_year": co.fiscal_year, "kind": "background", "language": "he", "text": p.get("text_he") if res.ok else None, "model": rep.model,
-                      "prompt_version": pv, "run_id": "", "state": res.state, "accession": co.filing.accession, "quotes": res.quotes, "competitors": res.extra.get("competitors", []),
-                      "trimmed": trimmed, "prompt_chars": len(prompt), "checks": {"ok": res.ok, "reasons": res.reasons, "flags": res.flags, "attempts": attempts}, "raw_answer": rep.text})
-
-
-def recheck_background(co, facts: dict, sections: dict, store: TextStore) -> Optional[dict]:
-    """Re-run the CURRENT checks on the stored raw answer of a D1 (no model call): a failed text that now passes becomes ``stored``; a stored text that fails the current checks becomes ``failed``
-    (nothing is shown) with the reasons."""
+    """D1 in two stages (decision 2026-10-24). A: the model writes the background in English and every check runs on it against the report; B: a second call translates the checked text into
+    Hebrew with the glossary and the translation is checked against the English (same numbers, same names, Hebrew only). Both versions are stored (language en / he). -> the Hebrew row (or the
+    last failed / skipped row). A failed stage is asked again in a later run; a stored English text is not written again."""
     pv = str(content_cfg()["d1"]["version"])
-    ex = store.get(co.ticker, co.fiscal_year, "background", pv)
-    if not ex or not ex.get("raw_answer"):
-        return ex
+    he = store.get(co.ticker, co.fiscal_year, "background", pv, "", "he")
+    if he is not None and he.get("state") == "stored" and not force:
+        return he
+    sections, trimmed = trim_d1_sections(facts, co.filing.accession, sections)
+    en = store.get(co.ticker, co.fiscal_year, "background", pv, "", "en")
+    try:
+        if en is None or en.get("state") != "stored" or force:
+            note, attempts = "", []
+            for attempt in (1, 2):
+                prompt, text_sent, sent = build_d1_prompt(facts, co.filing.accession, sections, note)
+                rep = _call(client, prompt, attempt - 1)
+                res = check_background_en(rep.text, facts, text_sent, sent, co.fiscal_year)
+                attempts.append({"attempt": attempt, "ok": res.ok, "reasons": list(res.reasons), "prompt_chars": len(prompt)})
+                if res.ok:
+                    break
+                note = "Your previous answer failed these checks: " + "; ".join(res.reasons) + ". Fix them and answer again."
+            en = store.put(_row(co, "en", res.parsed.get("text_en") if res.ok else None, res.state, pv, rep, res, attempts, {"trimmed": trimmed, "stage": "A"}))
+            if not res.ok:
+                return {**en, "stage_failed": "A"}
+        note, attempts, comps = "", [], en.get("competitors", [])
+        for attempt in (1, 2):
+            prompt = build_d1_translation_prompt(facts, en["text"], comps, note)
+            rep = _call(client, prompt, attempt - 1)
+            res = check_translation(rep.text, en["text"], facts, comps)
+            attempts.append({"attempt": attempt, "ok": res.ok, "reasons": list(res.reasons), "prompt_chars": len(prompt)})
+            if res.ok:
+                break
+            note = "Your previous translation failed these checks: " + "; ".join(res.reasons) + ". Fix them and answer again."
+        row = _row(co, "he", res.parsed.get("text_he") if res.ok else None, res.state, pv, rep, res, attempts, {"stage": "B", "competitors": comps, "quotes": en.get("quotes", [])})
+        if not res.ok and he is not None and he.get("state") == "stored":
+            return {**he, "regeneration_failed": [a["reasons"] for a in attempts]}
+        return store.put(row)
+    except BudgetExceeded as e:
+        return {"ticker": co.ticker, "fiscal_year": co.fiscal_year, "kind": "background", "language": "he", "state": "skipped_budget", "text": None,
+                "checks": {"ok": False, "reasons": [str(e)], "attempts": []}}
+
+
+def recheck_background(co, facts: dict, sections: dict, store: TextStore) -> dict:
+    """Re-run the CURRENT checks on the stored raw answers of both stages (no model call). A failed stage that now passes is stored; a stored stage that fails the current checks is marked failed.
+    -> {"en": row, "he": row}."""
+    pv = str(content_cfg()["d1"]["version"])
     sections, _ = trim_d1_sections(facts, co.filing.accession, sections)
     _, text_sent, sent = build_d1_prompt(facts, co.filing.accession, sections)
-    res = check_background(ex["raw_answer"], facts, text_sent, sent, co.fiscal_year)
-    if res.ok and ex.get("state") != "stored":
-        p = res.parsed
-        return store.put({**ex, "text": p.get("text_he"), "state": "stored", "quotes": res.quotes, "competitors": res.extra.get("competitors", []), "rechecked": True,
-                          "checks": {"ok": True, "reasons": [], "flags": res.flags, "attempts": ex["checks"]["attempts"] + [{"attempt": "recheck", "ok": True, "reasons": []}]}})
-    if not res.ok and ex.get("state") == "stored":
-        return store.put({**ex, "text": None, "state": "failed", "rechecked": True,
-                          "checks": {"ok": False, "reasons": res.reasons, "flags": res.flags, "attempts": ex["checks"]["attempts"] + [{"attempt": "recheck", "ok": False, "reasons": list(res.reasons)}]}})
-    return ex
+    en = store.get(co.ticker, co.fiscal_year, "background", pv, "", "en")
+    he = store.get(co.ticker, co.fiscal_year, "background", pv, "", "he")
+    if en and en.get("raw_answer"):
+        res = check_background_en(en["raw_answer"], facts, text_sent, sent, co.fiscal_year)
+        if res.ok != (en.get("state") == "stored"):
+            en = store.put({**en, "text": res.parsed.get("text_en") if res.ok else None, "state": res.state, "quotes": res.quotes, "competitors": res.extra.get("competitors", []), "rechecked": True,
+                            "checks": {"ok": res.ok, "reasons": res.reasons, "flags": res.flags, "attempts": en["checks"]["attempts"] + [{"attempt": "recheck", "ok": res.ok, "reasons": list(res.reasons)}]}})
+    if he and he.get("raw_answer") and en and en.get("state") == "stored":
+        res = check_translation(he["raw_answer"], en["text"], facts, en.get("competitors", []))
+        if res.ok != (he.get("state") == "stored"):
+            he = store.put({**he, "text": res.parsed.get("text_he") if res.ok else None, "state": res.state, "rechecked": True,
+                            "checks": {"ok": res.ok, "reasons": res.reasons, "flags": res.flags, "attempts": he["checks"]["attempts"] + [{"attempt": "recheck", "ok": res.ok, "reasons": list(res.reasons)}]}})
+    elif he and en and en.get("state") != "stored" and he.get("state") == "stored":
+        he = store.put({**he, "text": None, "state": "failed", "rechecked": True})
+    return {"en": en, "he": he}
 
 
 def generate_analysis(ticker: str, fiscal_year: int, inputs: dict, client, store: TextStore, force: bool = False) -> dict:

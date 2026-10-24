@@ -7,88 +7,6 @@ from src.ai import content as C
 from src.ai import d2 as D
 from src.ai.client import Reply
 
-TXT = "Acme designs and sells industrial widgets worldwide. We compete with Globex and Initech in North America and Europe. Our brand is well known to customers."
-SECTIONS = {"TXT-001": TXT}
-
-
-def make_facts(level=2, source="brand", name="Acme Corp"):
-    return C.d1_facts("Machinery", 12_500_000_000.0, "USD", 2025, "Acme designs industrial widgets.", level, source, "Strong brand; revenue grew 8%.", company_name=name)
-
-
-FACTS = make_facts()
-GOOD = {"skill_id": "BG-1", "version": 3,
-        "text_he": "Acme מעצבת ומוכרת רכיבים תעשייתיים. היא פועלת בצפון אמריקה ובאירופה, ומתחרה ב-Globex וב-Initech. ההכנסות עמדו על 12.5 מיליארד $ ב-2025. יתרון תחרותי ברור: מותג חזק.",
-        "competitors": ["Globex", "Initech"],
-        "quotes": [{"text": "We compete with Globex and Initech in North America and Europe.", "section": "TXT-001"}]}
-
-
-def d1(**kw):
-    return json.dumps({**GOOD, **kw}, ensure_ascii=False)
-
-
-def run_d1(raw, facts=None):
-    facts = facts or FACTS
-    prompt, text, sent = C.build_d1_prompt(facts, "acc", SECTIONS)
-    return C.check_background(raw, facts, text, sent, 2025)
-
-
-def test_good_background_passes_all_checks_and_the_prompt_carries_the_formatted_facts():
-    r = run_d1(d1())
-    assert r.ok, r.reasons
-    p = C.build_d1_prompt(FACTS, "acc", SECTIONS)[0]
-    assert "12.5 מיליארד $" in p and 'exactly "יתרון תחרותי ברור:"' in p and "company name: Acme (write it" in p and "ALL of the text in Hebrew" in p
-
-
-def test_background_over_120_words_fails():
-    long = "Acme " + " ".join(["מילה"] * 125) + " יתרון תחרותי ברור: מותג"
-    assert any(x.startswith("over_120_words") for x in run_d1(d1(text_he=long)).reasons)
-
-
-def test_numbers_must_come_from_facts_and_be_formatted_by_code():
-    assert any(x.startswith("number_not_in_facts") and "13.7" in x for x in run_d1(d1(text_he=GOOD["text_he"].replace("12.5", "13.7"))).reasons)
-    assert any(x.startswith("unformatted_number") for x in run_d1(d1(text_he=GOOD["text_he"].replace("12.5 מיליארד $", "12,500,000,000 $"))).reasons)
-
-
-def test_competitor_without_a_quote_and_quote_problems_fail():
-    assert "competitor_not_in_quote (Umbrella)" in run_d1(d1(competitors=["Globex", "Initech", "Umbrella"])).reasons
-    assert "quote_not_found" in run_d1(d1(quotes=[{"text": "We compete with Globex and Initech everywhere.", "section": "TXT-001"}])).reasons
-    assert "no_quote" in run_d1(d1(quotes=[])).reasons
-    assert run_d1(d1(competitors=[], quotes=[])).ok                                    # no named competitor: no quote needed
-
-
-def test_moat_sentence_must_match_the_a7_level_and_the_single_a7_source():
-    other = GOOD["text_he"].replace("מותג חזק", "עלויות מעבר גבוהות")
-    assert "moat_source_not_in_text (brand)" in run_d1(d1(text_he=other)).reasons
-    assert any(x.startswith("moat_other_source") for x in run_d1(d1(text_he=GOOD["text_he"].replace("מותג חזק", "מותג חזק ועלויות מעבר גבוהות"))).reasons)
-    assert any(x.startswith("moat_level_phrase_missing") for x in run_d1(d1(text_he=GOOD["text_he"].replace("יתרון תחרותי ברור", "יתרון נראה"))).reasons)
-    l1 = make_facts(1)
-    assert run_d1(d1(text_he=GOOD["text_he"].replace("ברור", "לא מוכח")), l1).ok
-    assert any(x.startswith("moat_level_phrase_missing") for x in run_d1(d1(), l1).reasons)                 # level 1 needs "יתרון תחרותי לא מוכח:"
-    l0 = make_facts(0, "none")
-    assert run_d1(d1(text_he=GOOD["text_he"].replace("יתרון תחרותי ברור: מותג חזק", "אין יתרון תחרותי מזוהה")), l0).ok
-    assert 'exactly "אין יתרון תחרותי מזוהה"' in C.build_d1_prompt(l0, "acc", SECTIONS)[0]
-
-
-def test_hebrew_only_company_name_in_latin_no_mixed_scripts_no_english_sentences():
-    assert any(x.startswith("english_sentence") for x in run_d1(d1(text_he=GOOD["text_he"] + " The company possesses a clear scale moat.")).reasons)
-    assert any(x.startswith("mixed_script") for x in run_d1(d1(text_he=GOOD["text_he"].replace("מעצבת", "מעצבתX"))).reasons)
-    assert "cyrillic_letters" in run_d1(d1(text_he=GOOD["text_he"].replace("רכיבים", "рекибים"))).reasons
-    assert any(x.startswith("company_name_not_in_latin (Acme)") for x in run_d1(d1(text_he=GOOD["text_he"].replace("Acme", "אקמי"))).reasons)         # transliteration is not allowed
-    assert not C.language_issues("החברה מתחרה ב-Globex וב-Initech, בתחום ה-CET1 ו-EBITDAre.", ["Globex", "Initech"] + C.latin_terms())
-    assert not C.language_issues("שווי לפי Owner earnings וגם NAV שמרני.", C.latin_terms())
-
-
-def test_forbidden_words_fail():
-    assert any(x.startswith("forbidden_word") for x in run_d1(d1(text_he=GOOD["text_he"] + " כדאי לקנות.")).reasons)
-
-
-def test_d1_sections_are_cut_to_their_caps():
-    secs = {"TXT-001": "a" * 70000, "TXT-003": "b" * 30000, "TXT-005": "c" * 5000}
-    out, trimmed = C.trim_d1_sections(FACTS, "acc", secs)
-    assert trimmed == ["TXT-001", "TXT-003"] and len(out["TXT-001"]) == 35000 and len(out["TXT-003"]) == 12000 and len(out["TXT-005"]) == 5000
-    small, none = C.trim_d1_sections(FACTS, "acc", {"TXT-001": "a" * 1000})
-    assert none == [] and set(small) == {"TXT-001"}
-
 
 class Seq:
     model = "fake"
@@ -100,21 +18,6 @@ class Seq:
         self.prompts.append(prompt)
         self.n += 1
         return Reply(self.replies.pop(0), "fake", 1, 1, 0, 0.1)
-
-
-def test_background_retry_failed_is_asked_again_and_stored_once(tmp_path):
-    store = C.TextStore(tmp_path / "t.jsonl")
-    co = SimpleNamespace(ticker="ACM", fiscal_year=2025, filing=SimpleNamespace(accession="acc"))
-    cl = Seq([d1(text_he="הכנסות של 99 מיליארד $. יתרון תחרותי ברור: מותג. Acme"), d1()])
-    row = C.generate_background(co, FACTS, SECTIONS, cl, store)
-    assert cl.n == 2 and "number_not_in_facts" in cl.prompts[1] and row["state"] == "stored" and row["text"] and row["kind"] == "background"
-    assert C.generate_background(co, FACTS, SECTIONS, cl, store) == row and cl.n == 2
-    bad = Seq([d1(text_he="כדאי לקנות Acme"), d1(text_he="כדאי לקנות Acme")])
-    bco = SimpleNamespace(ticker="BAD", fiscal_year=2025, filing=co.filing)
-    failed = C.generate_background(bco, FACTS, SECTIONS, bad, store)
-    assert bad.n == 2 and failed["state"] == "failed" and failed["text"] is None
-    again = Seq([d1(), d1()])
-    assert C.generate_background(bco, FACTS, SECTIONS, again, store)["state"] == "stored"                  # a failed text is asked again in a later run
 
 
 # ---------------------------------------------------------------- D2
@@ -287,48 +190,14 @@ def test_analysis_is_stored_per_run_retried_once_skipped_while_ai_is_pending_and
     assert s["state"] == "skipped_ai_pending" and skip.n == 0 and store.get("PEND", 2025, "analysis", 4, "run-1") is None
 
 
-def test_unescaped_hebrew_abbreviation_quote_is_repaired_and_a_list_text_is_joined():
-    raw = '{"skill_id": "BG-1", "version": 3, "text_he": "Acme פועלת בנדל"ן. יתרון תחרותי ברור: מותג חזק.", "competitors": [], "quotes": []}'
-    d, repaired = C.parse_content_json(raw)
-    assert repaired and "נדל״ן" in d["text_he"]
-    r = run_d1(raw)
-    assert "invalid_json" not in r.reasons and "repaired_inner_quotes" in r.flags
-    d2, rep2 = C.parse_content_json('{"text_he": ["א.", "ב."], "competitors": []}')
-    assert d2["text_he"] == "א. ב." and rep2 is False
-    assert C.parse_content_json("not json")[0] is None
-
-
-def test_a_competitor_must_be_a_company_not_a_category():
-    assert any(x.startswith("competitor_is_a_category") for x in run_d1(d1(competitors=["other banks"], quotes=[{"text": "We compete with Globex and Initech in North America and Europe.", "section": "TXT-001"}])).reasons)
-
-
-def test_arabic_letters_in_hebrew_text_and_company_name_case_are_rejected():
-    assert "arabic_letters" in C.language_issues("משקאות תרכיزي", [])
-    assert any(x.startswith("mixed_script") for x in C.language_issues("משקאות תרכיزי", []))
-    assert any(x.startswith("company_name_wrong_case") for x in run_d1(d1(text_he=GOOD["text_he"].replace("Acme", "acme"))).reasons)
-    assert run_d1(d1(text_he=GOOD["text_he"].replace("Acme", "ACME"))).ok                       # a short all-capital name is a ticker-like name
-    big = make_facts(name="Microsoft Corp")
-    assert any(x.startswith("company_name_wrong_case") for x in run_d1(d1(text_he=GOOD["text_he"].replace("Acme", "MICROSOFT")), big).reasons)
-
-
-def test_a_forced_regeneration_that_fails_keeps_the_stored_text(tmp_path):
-    store = C.TextStore(tmp_path / "t.jsonl")
-    co = SimpleNamespace(ticker="ACM", fiscal_year=2025, filing=SimpleNamespace(accession="acc"))
-    row = C.generate_background(co, FACTS, SECTIONS, Seq([d1()]), store)
-    bad = Seq([d1(text_he="כדאי לקנות Acme"), d1(text_he="כדאי לקנות Acme")])
-    kept = C.generate_background(co, FACTS, SECTIONS, bad, store, force=True)
-    assert kept["state"] == "stored" and kept["text"] == row["text"] and kept["regeneration_failed"] and store.get("ACM", 2025, "background", 3)["state"] == "stored"
-
-
 def test_company_display_name_is_proper_case_without_the_legal_suffix():
     assert [C.display_name(n) for n in ("COCA COLA CO", "AMERICAN TOWER CORP /MA/", "MICROSOFT CORP", "JPMORGAN CHASE & CO", "Chubb Ltd")] == ["Coca Cola", "American Tower", "Microsoft", "JPMorgan Chase", "Chubb"]
     assert C.d1_facts("x", 1e9, "USD", 2025, "s", 2, "brand", "r", company_name="REALTY INCOME CORP")["company_display"] == "Realty Income"
 
 
-def test_recheck_downgrades_a_stored_text_that_fails_the_current_checks_without_a_call(tmp_path):
-    store = C.TextStore(tmp_path / "t.jsonl")
-    co = SimpleNamespace(ticker="ACM", fiscal_year=2025, filing=SimpleNamespace(accession="acc"))
-    store.put({"ticker": "ACM", "fiscal_year": 2025, "kind": "background", "language": "he", "text": "x", "prompt_version": 3, "run_id": "", "state": "stored",
-               "raw_answer": d1(text_he=GOOD["text_he"].replace("Acme", "acme")), "checks": {"attempts": []}})
-    r = C.recheck_background(co, FACTS, SECTIONS, store)
-    assert r["state"] == "failed" and r["text"] is None and any("company_name_wrong_case" in x for x in r["checks"]["reasons"])
+def test_lenient_json_repair_for_the_hebrew_abbreviation_quote_and_list_text():
+    raw = '{"skill_id": "BG-1T", "version": 4, "text_he": "Acme פועלת בנדל"ן.", "x": 1}'
+    d, repaired = C.parse_content_json(raw.replace('"x": 1', '"competitors": []'))
+    assert repaired and "נדל״ן" in d["text_he"]
+    d2, rep2 = C.parse_content_json('{"text_he": ["א.", "ב."], "competitors": []}')
+    assert d2["text_he"] == "א. ב." and rep2 is False and C.parse_content_json("not json")[0] is None

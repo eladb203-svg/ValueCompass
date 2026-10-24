@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from src.ai import assess, content as C, d2 as D2  # noqa: E402
+from src.ai import assess, content as C, d2 as D2, d2_template as T  # noqa: E402
 from src.ai.sections import find_filing  # noqa: E402
 from src.ai.store import AssessmentStore  # noqa: E402
 from src.scoring import peer_source as PS, peers as P  # noqa: E402
@@ -67,7 +67,8 @@ def main(argv=None) -> None:
     ap.add_argument("--rpm", type=int, default=20)
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--kind", choices=["both", "d1", "d2"], default="both")
-    ap.add_argument("--recheck", action="store_true", help="no calls: re-run the current checks on the stored raw answers of failed D1 texts")
+    ap.add_argument("--recheck", action="store_true", help="no calls: re-run the current checks on the stored raw answers of both D1 stages")
+    ap.add_argument("--max-calls", type=int, default=20, help="hard cap on the model calls of the run (D1 only: D2 is written by code), enforced in code")
     ap.add_argument("--seed-shift", type=int, default=0, help="seed offset added to the calls (to retry failed texts with other seeds)")
     a = ap.parse_args(argv)
     out = Path(a.out_root)
@@ -76,11 +77,10 @@ def main(argv=None) -> None:
     answers = AssessmentStore(Path(a.answers))
     from run_ai_k5a import meta
     client = store = None
-    if not a.no_calls and not a.recheck:
+    store = C.TextStore(out / "texts.jsonl")
+    if not a.no_calls and not a.recheck and a.kind in ("both", "d1"):
         from src.ai.client import GeminiClient, RateLimiter
-        client, store = GeminiClient(limiter=RateLimiter(rpm=a.rpm, rpd=450)), C.TextStore(out / "texts.jsonl")
-    if a.recheck:
-        store = C.TextStore(out / "texts.jsonl")
+        client = C.BudgetClient(GeminiClient(limiter=RateLimiter(rpm=a.rpm, rpd=450)), a.max_calls)
     dry, groups = [], []
     for t in a.companies:
         rec = next(r for r in records if r["ticker"] == t)
@@ -108,12 +108,12 @@ def main(argv=None) -> None:
             print(f"  {t}: group n={g['n']} fallback={g['fallback']}; D1 prompt {len(d1_prompt)} chars (sections {sent}, missing inputs {missing}); D2 prompt {len(d2_prompt)} chars", flush=True)
             continue
         if a.recheck:
-            r1 = C.recheck_background(co, facts, secs, store)
-            print(f"  {t}: D1 {r1['state'] if r1 else None} (recheck) {r1['checks']['reasons'] if r1 else ''}", flush=True)
+            rr = C.recheck_background(co, facts, secs, store)
+            print(f"  {t}: D1 en {rr['en'] and rr['en']['state']}, he {rr['he'] and rr['he']['state']} (recheck) {rr['he'] and rr['he']['checks']['reasons']}", flush=True)
             continue
         r1 = C.generate_background(co, facts, secs, client, store, force=a.force) if a.kind in ("both", "d1") else {"state": "-", "checks": {"reasons": []}}
-        r2 = C.generate_analysis(t, co.fiscal_year, inputs, client, store, force=a.force) if a.kind in ("both", "d2") else {"state": "-", "checks": {"reasons": []}}
-        print(f"  {t}: D1 {r1['state']} {r1['checks']['reasons']} {r1.get('regeneration_failed', '')}; D2 {r2['state']} {r2['checks']['reasons']}", flush=True)
+        r2 = T.generate_analysis_template(t, co.fiscal_year, inputs, store, force=a.force) if a.kind in ("both", "d2") else {"state": "-", "checks": {"reasons": []}}
+        print(f"  {t}: D1 {r1['state']} {r1['checks']['reasons']} {r1.get('regeneration_failed', '') or r1.get('stage_failed', '')}; D2 {r2['state']} {r2['checks']['reasons']}", flush=True)
     write_peer_groups(out / "peer_groups.jsonl", groups)
     if a.no_calls:
         (out / "dry_run.jsonl").write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in dry) + "\n", encoding="utf-8")

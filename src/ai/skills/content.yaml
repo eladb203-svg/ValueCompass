@@ -2,34 +2,35 @@
 version: 1
 d1:
   skill_id: BG-1
-  version: 3
+  version: 4
   sections: [TXT-001, TXT-003, TXT-005]
   caps: {TXT-001: 35000, TXT-003: 12000, TXT-005: 12000}       # characters per section when the prompt is cut
   moat_prefix: {2: "יתרון תחרותי ברור:", 1: "יתרון תחרותי לא מוכח:", 0: "אין יתרון תחרותי מזוהה"}
-  template: |
+  moat_prefix_en: {2: "Clear competitive advantage:", 1: "Unproven competitive advantage:", 0: "No identified competitive advantage"}
+  moat_terms_en: {brand: "brand", switching_costs: "switching costs", scale: "scale", network_effect: "network effect", regulation: "regulation", data: "data",
+                  infrastructure: "infrastructure", location: "location", none: "none"}
+  forbidden_en: ["buy", "sell", "undervalued", "overvalued", "recommend", "recommended", "recommendation", "price target", "outperform", "underperform"]
+  # stage A: the model writes the background in ENGLISH from the report; every check runs on the English text against the report
+  template_en: |
     SYSTEM
     You assist ValueCompass. Write a short background of the company for investors, using
     ONLY the annual-report text and the facts provided. Do not use outside knowledge. Do not
-    give opinions on the stock, its price or its score. Do not state any number that is not in
-    FACTS; copy numbers exactly as formatted in FACTS. Write ALL of the text in Hebrew, plain and
-    neutral: do not copy English sentences from FACTS or from the report, and translate the facts
-    into your own Hebrew wording. The only Latin letters allowed are the names of the company and
-    of its competitors exactly as they appear in the report (for example Chubb, never a Hebrew
-    transliteration), tickers, and terms given in FACTS. Segment names, product names and every other term must be translated into Hebrew. Never mix scripts inside one word. Never use the ASCII double-quote character inside the Hebrew text (write abbreviations with ״, for example נדל״ן). Keep
-    each of the five parts to ONE sentence and the whole text under 120 words.
-    "competitors" lists only companies named BY NAME in the report text (an empty list when none is named;
-    never a category such as "other banks"). Every competitor you name must be quoted. Copy each quote as one
-    continuous passage, exactly as it appears in the TEXT, without shortening or joining passages; quotes must
-    come from the report text, never from FACTS.
+    give opinions on the stock, its price or its score. Write in English, plain and neutral.
+    Numbers: use only numbers that appear in the TEXT or in FACTS (copy revenue exactly as in FACTS).
+    "competitors" lists only companies named BY NAME in the report text (an empty list when none is
+    named; never a category such as "other banks"); every competitor you name must be quoted. Write the
+    company name exactly as given in FACTS, and begin the first sentence with it. Copy each quote as one continuous passage, exactly as it
+    appears in the TEXT, without shortening or joining passages; quotes must come from the report text,
+    never from FACTS. Never use the ASCII double-quote character inside the text.
 
     STRUCTURE (exactly these five parts, one or two sentences each; total at most 120 words)
     1. What the company does and its main products or services.
     2. Main segments.
     3. Where it operates (main markets / geographies).
     4. Business environment and main competitors (as named in the report).
-    5. Competitive advantage. Level {moat_answer}: {moat_instruction}
+    5. Competitive advantage. Level {moat_answer}: {moat_instruction_en}
 
-    FACTS (from ValueCompass): industry {industry}; revenue {revenue} (FY{fiscal_year}); company name: {company_name} (write it in Latin letters with exactly this spelling and capitalization; never in capitals, never transliterated);
+    FACTS (from ValueCompass): industry {industry}; revenue {revenue_en} (FY{fiscal_year}); company name: {company_name};
     ONE SENTENCE: {one_sentence}; MOAT: level {moat_answer} / source {moat_source} / {moat_reasoning}
 
     TEXT ({sections}, filing {accession}):
@@ -38,8 +39,30 @@ d1:
     >>>
 
     OUTPUT
-    {{"skill_id": "BG-1", "version": {version}, "text_he": "<background>",
+    {{"skill_id": "BG-1", "version": {version}, "text_en": "<background>",
      "competitors": ["<as named>"], "quotes": [{{"text": "<exact quote>", "section": "..."}}]}}
+  # stage B: translation of the checked English text into Hebrew with the glossary
+  template_he: |
+    SYSTEM
+    You assist ValueCompass. Translate the English company background below into Hebrew, plain and neutral.
+    Do not add, remove or change any fact. Keep EXACTLY the same numbers (same values and scale: "$331.8 billion"
+    is written "331.8 מיליארד $") and the same names. Write ALL of the text in Hebrew; the only Latin letters
+    allowed are the names of the company and of its competitors exactly as given below (never a Hebrew
+    transliteration), and tickers. Translate segment names and product names into Hebrew. Never mix scripts
+    inside one word. Never use the ASCII double-quote character inside the text (write abbreviations with ״,
+    for example נדל״ן). Keep each of the five parts to one or two sentences and the whole text under 120 words.
+    The fifth part must begin with exactly this phrase, followed by the same single source in Hebrew:
+    {moat_translation}
+
+    NAMES to keep in Latin letters: company: {company_name}; competitors: {competitors}
+
+    ENGLISH TEXT:
+    <<<
+    {text_en}
+    >>>
+
+    OUTPUT
+    {{"skill_id": "BG-1T", "version": {version}, "text_he": "<translation>"}}
 d2:
   skill_id: AN-1
   version: 4
