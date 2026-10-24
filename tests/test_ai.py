@@ -482,3 +482,19 @@ def test_quote_not_found_alone_gets_one_retry_with_the_failed_quote_in_the_note(
     assert len(prompts) == 2 and "Quote not found verbatim: " in prompts[1] and "gizmos" in prompts[1] and "Quote not found" not in prompts[0] and r["state"] == "answered"
     always_bad = assess.ask(company(), SK["B3.1-Q2"], FakeClient(lambda p: good_reply("B3.1-Q2").replace("widgets", "gizmos")), AssessmentStore(tmp_path / "b.jsonl"), assess.Stats())
     assert always_bad["state"] == "insufficient_evidence" and "quote_not_found" in always_bad["evidence"]["reasons"]
+
+
+def test_a11_scale_quoting_is_not_a_stated_dependence_and_deliberation_gets_one_retry(tmp_path):
+    scale_quote = "Customer A is 19%. Level 0 includes 'a single product, or dependence on one license or market'. So level 0."
+    assert not checks.exposure_consistent(0, 19, scale_quote)
+    assert checks.exposure_consistent(0, 19, "The company also depends on a single product for most of its sales.")
+    assert checks.has_deliberation("Customer A is 19%. Wait, that is below 25%.") and checks.has_deliberation("Hmm, let me check") and not checks.has_deliberation("Customer A is 19% of revenue.")
+    e = {"type": "customer", "name": "X", "share_pct": 19}
+    prompts = []
+    seq = iter([good_reply("G3.1-Q3", answer=1, largest_exposure=e).replace('"reasoning": "clear"', '"reasoning": "Wait, 19% is between 10% and 25%."'), good_reply("G3.1-Q3", answer=1, largest_exposure=e)])
+
+    def reply(p):
+        prompts.append(p)
+        return next(seq)
+    r = assess.ask(company(), SK["G3.1-Q3"], FakeClient(reply), AssessmentStore(tmp_path / "a.jsonl"), assess.Stats())
+    assert len(prompts) == 2 and "not your thinking process" in prompts[1] and r["state"] == "answered"

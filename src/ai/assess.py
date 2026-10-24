@@ -91,14 +91,20 @@ def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, 
         finishes.append(rep.finish_reason)
         res = checks.check_judgment(rep.text, skill, text_sent, sent, facts_text, require_facts_check=(variant == "3.1"))
         last = (rep, res)
-        if "exposure_inconsistent" in res.reasons and "exposure" not in used:
-            used.add("exposure")
-            retry_note = "Your share_pct does not match the level you chose"
-            continue
-        if res.reasons and set(res.reasons) == {"quote_not_found"} and "quote" not in used:
-            used.add("quote")
-            bad = next((q["text"] for q in res.quotes if not q["found"]), "")
-            retry_note = f"Quote not found verbatim: {bad[:120]}. Copy one continuous passage exactly as it appears in the TEXT."
+        fixable = {"exposure_inconsistent", "reasoning_deliberation", "quote_not_found"}
+        if res.reasons and set(res.reasons) <= fixable and "fix" not in used:            # one retry for these reasons together, one note per reason
+            used.add("fix")
+            notes = []
+            if "exposure_inconsistent" in res.reasons:
+                sp = ((res.extra.get("largest_exposure") or {}).get("share_pct"))
+                hint = "" if not isinstance(sp, (int, float)) else (f" (share_pct {sp:g}%: a customer above 25% of revenue is level 0; a customer at 10%-25% is level 1; no customer above 10% is level 2)")
+                notes.append("Your share_pct does not match the level you chose" + hint + ".")
+            if "reasoning_deliberation" in res.reasons:
+                notes.append("Your reasoning must be your final explanation, not your thinking process: no 'Wait', 'Actually' or 'Hmm'; at most 3 short sentences.")
+            if "quote_not_found" in res.reasons:
+                bad = next((q["text"] for q in res.quotes if not q["found"]), "")
+                notes.append(f"Quote not found verbatim: {bad[:120]}. Copy one continuous passage exactly as it appears in the TEXT.")
+            retry_note = " ".join(notes)
             continue
         if "invalid_json" in res.reasons and "json" not in used:
             used.add("json")

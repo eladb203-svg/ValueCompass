@@ -85,16 +85,20 @@ def main(argv=None) -> None:
             log["b14_counts"][t] = {**counts, "items": [i["key"] for i in items], "sections": secs}
             if items:
                 b = {**blocks["EXT-GENERAL"], "sections": secs}
-                try:
-                    before = client.calls if client else 0
-                    rec = E.ask_block(rep, b, client, calls, items=items) if client else (calls.get(t, fy, "EXT-GENERAL") or {"raw": None, "no_call": "not_asked"})
-                    rows, creasons = E.rows_from_call(rep, b, rec, items=items)
-                    rows_by_block["EXT-GENERAL"] = rows
-                    per_block["EXT-GENERAL"] = {"calls": (client.calls - before) if client else 0, "cached": bool(rec.get("_cached")), "call_reasons": creasons,
-                                                "section_flags": rec.get("section_flags"), "asked": rec.get("items_asked"), "rows": len(rows)}
-                    print(f"  {t} EXT-GENERAL: {len(items)} items asked, {len(rows)} rows {creasons}", flush=True)
-                except RuntimeError as e:
-                    log["errors"][f"{t}:EXT-GENERAL"] = str(e)[:150]
+                rows_all, parts = [], []
+                for part, chunk in enumerate([items[i:i + 15] for i in range(0, len(items), 15)], 1):          # at most 15 items per call
+                    try:
+                        before = client.calls if client else 0
+                        pid = "EXT-GENERAL" if part == 1 else f"EXT-GENERAL#{part}"
+                        rec = E.ask_block(rep, b, client, calls, items=chunk, part=part) if client else (calls.get(t, fy, pid) or {"raw": None, "no_call": "not_asked"})
+                        rows, creasons = E.rows_from_call(rep, b, rec, items=chunk)
+                        rows_all += rows
+                        parts.append({"calls": (client.calls - before) if client else 0, "cached": bool(rec.get("_cached")), "call_reasons": creasons, "asked": rec.get("items_asked"), "rows": len(rows)})
+                        print(f"  {t} {pid}: {len(chunk)} items asked, {len(rows)} rows {creasons}", flush=True)
+                    except RuntimeError as e:
+                        log["errors"][f"{t}:EXT-GENERAL#{part}"] = str(e)[:150]
+                rows_by_block["EXT-GENERAL"] = rows_all
+                per_block["EXT-GENERAL"] = {"calls": sum(p["calls"] for p in parts), "parts": parts, "rows": len(rows_all), "asked": [k for p in parts for k in (p["asked"] or [])]}
         # engine-based controls (real estate): computed on the engine inputs with this company's accepted items merged in
         engine_ctl = None
         if ENGINE_OF[t] == "realestate":

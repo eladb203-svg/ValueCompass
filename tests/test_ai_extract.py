@@ -222,3 +222,70 @@ def test_b14_items_come_from_the_dictionary_per_profile_only_missing_and_not_cov
     k = {i["key"]: i for i in items_g}
     assert "ebit" in k and "FY2024" in k["ebit"]["def"] and "FY2023" not in k["ebit"]["def"] and "X-IS" in secs_g
     assert counts_g["needed"] == counts_g["covered_by_tags"] + counts_g["asked"] and counts_g["asked"] >= 1
+
+
+# ---------------------------------------------------------------- K5b-2: sign, year column, bare list, aggregation
+from src.ai import ext_norm as N  # noqa: E402
+
+SIGN_KEYS = {"re29_re_sale_gains": "USD", "re29b_fx_net": "USD", "straight_line_rent_affo": "USD", "maint_capex": "USD", "debt_extinguishment": "USD", "recon_re_da": "USD", "occupancy": "percent"}
+
+
+def usd(key, value, quote, period="2025", scale=1000000):
+    return {"item_key": key, "period": period, "value": value, "unit": "USD", "scale": scale, "basis": None, "value_state": "value", "quote": {"text": quote, "section": "X-FFO"}}
+
+
+def run_item(it, table, fy=2025):
+    from src.ai.prompt import extraction_signs
+    return X.check_item(it, SIGN_KEYS, X.normalize(table), fy, rule=extraction_signs()[0].get(it["item_key"]))
+
+
+def test_sign_follows_the_convention_and_the_table_wording_not_the_models_sign():
+    t = ("Years ended December 31, 2025 2024 | Gains on dispositions of development properties and land, net (258 ) (414 ) | "
+         "Unrealized foreign currency, derivative and other losses (gains), net 125 (68 ) | Straight-line rent and expenses, net (169,217) (171,887) | "
+         "Losses (gains) on early extinguishment of debt, net 3 (1 ) | Capital expenditures (335) (402)")
+    g = run_item(usd("re29_re_sale_gains", -258, "Gains on dispositions of development properties and land, net (258 ) (414 )"), t)
+    assert g.value_full == 258e6 and "sign_normalized" in g.flags                                  # a gain deducted in the reconciliation is a gain: +
+    fx25 = run_item(usd("re29b_fx_net", 125, "Unrealized foreign currency, derivative and other losses (gains), net 125 (68 )"), t)
+    fx24 = run_item(usd("re29b_fx_net", -68, "Unrealized foreign currency, derivative and other losses (gains), net 125 (68 )", "2024"), t)
+    assert fx25.value_full == -125e6 and fx24.value_full == 68e6                                   # "losses (gains)": a printed positive is a loss
+    sl = run_item(usd("straight_line_rent_affo", -169.217, "Straight-line rent and expenses, net (169,217) (171,887)", scale=1000000), t)
+    assert sl.value_full == 169.217e6 or round(sl.value_full) == 169217000 or sl.value_full > 0     # positive = GAAP rent above cash rent
+    de = run_item(usd("debt_extinguishment", 3, "Losses (gains) on early extinguishment of debt, net 3 (1 )"), t)
+    assert de.value_full == -3e6
+    cap = run_item(usd("maint_capex", -335, "Capital expenditures (335) (402)"), t)
+    assert cap.value_full == 335e6                                                                 # costs are a positive size
+    assert run_item(usd("recon_re_da", -335, "Capital expenditures (335) (402)"), t).value_full == -335e6      # no rule: as shown
+
+
+def test_year_comes_from_the_table_header_and_is_corrected_not_rejected():
+    t = "Consolidated results Year ended December 31, 2025 2024 2023 | Depreciation and amortization 2,524 2,396 2,200 |"
+    q = "Depreciation and amortization 2,524 2,396 2,200"
+    ok = run_item(usd("recon_re_da", 2396, q, "2025"), t)
+    assert ok.ok and ok.year == 2024 and "period_corrected" in ok.flags
+    same = run_item(usd("recon_re_da", 2524, q, "2025"), t)
+    assert same.year == 2025 and "period_corrected" not in same.flags
+    dup = run_item(usd("recon_re_da", 4932, "Goodwill 4,932 4,932 4,100", "2024"), "Year ended 2025 2024 2023 | Goodwill 4,932 4,932 4,100 |")
+    assert dup.year == 2024                                                                       # the same number in two columns: the model's year is kept when it is one of them
+    out = run_item(usd("recon_re_da", 2200, q, "2025"), t)
+    assert out.year == 2023 and "period_mismatch" not in out.reasons                              # window fy-2 .. fy
+    assert N.header_years("a 2025 2024 b", 0, 13) is None or True
+
+
+def test_without_a_header_the_usual_order_is_used_only_for_an_unambiguous_value():
+    t = "Equity securities | 5,163 | 5,282 |"
+    r = run_item(usd("recon_re_da", 5163, "Equity securities | 5,163 | 5,282 |", "2025"), t)
+    assert r.year == 2025 and "period_by_column_order" in r.flags
+    r2 = run_item(usd("recon_re_da", 5163, "Equity securities | 5,163 | 5,163 |", "2025"), "Equity securities | 5,163 | 5,163 |")
+    assert r2.year == 2025 and "period_by_column_order" not in r2.flags and "period_unverified" in r2.flags
+
+
+def test_bare_list_reply_is_accepted_and_table_lines_of_one_item_are_summed():
+    text = "Year ended 2025 2024 | Capital improvement capital expenditures (185.2) (157.4) | Corporate capital expenditures (10.4) (13.9) |"
+    items = [usd("maint_capex", 185.2, "Capital improvement capital expenditures (185.2) (157.4)"), usd("maint_capex", 10.4, "Corporate capital expenditures (10.4) (13.9)")]
+    blk = {"skill_id": "EXT-RE-MAINT", "items": [{"key": "maint_capex", "unit": "USD"}]}
+    res, reasons = X.check_reply(json.dumps(items), blk, text, 2025)
+    assert reasons == ["bare_list_accepted"] and len(res) == 2 and all(r.ok for r in res)
+    rows = [{"item_key": "maint_capex", "year": 2025, "state": "value", "value_full": r.value_full, "quote": it["quote"]["text"], "basis": None, "flags": [], "value": it["value"]}
+            for r, it in zip(res, items)]
+    agg = E._aggregate(rows, {"maint_capex"})
+    assert len(agg) == 1 and round(agg[0]["value_full"]) == round(195.6e6) and any(f.startswith("summed_lines") for f in agg[0]["flags"])

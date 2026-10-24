@@ -16,13 +16,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from src.ai import assess, content as C  # noqa: E402
+from src.ai import assess, content as C, d2 as D2  # noqa: E402
 from src.ai.sections import find_filing  # noqa: E402
 from src.ai.store import AssessmentStore  # noqa: E402
 from src.scoring import peer_source as PS, peers as P  # noqa: E402
 
 DEV = ["KO", "MSFT", "JPM", "CB", "O", "AMT", "INTC"]
-DEFAULT_ANSWERS = ROOT / "scripts" / "ai_store" / "k5a3" / "gemini-3.5-flash-lite" / "v3.1" / "assessments.jsonl"
+DEFAULT_ANSWERS = ROOT / "scripts" / "ai_store" / "k5b" / "scoring" / "gemini-3.5-flash-lite" / "v3.1" / "assessments.jsonl"
+DEFAULT_GOLDEN = ROOT / "scripts" / "output_k5c" / "golden"          # the golden of the K5b run with the AI scoring answers (the current run)
+PREVIOUS_GOLDEN = ROOT / "tests" / "golden" / "2026-10-20"                 # the previous run of every company (no AI answers) - for the CHANGE line
 
 
 def stored_answer(store: AssessmentStore, ticker: str, fy: int, question: str) -> dict:
@@ -58,20 +60,26 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--companies", nargs="*", default=DEV)
     ap.add_argument("--no-calls", action="store_true")
-    ap.add_argument("--golden", default=str(ROOT / "tests" / "golden" / "2026-10-20"))
+    ap.add_argument("--golden", default=str(DEFAULT_GOLDEN))
+    ap.add_argument("--previous", default=str(PREVIOUS_GOLDEN))
     ap.add_argument("--answers", default=str(DEFAULT_ANSWERS))
     ap.add_argument("--out-root", default=str(ROOT / "scripts" / "ai_store" / "k5c"))
     ap.add_argument("--rpm", type=int, default=20)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--recheck", action="store_true", help="no calls: re-run the current checks on the stored raw answers of failed D1 texts")
+    ap.add_argument("--seed-shift", type=int, default=0, help="seed offset added to the calls (to retry failed texts with other seeds)")
     a = ap.parse_args(argv)
     out = Path(a.out_root)
+    C.SEED_SHIFT = a.seed_shift
     records = PS.load_records(a.golden)
     answers = AssessmentStore(Path(a.answers))
     from run_ai_k5a import meta
     client = store = None
-    if not a.no_calls:
+    if not a.no_calls and not a.recheck:
         from src.ai.client import GeminiClient, RateLimiter
         client, store = GeminiClient(limiter=RateLimiter(rpm=a.rpm, rpd=450)), C.TextStore(out / "texts.jsonl")
+    if a.recheck:
+        store = C.TextStore(out / "texts.jsonl")
     dry, groups = [], []
     for t in a.companies:
         rec = next(r for r in records if r["ticker"] == t)
@@ -79,21 +87,31 @@ def main(argv=None) -> None:
         run_id = f"{Path(a.golden).name}:{t}"
         g = P.peer_group(rec, records)
         pc = P.peer_percentiles(rec, g, records)
-        results = PS.build_results(j, rec, run_id)
+        try:
+            prev_j, _ = PS.load_json(a.previous, t)
+        except KeyError:
+            prev_j = None
+        inputs = D2.build_d2_inputs(j, rec, run_id, pc, prev_j, Path(a.previous).name if prev_j else None)
+        results = inputs["results"]
         groups.append({"ticker": t, "fiscal_year": int(rec["fiscal_year"][2:]), "run_id": run_id, "peer_group": {"ids": g["ids"], "definition": g["definition"], "n": g["n"], "fallback": g["fallback"]}})
         facts, moat_source, missing = d1_inputs(rec, answers)
         m = meta(t)
         co = assess.Company(t, m["name"], m["profile"], int(rec["fiscal_year"][2:]), find_filing(t, str(m["end"][-1])[:10]))
         secs = {k: v.text for k, v in co.sections().items() if k in ("TXT-001", "TXT-003", "TXT-005") and v.found}
-        d1_prompt, _txt, sent = C.build_d1_prompt(facts, co.filing.accession, secs)
-        d2_prompt = C.build_d2_prompt(results, pc)
+        secs_t, trimmed = C.trim_d1_sections(facts, co.filing.accession, secs)
+        d1_prompt, _txt, sent = C.build_d1_prompt(facts, co.filing.accession, secs_t)
+        d2_prompt = C.build_d2_prompt(inputs)
         if a.no_calls:
-            dry.append({"ticker": t, "run_id": run_id, "peer_group": g, "peers": pc, "results": results, "d1_facts": facts, "d1_sections": sent, "d1_missing_inputs": missing,
+            dry.append({"ticker": t, "run_id": run_id, "peer_group": g, "peers": pc, "results": results, "d1_facts": facts, "d1_sections": sent, "d1_trimmed": trimmed, "d1_missing_inputs": missing, "d2_inputs": inputs,
                         "d1_prompt": d1_prompt, "d2_prompt": d2_prompt, "d1_prompt_chars": len(d1_prompt), "d2_prompt_chars": len(d2_prompt)})
             print(f"  {t}: group n={g['n']} fallback={g['fallback']}; D1 prompt {len(d1_prompt)} chars (sections {sent}, missing inputs {missing}); D2 prompt {len(d2_prompt)} chars", flush=True)
             continue
+        if a.recheck:
+            r1 = C.recheck_background(co, facts, secs, moat_source, store)
+            print(f"  {t}: D1 {r1['state'] if r1 else None} (recheck) {r1['checks']['reasons'] if r1 else ''}", flush=True)
+            continue
         r1 = C.generate_background(co, facts, secs, moat_source, client, store, force=a.force)
-        r2 = C.generate_analysis(t, co.fiscal_year, results, pc, client, store, force=a.force)
+        r2 = C.generate_analysis(t, co.fiscal_year, inputs, client, store, force=a.force)
         print(f"  {t}: D1 {r1['state']} {r1['checks']['reasons']}; D2 {r2['state']} {r2['checks']['reasons']}", flush=True)
     write_peer_groups(out / "peer_groups.jsonl", groups)
     if a.no_calls:

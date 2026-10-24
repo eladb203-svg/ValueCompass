@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import ext_checks as X
-from .prompt import build_extraction_prompt, extraction_blocks
+from .prompt import build_extraction_prompt, extraction_blocks, extraction_signs
 from .sections import ext_section, Filing
 
 PROMPT_VERSION = "1"
@@ -86,16 +86,17 @@ class CallStore:
         return list(self._rows.values())
 
 
-def ask_block(rep: Report, block: dict, client, calls: CallStore, items: Optional[list] = None, force: bool = False) -> dict:
+def ask_block(rep: Report, block: dict, client, calls: CallStore, items: Optional[list] = None, force: bool = False, part: int = 1) -> dict:
     """One extraction call (one retry on invalid JSON with another seed). Returns the stored call record; a stored record is returned without a call."""
-    ex = None if force else calls.get(rep.ticker, rep.fiscal_year, block["skill_id"])
+    key_id = block["skill_id"] if part == 1 else f"{block['skill_id']}#{part}"          # B14 is asked in groups of at most 15 items: one stored call per group
+    ex = None if force else calls.get(rep.ticker, rep.fiscal_year, key_id)
     if ex is not None:
         ex["_cached"] = True
         return ex
     sections = {sid: rep.section(sid).text for sid in block["sections"] if rep.section(sid).found}
     flags = [f"section_not_found:{sid}" for sid in block["sections"] if sid not in sections]
     flags += [f"{sid}:{f}" for sid in block["sections"] if sid in sections for f in rep.section(sid).flags]
-    base = {"ticker": rep.ticker, "fiscal_year": rep.fiscal_year, "skill_id": block["skill_id"], "version": block["version"], "prompt_version": PROMPT_VERSION,
+    base = {"ticker": rep.ticker, "fiscal_year": rep.fiscal_year, "skill_id": key_id, "version": block["version"], "prompt_version": PROMPT_VERSION,
             "accession": rep.filing.accession, "items_asked": [i["key"] for i in (items if items is not None else block["items"])], "section_flags": flags}
     if not sections:
         return calls.put({**base, "model": "", "raw": None, "usage": {}, "sections_sent": [], "no_call": "sections_not_found"})
@@ -113,6 +114,24 @@ def ask_block(rep: Report, block: dict, client, calls: CallStore, items: Optiona
     return calls.put({**base, "model": last.model, "raw": last.text, "sections_sent": sent, "text_chars_sent": len(text_sent),
                       "usage": {"prompt_tokens": last.prompt_tokens, "output_tokens": last.output_tokens, "thought_tokens": last.thought_tokens, "latency_s": round(last.latency, 2),
                                 "attempts": last.attempts, "finish_reason": last.finish_reason, "attempt_log": last.attempt_log, "tries": attempts}})
+
+
+def _aggregate(rows: list, keys: set) -> list:
+    """Table lines that together make one engine item (``aggregate_sum`` in extraction.yaml) are summed into one row per year; the quotes of the lines are kept."""
+    out, groups = [], {}
+    for r in rows:
+        if r["item_key"] in keys and r["state"] == "value":
+            groups.setdefault((r["item_key"], r["year"]), []).append(r)
+        else:
+            out.append(r)
+    for (_k, _y), rs in groups.items():
+        uniq = list({r["quote"]: r for r in rs}.values())
+        first = dict(uniq[0])
+        if len(uniq) > 1:
+            first.update({"value_full": sum(r["value_full"] for r in uniq), "quote": " || ".join(r["quote"] for r in uniq), "basis": " + ".join(str(r["basis"]) for r in uniq),
+                          "flags": sorted(set(first["flags"]) | {f"summed_lines ({len(uniq)})"}), "value": None})
+        out.append(first)
+    return out
 
 
 def rows_from_call(rep: Report, block: dict, rec: dict, items: Optional[list] = None) -> tuple:
@@ -134,7 +153,7 @@ def rows_from_call(rep: Report, block: dict, rec: dict, items: Optional[list] = 
             "section": q.get("section"), "accession": rep.filing.accession, "skill_id": block["skill_id"], "block": block["block"], "version": block["version"], "model": rec.get("model"),
             "prompt_version": PROMPT_VERSION, "flags": list(r.flags), "reasons": list(r.reasons), "control": None, "control_result": None, "control_detail": None,
             "approval_status": "rejected" if not r.ok else ("n/a" if state != "value" else None), "approval_reason": None})
-    return rows, creasons
+    return _aggregate(rows, extraction_signs()[1]), creasons
 
 
 def decide(block: dict, row: dict, ctrl: Optional[dict], key_in_control: bool = True) -> tuple:

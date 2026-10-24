@@ -101,3 +101,8 @@ def build_extraction_prompt(block: dict, ctx: dict, sections: dict, items: Optio
     if note:
         prompt += "\nNOTE: " + note + "\n"
     return prompt, text, [s for s, _ in sent]
+
+
+def extraction_signs() -> tuple:
+    d = _load("extraction.yaml")
+    return d.get("sign_rules", {}), set(d.get("aggregate_sum", []))

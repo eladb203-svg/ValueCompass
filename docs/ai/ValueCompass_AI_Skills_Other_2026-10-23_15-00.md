@@ -1,11 +1,11 @@
 ---
-title: "ValueCompass — AI Skills: Classification, Extraction, Content (B1–B15, C1, D1–D2)"
-subtitle: "2026-10-21_12-39 · prompts in English · for approval"
+title: "ValueCompass — AI Skills: Classification, Extraction, Content, Search (B1–B15, C1, D1–D2, S1–S2)"
+subtitle: "2026-10-23_15-00 · prompts in English · approved"
 ---
 
 # AI Skills: Classification, Extraction, Content
 
-**עברית — מה במסמך:** שאר הסקילים של ק5, באותו מבנה של סקילי הניקוד (A1–A14): תבנית משותפת לכל סוג + בלוק נתונים לכל סקיל. **C1** — סיווג ענף (#15). **B1–B15** — חילוץ נתונים (#16–#29, כולל החילוץ הכללי). **D1** — רקע על החברה (#30). **D2** — ניתוח תוצאות (#31). החיפוש החכם (#32) ייכתב לפני ק7, יחד עם מסכי החיפוש. שמות הנתונים (`item_key`) הם השמות במילון ב-DB; ההגדרות — מחלק ה בספר הכללים 2026-10-20_23-21. כללי האישור — לפי ההחלטה מ-21.10.2026.
+**עברית — מה במסמך:** שאר הסקילים של ק5, באותו מבנה של סקילי הניקוד (A1–A14): תבנית משותפת לכל סוג + בלוק נתונים לכל סקיל. **C1** — סיווג ענף (#15). **B1–B15** — חילוץ נתונים (#16–#29, כולל החילוץ הכללי). **D1** — רקע על החברה (#30). **D2** — ניתוח תוצאות (#31). **עדכון 23.10.2026:** נוספו סעיף 3.3 — ניסוח אחיד ויציב לניתוח (D2): נכתב פעם אחת לכל ריצה; רק ערכים שלא תלויים במחיר היומי; מילון מונחים, מילות חוזק ומיקום מול עמיתים מחושבים בקוד, תבניות משפט, דוגמה, ושורת "מה השתנה" — וסעיף 5 — חיפוש חכם (S1, ‏#32) וזיהוי עמודות בקובץ ברוקר (S2, ‏#33), עם מפתח Gemini נפרד. שמות הנתונים (`item_key`) הם השמות במילון ב-DB; ההגדרות — מחלק ה בספר הכללים 2026-10-20_23-21. כללי האישור — לפי ההחלטה מ-21.10.2026.
 
 **Source:** Rulebook 2026-10-20_23-21 (Parts B.1, C, D, E); AI Layer Specification 2026-10-20_23-23; Scoring skills 2026-10-21_12-17.
 
@@ -383,6 +383,160 @@ peer_group (code, fixed): same profile and same ValueCompass industry; when fewe
 approval: automatic
 ```
 
-## 4. Language decision (proposed)
+### 3.3 D2 — uniform wording and stable text (added 2026-10-23)
+
+**Stable text:** D2 is generated once per scoring run, stored with `run_id` and shown as is. Opening the page never calls the AI. A new text is generated only by a new run: a new annual report, a new Rulebook or calculation version, or a profile change. The daily price refresh is not a new run.
+
+**Price-independent content (new rule):** D2 may cite only values that change with a new run:
+
+- Quality scores and labels.
+- Criteria and their points.
+- Fair values and buy prices.
+- The required margin of safety.
+- Blocks and flags.
+
+It must NOT cite anything that changes with the daily price, because the text would then contradict the table above it within days:
+
+- The current price.
+- The price score.
+- The current margin of safety, discount or upside.
+- The conclusion category.
+
+**Uniform wording across companies.** Code prepares the words; the model only composes.
+
+1. **Glossary.** RESULTS carries every criterion name, metric name and label in Hebrew, exactly as the screen shows them (Display Specification 2026-10-23_01-00). The model must use these strings verbatim and no synonyms (e.g., always "תשואה על ההון", never "ROE" or "רווחיות ההון").
+2. **Strength words are computed by code, not chosen by the model.** Each criterion gets a word from its share of the maximum:
+
+   | Share of the maximum | Word |
+   |---|---|
+   | ≥70% | חזק |
+   | 40–69% | בינוני |
+   | below 40% | חלש |
+
+3. **Peer position is computed by code**, from the percentile:
+
+   | Percentile | Wording |
+   |---|---|
+   | ≥75 | ברבע העליון |
+   | 50–74 | מעל החציון |
+   | 25–49 | מתחת לחציון |
+   | below 25 | ברבע התחתון |
+
+4. **Sentence frames.** The model fills the frames in this order, with at most one connecting sentence of its own per paragraph:
+   - **Paragraph 1 (quality):** "ציון האיכות לפי באפט: {X}/100 ({label}); לפי גרהם: {Y}/100 ({label}). הקריטריונים החזקים: {…}. החלשים: {…}. ביחס ל-{n} עמיתים ({group}): {position}."
+   - **Paragraph 2 (value):** "השווי לפי באפט: {value} ({method}); מחיר הקנייה: {buy price}, במרווח ביטחון נדרש של {mos}%. לפי גרהם: {value} ({method}); מחיר הקנייה: {buy price}." Then blocks, flags or "לא מתאים לרכישה" when they apply.
+5. **One worked example** in the prompt: a fictional company, both paragraphs written to the frames. It shows the style, not the content.
+6. **Score-change line (CHANGE).**
+   - **When:** only when a previous run exists.
+   - **Where:** one more line, at most 25 words, outside the two paragraphs: "לעומת הריצה הקודמת ({date}): {criterion} {עלה/ירד} מ-{a} ל-{b} — {reason}."
+   - **Content:** code computes the changes and their reason (new annual report, changed data, rule version). The model only phrases.
+
+**Additional code checks:**
+
+- **Forbidden content:** no current price, price score, current margin, discount, upside or conclusion category. Checked against RESULTS: any of those numbers in the text → rejected.
+- **Glossary:** criterion and metric names appear only in their glossary form.
+- **Frames:** each frame's fixed words appear in order.
+- **On failure:** one retry with the failure reason; still failing → `failed`, and the screen shows the section without text.
+
+## 4. Language decision
 
 Prompts in English (2026-10-20_23-23 §10.2). **User-facing text (D1, D2) is generated directly in Hebrew**; an English version can be generated later from the same inputs. Judgment and extraction answers stay in English (internal), with display labels translated by the UI.
+
+## 5. Search and import — S1, S2 (added 2026-10-23)
+
+These two skills run when a user acts, not in the loading queue.
+
+- **Key:** a separate Gemini key from a separate Google project, with its own daily quota. They run inside a Supabase Edge Function, so the key is never in the browser.
+- **Model:** the fixed model (`gemini-3.5-flash-lite`), temperature 0, seed 20261021.
+- **Per-user daily limit:** to be set with the security stage.
+
+### 5.1 S1 — Smart search (#32)
+
+**Flow:**
+
+1. **Code first.** When the text matches a ticker or a company name (typo-tolerant), the search runs without AI.
+2. **Otherwise S1** turns the request into a structured filter.
+3. **Code validates the filter, then queries the DB.** The AI never writes SQL and never sees the DB.
+4. **The screen** shows the understood filter as editable chips, then the results.
+
+```
+SYSTEM
+You assist ValueCompass. Turn the user's request into a filter over the fields listed below.
+Use ONLY these fields, operators and values. Do not invent fields. Do not answer the question
+yourself and do not name companies. If part of the request cannot be expressed with these
+fields, put it in "unsupported". Return ONLY the JSON object under OUTPUT.
+
+FIELDS (field — type — allowed values / range)
+profile — enum — STANDARD, TECH_ASSET_LIGHT, BANK, INSURANCE, INCOME_REAL_ESTATE
+industry — enum — {the ValueCompass industries}
+country — enum — {countries in the DB}
+buffett_quality, graham_quality — number 0–100
+buffett_price, graham_price — number 0–10
+quality_label_buffett, quality_label_graham — enum — {labels}
+revenue_cagr_5y, net_income_cagr_5y, eps_cagr_5y — percent
+roe_latest — percent; debt_to_equity_latest — ratio; fcf_latest — currency
+market_cap — currency
+price_vs_buy_price_buffett, price_vs_buy_price_graham — percent (negative = below the buy price)
+in_my_portfolio, in_my_watchlist — boolean
+
+OPERATORS: =, !=, <, <=, >, >=, between, in
+SORT: any number field, asc | desc. LIMIT: 1–50 (default 20).
+
+REQUEST (Hebrew or English): {user_text}
+
+OUTPUT
+{"skill_id": "S1", "version": 1,
+ "filters": [{"field": "...", "op": "...", "value": ...}],
+ "sort": {"field": "...", "dir": "asc|desc"} | null, "limit": 20,
+ "understood_he": "<one Hebrew sentence: what will be searched>",
+ "unsupported": ["<part of the request that could not be expressed>"]}
+```
+
+**Code checks:**
+
+- Every field, operator and value is in the allow-list and within its range.
+- Enum values are exact.
+- At most 8 filters.
+- A failed check removes that filter and adds it to `unsupported`; the request is never re-asked.
+- An empty filter list → plain name/ticker search.
+- `understood_he` is shown to the user.
+
+**Example:** "בנקים עם ציון באפט מעל 80 וחוב נמוך" → `profile = BANK`, `buffett_quality > 80`, and `unsupported: ["חוב נמוך"]`. For banks the leverage metric is CET1, which is not in the field list, so the screen says so instead of guessing.
+
+### 5.2 S2 — Broker file column mapping (#33)
+
+**Flow:**
+
+1. **Code reads the uploaded file** (CSV / Excel).
+2. **Only the header row and the first 5 data rows are sent to S2.** The rest of the file never leaves the code.
+3. **S2 proposes which column holds which field.**
+4. **Code applies the mapping to all rows and validates it.**
+5. **The screen shows a preview.** The user corrects it before saving.
+
+```
+SYSTEM
+You assist ValueCompass. A user uploaded a broker export of their holdings. Map its columns
+to the fields below, using the header row and the sample rows. Do not change or compute values.
+If no column fits a field, map it to null. Return ONLY the JSON object under OUTPUT.
+
+FIELDS: ticker (symbol), quantity (number of shares), avg_price (average purchase price per share),
+purchase_date, currency, ignore
+
+HEADER: {header_row}
+SAMPLE ROWS (up to 5): {rows}
+
+OUTPUT
+{"skill_id": "S2", "version": 1,
+ "mapping": {"ticker": <column index | null>, "quantity": ..., "avg_price": ..., "purchase_date": ..., "currency": ...},
+ "date_format": "<e.g., DD/MM/YYYY | null>", "decimal_separator": "." | ",",
+ "notes_he": "<one Hebrew sentence, e.g., 'עמודת המחיר היא סך העלות ולא מחיר למניה'>"}
+```
+
+**Code checks:**
+
+- Ticker values look like tickers and are matched to the DB or to SEC.
+- Quantity and price parse as positive numbers.
+- Dates parse with `date_format`.
+- A failed column → that field left blank.
+- Unknown tickers go to the automatic add.
+- Empty fields are allowed (Display Specification 3.1).

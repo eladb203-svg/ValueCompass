@@ -287,3 +287,23 @@ blocks:
     items: []     # filled per company by code (items with no tag value, the statement named in the dictionary)
     control: neighbours_3x
     approval: by_feed
+
+# Sign convention (K5b-2): the code, not the model, sets the sign of these items from the convention and the wording of the table line.
+#   magnitude          : the amount as a positive size (capex, depreciation, leasing costs, costs, losses reported as a cost)
+#   effect             : effect on net income - a gain is +, a loss is -; read from the line label ("losses (gains)": a printed positive is a loss; "gains (losses)": a printed positive is a gain;
+#                        a label with only gain(s) is a gain; only loss / impairment / charge is a loss), not from the sign the model chose
+#   deduction_positive : positive = GAAP rent above cash rent, i.e. the line shown as a deduction (parentheses) in the AFFO reconciliation
+#   as_shown (default) : the sign printed in the table (parentheses = negative)
+sign_rules:
+  maint_capex: magnitude
+  ti_lc: magnitude
+  straight_line_rent_affo: deduction_positive
+  transaction_costs: magnitude
+  re29_re_sale_gains: effect
+  re29_nonre_impairments: effect
+  re29a_nonre_inv: effect
+  re29b_fx_net: effect
+  debt_extinguishment: effect
+  cat_loss_latest: magnitude
+# several table lines that together make one engine item (towers: capital improvement + corporate capex; straight-line revenue + expense) are summed
+aggregate_sum: [maint_capex, straight_line_rent_affo]

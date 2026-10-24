@@ -1,6 +1,6 @@
 ---
 title: "ValueCompass — Stage K6 Specification: Data Loading and Database Connection"
-subtitle: "2026-10-22_14-39 · English (source of truth) · approved"
+subtitle: "2026-10-23_14-59 · English (source of truth) · approved"
 ---
 
 # Stage K6 — Data Loading and Database Connection
@@ -146,9 +146,40 @@ Run before writing. A failed check either rescales and flags, flags only, or hol
 | New annual report | Daily check of the submissions list | Collect the new year; router (E10); AI for the new report; rescore |
 | Amendment / restatement | 10-K/A, or DQ finds a restated value | Rewrite the affected years; flag; rescore |
 | Repair | A failed DQ check fixed, or a code fix | Recompute from the cache; no new download unless needed |
-| Price refresh | Daily (E1) | `market_snapshot`; price scores and buy prices only (no new run of quality) |
+| Price refresh | Daily close + intraday for hot stocks (section 3.1; E1) | `market_snapshot`; price scores and buy prices only (no new run of quality) |
 | Yields and FX | Monthly / yearly (E4, R15) | Reference tables; price scores |
 | Recompute all | New Rulebook or calculation version | New runs for all companies; AI answers re-asked only when a question or prompt version changes (R18) |
+
+### 3.1 Schedule and scheduler (decided 2026-10-23)
+
+**Scheduler inside the system.** One runner process holds the whole schedule and the queue in code (APScheduler). It records every run in `data_update_log`.
+
+- **Starting it:** Windows Task Scheduler only starts the process when the PC starts.
+- **A missed job:** a job missed while the PC was off runs as soon as the runner starts.
+- **DB-only checks:** `pg_cron` in Supabase handles checks that live only in the database, e.g., flagging a price that was not refreshed (E1).
+- **Moving to the cloud:** the same runner moves to the cloud before launch.
+
+| Job | When (Israel time) | Notes |
+|---|---|---|
+| **Daily close prices, all stocks** | Once per exchange, after its close; overall window 10:00–23:00 | Updates price scores and the conclusion only. No AI, no new quality run, D2 unchanged |
+| **Intraday prices, "hot" stocks** | Every 30–60 min during each exchange's trading hours, within 10:00–23:00 | **"Hot"** = held in a portfolio or on a watchlist and within about 10% above the buy price. Many tickers per request. Basis for future buy-price alerts |
+| **New annual reports and amendments** | Daily 06:00 | **One request:** the SEC daily form index. Filter 10-K / 10-K/A for our CIKs, then queue those companies |
+| **AI queue** | Daily from 10:00, after the Gemini quota reset | All AI work: new companies (priority), new annual reports, missing extraction. Stops at the daily budget and resumes the next day |
+| **Government yields** | Monthly; annual value yearly | E4 |
+| **FX rates** | Daily | R15 (used from the Israel stage) |
+| **Missing-data audit** | Weekly | Finds years or items not loaded |
+
+### 3.2 How the parts connect
+
+| Connection | How | Stage |
+|---|---|---|
+| Python runner ↔ DB | Supabase service-role key, kept only on the runner | K6a |
+| ETL ↔ sources | The existing providers, writing to the DB, with the job types above | K6b |
+| AI queue ↔ Gemini ↔ DB | Answers and texts stored in tables instead of files | K6c |
+| Schedule | Section 3.1 | K6d |
+| Screen ↔ DB | supabase-js, read-only, RLS (each user sees only what is allowed) | K7 |
+| Screen ↔ smart search | A Supabase Edge Function calls Gemini with a **separate key and Google project** (its own daily quota), so searches never use the loading quota | K7 |
+| Screen → runner | **Through `work_queue`:** add company, import file or admin approval writes a request; the runner picks it up | K6c (queue) + K7 (buttons) |
 
 ## 4. Adding a company that is not in the DB (decided 2026-10-21)
 

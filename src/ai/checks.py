@@ -99,10 +99,21 @@ def _check_quotes(quotes, text_norm: str, sections_sent: list, reasons: list, re
 _OTHER_DEPENDENCE = re.compile(r"single product|one product|product dependence|licen[cs]e|one market|single market|sole source|depends? (?:heavily )?on (?:a )?single", re.I)
 
 
+_DELIBERATION = re.compile(r"\b(?:Wait|Hmm)\b|\bActually,|\bLet(?:'s| me) (?:re)?check|\bLet(?:'s| me) re(?:read|think|consider)", re.I)
+_SCALE_QUOTE = re.compile(r"\b(?:level\s*[012]|scale|includes?|above 25%|the card)\b", re.I)
+
+
+def has_deliberation(reasoning: str) -> bool:
+    """Thinking aloud inside the reasoning field ("Wait, ...") - the reasoning must be the final explanation."""
+    return bool(_DELIBERATION.search(reasoning or ""))
+
+
 def exposure_consistent(answer: int, share_pct: float, reasoning: str = "") -> bool:
     """A11 code_check: a customer's share of revenue vs the level. > 25 allows 0; 10-25 allows 1 (or 0 only with another stated dependence: product, license, market);
     < 10 allows 2 (or 0 / 1 only with such another dependence)."""
-    other = bool(_OTHER_DEPENDENCE.search(reasoning or ""))
+    # sentences that merely quote the scale ("Level 0 includes ... a single product ...") are not a stated dependence of the company
+    own = " ".join(x for x in re.split(r"(?<=[.;?!])\s+", reasoning or "") if not _SCALE_QUOTE.search(x))
+    other = bool(_OTHER_DEPENDENCE.search(own))
     if share_pct > 25:
         return answer == 0
     if share_pct >= 10:
@@ -138,6 +149,8 @@ def check_judgment(raw: str, skill: dict, text_sent: str, sections_sent: list, f
     res.quotes = _check_quotes(d.get("quotes"), normalize(text_sent), sections_sent, res.reasons, res.flags, normalize(facts_text) if facts_text else "")
     if not res.quotes:
         res.reasons.append("no_quote")                               # check 6
+    if has_deliberation(res.reasoning):
+        res.reasons.append("reasoning_deliberation")
     sid = skill["skill_id"]
     extra: dict = {}
     if require_facts_check and facts_text:

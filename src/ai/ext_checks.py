@@ -82,7 +82,7 @@ class ItemResult:
     value_full: Optional[float] = None
 
 
-def check_item(it: dict, keys: dict, text_norm: str, fy: int, window: int = 2) -> ItemResult:
+def check_item(it: dict, keys: dict, text_norm: str, fy: int, window: int = 2, rule: Optional[str] = None) -> ItemResult:
     """``keys`` = {item_key: expected unit}. One item of the model's answer."""
     res = ItemResult(False, it)
     if not isinstance(it, dict):
@@ -134,6 +134,8 @@ def check_item(it: dict, keys: dict, text_norm: str, fy: int, window: int = 2) -
         elif (v < 0) != neg and key not in ("loan_line",):
             res.flags.append("sign_not_verified")
     res.value_full = float(v) * int(sc) if it.get("unit") == "USD" else float(v)
+    from . import ext_norm                                                   # year from the table columns, sign from the convention of the item (K5b-2)
+    ext_norm.apply(res, it, text_norm, fy, rule, window)
     res.ok = not res.reasons
     return res
 
@@ -165,6 +167,14 @@ def check_reply(raw: str, block: dict, text_sent: str, fy: int, items: Optional[
     d = parse_json(raw)
     reasons = []
     if d is None:
+        try:
+            bare = json.loads((raw or "").strip().removeprefix("```json").removesuffix("```").strip())
+        except ValueError:
+            bare = None
+        if isinstance(bare, list):                                           # the model returned the list of items without the wrapping object (USB B14)
+            d = {"skill_id": block["skill_id"], "items": bare}
+            reasons.append("bare_list_accepted")
+    if d is None:
         d = salvage_items(raw)
         if d is None:
             return [], ["invalid_json"]
@@ -176,7 +186,9 @@ def check_reply(raw: str, block: dict, text_sent: str, fy: int, items: Optional[
         return [], reasons + ["items_missing"]
     keys = {i["key"]: i["unit"] for i in (items if items is not None else block["items"])}
     tn = normalize(text_sent)
-    return [check_item(it, keys, tn, fy) for it in its], reasons
+    from .prompt import extraction_signs
+    signs, _ = extraction_signs()
+    return [check_item(it, keys, tn, fy, rule=signs.get(it.get("item_key")) if isinstance(it, dict) else None) for it in its], reasons
 
 
 # ---------------------------------------------------------------- block controls
