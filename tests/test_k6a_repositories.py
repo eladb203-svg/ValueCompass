@@ -4,7 +4,7 @@ import pytest
 from fakedb import FakeClient
 from src import config, db
 from src.etl import field_map as fm
-from src.etl.db_io import FactSetDb, differences, equal_values
+from src.etl.db_io import FactSetDb, approval_for, differences, equal_values
 from src.etl.extraction_store import value_state
 from src.etl.facts import ExtractionRow, Fact
 from src.etl.from_providers import facts_from_kwargs
@@ -165,3 +165,53 @@ def test_company_repository_new_columns_ensure_and_processing_state():
     assert repo.get_by_symbol("ACM")["unsupported_reason"] == "files 20-F"
     repo.set_processing_state(row["id"], "complete")
     assert repo.get_by_symbol("ACM")["processing_state"] == "complete" and repo.get_by_symbol("ACM")["unsupported_reason"] is None
+
+
+# ---------------------------------------------------------------- approval of extraction rows
+def reg_rows():
+    return [ExtractionRow("ACM", "a", "", 1.0, "value", "USD", quote_verified=True), ExtractionRow("ACM", "b", "", 2.0, "value", "USD", quote_verified=False),
+            ExtractionRow("ACM", "c", "", "NA", "NA", quote_verified=False)]
+
+
+def test_default_rule_approves_only_what_k5b_verified():
+    r = reg_rows()
+    assert [approval_for(x) for x in r] == [("approved", "k5b_confirmed"), ("pending", ""), ("pending", "")]
+    assert approval_for(r[1], approve_all=True) == ("approved", "human_review")
+
+
+def test_csv_rows_load_pending_unless_verified_and_the_table_rules_hold():
+    c = client()
+    fs = facts_from_kwargs("general", kw())
+    fs.extraction = reg_rows()
+    fs.has_reg = True
+    sink = FactSetDb(c)
+    st = sink.write(fs)["extraction"]
+    assert (st["rule_approved"], st["rule_pending"], st["inserted"]) == (1, 2, 3)
+    rows = {r["item_key"]: r for r in c.tables["extraction_items"]}
+    assert (rows["a"]["approval_status"], rows["a"]["approval_source"], rows["a"]["approved_at"] is not None) == ("approved", "k5b_confirmed", True)
+    for k in ("b", "c"):
+        assert (rows[k]["approval_status"], rows[k]["approval_source"], rows[k]["approved_at"]) == ("pending", None, None)
+    for r in rows.values():                                                       # the table's CHECK: approved needs source and time
+        assert r["approval_status"] != "approved" or (r["approval_source"] and r["approved_at"])
+    assert sink.write(fs)["extraction"]["unchanged"] == 3
+
+
+def test_approve_all_flag_works_on_test_and_is_refused_on_prod(monkeypatch):
+    fs = facts_from_kwargs("general", kw())
+    fs.extraction = reg_rows()
+    monkeypatch.setenv("VC_DB_TARGET", "test")
+    c = client()
+    FactSetDb(c, approve_all=True).write(fs)
+    assert {r["approval_status"] for r in c.tables["extraction_items"]} == {"approved"} and {r["approval_source"] for r in c.tables["extraction_items"]} == {"human_review"}
+    monkeypatch.setenv("VC_DB_TARGET", "prod")
+    with pytest.raises(ValueError, match="refused when VC_DB_TARGET=prod"):
+        FactSetDb(client(), approve_all=True)
+    sink = FactSetDb(client())                                                    # without the flag, prod is fine...
+    sink.approve_all = True                                                       # ...and a flag set afterwards is still caught at write time
+    with pytest.raises(ValueError, match="refused when VC_DB_TARGET=prod"):
+        sink.write(fs)
+    monkeypatch.setenv("VC_DB_TARGET", "test")
+    sink2 = FactSetDb(client(), approve_all=True)
+    monkeypatch.setenv("VC_DB_TARGET", "prod")
+    with pytest.raises(ValueError):
+        sink2.write(fs)

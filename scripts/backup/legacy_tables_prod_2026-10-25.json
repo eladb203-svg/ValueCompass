@@ -1,0 +1,13 @@
+{
+  "project": "ValueInvestConsult (zwpftrjryxyymrxsprqh)",
+  "taken": "2026-10-25, before K6a migration 8",
+  "row_counts": {"financial_yearly": 0, "financial_ratios": 0},
+  "rows": {"financial_yearly": [], "financial_ratios": []},
+  "foreign_keys": ["financial_ratios_financial_yearly_fkey"],
+  "dependent_views": ["financial_overview_view (nothing else depends on the two tables)"],
+  "columns": {
+    "financial_yearly": "company_id bigint, fiscal_year smallint, fiscal_year_end_date date, filing_date date, revenue numeric, gross_profit numeric, operating_income numeric, ebit numeric, ebitda numeric, income_before_tax numeric, income_tax_expense numeric, net_income numeric, eps_diluted numeric, interest_expense numeric, depreciation_and_amortization numeric, operating_cash_flow numeric, capex numeric, free_cash_flow numeric, stock_based_compensation numeric, adjusted_free_cash_flow numeric, dividends_paid numeric, share_repurchases numeric, dividends_per_share numeric, total_assets numeric, total_liabilities numeric, total_equity numeric, total_debt numeric, long_term_debt numeric, cash_and_equivalents numeric, short_term_investments numeric, accounts_receivable numeric, current_assets numeric, current_liabilities numeric, goodwill numeric, intangible_assets numeric, shares_outstanding bigint, weighted_avg_shares_diluted bigint, source text, created_at timestamptz, updated_at timestamptz, reporting_currency text",
+    "financial_ratios": "company_id bigint, fiscal_year smallint, gross_margin, operating_margin, net_margin, fcf_margin, adjusted_fcf_margin, roe, roa, effective_tax_rate, nopat, invested_capital, roic, fcf_to_net_income, operating_cash_flow_to_net_income, capex_to_revenue, capex_to_operating_cash_flow, adjusted_fcf_to_net_income, working_capital, current_ratio, quick_ratio, debt_to_equity, debt_to_assets, net_debt, net_debt_to_ebitda, interest_coverage, long_term_debt_to_working_capital, book_value_per_share, tangible_book_value, tangible_book_value_per_share, ncav, ncav_per_share, dividend_payout_ratio, fcf_payout_ratio, buyback_yield, share_dilution_1y, share_dilution_5y, revenue_growth_1y, eps_growth_1y, fcf_growth_1y, revenue_cagr_3y, eps_cagr_3y, fcf_cagr_3y, revenue_cagr_5y, eps_cagr_5y, fcf_cagr_5y (all numeric), calculation_version text, created_at timestamptz, updated_at timestamptz"
+  },
+  "full_ddl": "supabase/rollback/20261025090008_drop_legacy_rollback.sql (tables, constraints, triggers, RLS and the view financial_overview_view)"
+}

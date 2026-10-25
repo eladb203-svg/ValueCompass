@@ -70,6 +70,7 @@ class ExtractionRow:
     note: str = ""
     approval_status: str = "approved"
     extra: tuple = ()                  # source columns that have no table column (kept so the engine sees the same row)
+    approval_source: str = ""          # k5b_confirmed | ai_controls | human_review ("" when not approved); the table requires it on an approved row
 
     def __post_init__(self):
         if self.approval_status not in APPROVAL:

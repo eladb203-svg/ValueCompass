@@ -14,7 +14,7 @@ from src.etl.facts import ExtractionRow
 
 BATCH = 500
 PAGE = 1000
-APPROVED_AT = "2026-10-25T00:00:00+00:00"      # the table requires approved_at on an approved row; the K6a cache load is stamped with its date (not compared when deciding "unchanged")
+APPROVED_AT = "2026-10-25T00:00:00+00:00"      # the table requires approved_at and approval_source on an approved row; the K6a cache load is stamped with its date (approved_at is not compared when deciding "unchanged")
 TEXT_STATES = {"NA": "NA", "MISSING": "MISSING", "not disclosed": "not_disclosed"}
 STATE_TEXT = {"NA": "NA", "MISSING": "MISSING", "not_disclosed": "not disclosed"}
 
@@ -32,7 +32,8 @@ def encode(company_id: int, r: ExtractionRow, **provenance) -> dict:
             state, basis = "MISSING", f"text:{text}"
     return {"company_id": company_id, "item_key": r.item_key, "period": r.period or "", "value": value, "value_state": state, "unit": r.unit or None, "document_ref": r.document_ref or "",
             "section": r.section or None, "exact_quote": r.exact_quote or None, "quote_verified": bool(r.quote_verified), "basis": basis or None, "note": r.note or None,
-            "approval_status": r.approval_status, **({"approved_at": APPROVED_AT} if r.approval_status == "approved" else {}), **provenance}
+            "approval_status": r.approval_status, "approval_source": r.approval_source or None,
+            "approved_at": APPROVED_AT if r.approval_status == "approved" else None, **provenance}
 
 
 def decode(ticker: str, row: dict) -> ExtractionRow:
@@ -46,7 +47,8 @@ def decode(ticker: str, row: dict) -> ExtractionRow:
     else:
         value, state = float(row["value"]), "value"
     return ExtractionRow(ticker, row["item_key"], row.get("period") or "", value, state, row.get("unit") or "", row.get("document_ref") or "", row.get("section") or "",
-                         row.get("exact_quote") or "", bool(row.get("quote_verified")), basis, row.get("note") or "", row.get("approval_status", "approved"))
+                         row.get("exact_quote") or "", bool(row.get("quote_verified")), basis, row.get("note") or "", row.get("approval_status", "approved"),
+                         approval_source=row.get("approval_source") or "")
 
 
 class ExtractionRepository:

@@ -9,6 +9,7 @@ import math
 from dataclasses import replace
 from datetime import date
 
+from src.db import db_target
 from src.etl.facts import Fact, FactSet, label_to_year, year_to_label
 from src.repositories.company_repository import CompanyRepository
 from src.repositories.extraction_repository import ExtractionRepository
@@ -18,8 +19,25 @@ CALCULATION_VERSION = "k6a-cache-load"
 PLACEHOLDER_ACCESSION = "n/a (local SEC cache, K6a load)"      # K6b replaces it with the real accession from the submissions list
 
 
+def approval_for(row, approve_all: bool = False) -> tuple:
+    """(approval_status, approval_source) of a CSV extraction row. Default rule: approved + k5b_confirmed only when K5b verified the value (quote_verified), else pending.
+    ``approve_all`` is for the identity test only (the engines read approved rows only): everything approved, attributed to human_review; refused on the production target."""
+    if approve_all:
+        return "approved", "human_review"
+    if row.quote_verified:
+        return "approved", "k5b_confirmed"
+    return "pending", ""
+
+
+def check_approve_all(approve_all: bool) -> None:
+    if approve_all and db_target() == "prod":
+        raise ValueError("approve_all (every extraction row approved) is for the identity test and is refused when VC_DB_TARGET=prod")
+
+
 class FactSetDb:
-    def __init__(self, client=None):
+    def __init__(self, client=None, approve_all: bool = False):
+        check_approve_all(approve_all)
+        self.approve_all = approve_all
         self.companies = CompanyRepository(client) if client else CompanyRepository()
         self.financial = FinancialRepository(client) if client else FinancialRepository()
         self.extraction = ExtractionRepository(client) if client else ExtractionRepository()
@@ -30,14 +48,21 @@ class FactSetDb:
             self._ids[fs.ticker] = self.companies.ensure(fs.ticker, fs.name or fs.ticker)["id"]
         return self._ids[fs.ticker]
 
-    def write(self, fs: FactSet, approval: str = "approved") -> dict:
-        """-> {"facts": stats, "periods": stats, "extraction": stats}; every stats dict has inserted / updated / unchanged."""
+    def write(self, fs: FactSet) -> dict:
+        """-> {"facts": stats, "periods": stats, "extraction": stats}; every stats dict has inserted / updated / unchanged; extraction also counts
+        ``rule_approved`` / ``rule_pending`` (what the default rule gives these rows, whatever ``approve_all`` wrote)."""
+        check_approve_all(self.approve_all)
         cid = self.company_id(fs)
         periods = [{"fiscal_year": y, "accession": PLACEHOLDER_ACCESSION, "form": "10-K", "fiscal_year_end": e.isoformat() if e else None, "reporting_currency": "USD",
                     "calculation_version": CALCULATION_VERSION} for y, _l, e in fs.periods]
         out = {"periods": self.financial.upsert_filing_periods(cid, periods), "facts": self.financial.upsert_facts(cid, fs.facts)}
-        rows = [replace(r, approval_status=approval) for r in fs.extraction]
+        rows = []
+        for r in fs.extraction:
+            status, source = approval_for(r, self.approve_all)
+            rows.append(replace(r, approval_status=status, approval_source=source))
         out["extraction"] = self.extraction.upsert_rows(cid, rows) if rows else {"inserted": 0, "updated": 0, "unchanged": 0}
+        out["extraction"]["rule_approved"] = sum(1 for r in fs.extraction if approval_for(r)[0] == "approved")
+        out["extraction"]["rule_pending"] = len(fs.extraction) - out["extraction"]["rule_approved"]
         return out
 
     def read(self, template: FactSet) -> FactSet:

@@ -17,7 +17,7 @@
 |---|---|---|
 | 8 | `20261025090008_drop_legacy.sql` | **לא הורץ** — ב-test הטבלאות הישנות כבר הוסרו בשלב DB קודם (הקובץ אידמפוטנטי, מופסק אם יש שורות) |
 | 9 | `..090009_companies_k6_columns.sql` | הורץ: 7 עמודות ב-`companies`, `cik` unique, CHECK למצב עיבוד, `UNSUPPORTED` ב-3 ה-CHECK של profile |
-| 10 | `..090010_extraction_items_provenance.sql` | הורץ: 5 עמודות |
+| 10 | `..090010_extraction_items_provenance.sql` | הורץ (גרסה מעודכנת, ראו סעיף 8): 6 עמודות כולל `approval_source` + שני CHECK |
 | 11 | `..090011_ai_assessments_provenance.sql` | הורץ: 2 עמודות |
 
 **חריגה שחובה לציין:** ההוראה הייתה לעצור אם ה-baseline של test שונה מהייצור. ה-fingerprint של test שונה מהייצור בדיוק במיגרציה 8 (ב-test כבר בוצעה). בדקתי: זהה בכל השאר (עמודות 670, אילוצים 128, אינדקסים 50, views 8, טבלאות 21, מדיניות 31) ובטבלאות הישנות בייצור 0 שורות — לכן המשכתי. אם אתה מעדיף שאעצור במקרה כזה, יש לאשר.
@@ -39,7 +39,7 @@
 - נטענו 54 חברות מהמטמון המקומי ל-test (10 שנים), והמנועים רצו על קלט שנקרא בחזרה מה-DB (`make_golden.py --via-db`).
 - קלט DB מול קלט המטמון: **54/54 ללא הבדל**.
 - מול golden: **55 קבצים (54 חברות + index) — 0 הבדלים** (ציון, טווח, ערך, מחיר קנייה, כל הכרטיסים). טבלת הבדלים: ריקה.
-- הערה: ה-`accession` ב-`filing_periods` הוא placeholder (`n/a (local SEC cache, K6a load)`) עד ק6ב; שורות החילוץ מה-CSV נטענו כ-`approved` (מדיניות pending — ק6ג).
+- הערה: ה-`accession` ב-`filing_periods` הוא placeholder (`n/a (local SEC cache, K6a load)`) עד ק6ב; שורות החילוץ: ראו סעיף 8 (כלל האישור המעודכן).
 - מקור הנתונים: מקומי מהמטמון (0 בקשות SEC).
 
 ## 6. אידמפוטנטיות וגודל
@@ -47,9 +47,23 @@
 - נפח ב-test עכשיו: financial_facts 19,124 שורות (3.0MB), filing_periods 538 (0.12MB), extraction_items 1,255 (1.2MB), fact_tags 244, companies 59. בסיס הנתונים כולו 17.2MB.
 - הערכה ל-1,000 חברות: ≈ 84KB לחברה (כולל אינדקסים) ⇒ **≈ 85MB** לשלוש הטבלאות — כ-17% ממגבלת 500MB של התוכנית החינמית (לפני ai_texts, score_runs ו-view-ים).
 
-## 7. רשימת הרצה לייצור (לא בוצע; ממתין לאישור)
-1. לוודא ש-fingerprint של הייצור = baseline (מיגרציות 1–7, טבלאות ישנות ריקות).
-2. מיגרציה 8 (`drop_legacy`) — אידמפוטנטית, מופסקת אם יש שורות.
-3. מיגרציות 9, 10, 11 לפי הסדר.
-4. אימות: 7+5+2 עמודות חדשות; ה-CHECK של profile כולל `UNSUPPORTED`; 31 מדיניות; md5 של companies/extraction_items/ai_assessments/financial_facts (ללא העמודות החדשות) זהים לפני; RLS כ-authenticated רואה רק approved.
-5. טעינת נתונים לייצור — לא בשלב זה (ק6ב/ג).
+## 7. רשימת הרצה לייצור — בוצעה, ראו סעיף 9
+
+## 8. תיקון שכבות ההגנה על אישור שורות חילוץ
+**מיגרציה 10 (מעודכנת):** עמודה `approval_source` עם CHECK (`k5b_confirmed` / `ai_controls` / `human_review`) ו-CHECK נוסף: שורה `approved` חייבת `approval_source` **וגם** `approved_at`. שורות שכבר מאושרות לפני העמודה מקבלות `human_review` (בייצור: 0 שורות; ב-test: 1,254 שורות בדיקה).
+- על test: rollback ל-10 הישנה (md5 של כל 1,255 השורות זהה אחרי הגלגול), ואז 10 המעודכנת. אימותים: md5 של השורות (בלי העמודות החדשות) זהה; 31 מדיניות; כ-`authenticated` נראות רק שורות approved (1,254 מתוך 1,255, 0 לא מאושרות); ה-CHECK נבדקו בתוך בלוק שבוטל — approved בלי מקור: נדחה, מקור לא חוקי: נדחה, approved בלי `approved_at`: נדחה, pending בלי מקור: מותר; rollback של 10 המעודכנת (בבלוק שבוטל) מחזיר md5 מקורי.
+
+**קוד:** שורות CSV נטענות `pending` כברירת מחדל; `approved` + `k5b_confirmed` רק כשהערך אומת (`verified`/`quote_verified` של ק5ב). דגל `--db-approve-all` (זהות בלבד; מסומן `approved` + `human_review`) נדחה בשגיאה כש-`VC_DB_TARGET=prod` — בבנייה וגם בעת הכתיבה. 3 בדיקות יחידה חדשות (כלל ברירת המחדל, ה-CHECK של הטבלה, הדגל נדחה ב-prod). **588 בדיקות עוברות.**
+
+**בדיקת זהות עם הדגל על test:** 54/54, 0 הבדלי קלט, 55 קבצים מול golden — 0 הבדלים.
+
+**כמה שורות CSV (1,253) מקבלות approved לפי הכלל החדש:** **1,247 approved (`k5b_confirmed`), 6 pending.** לפי מנוע: bank 268/0, insurance 125/2, realestate 854/4, general 0.
+
+**תוצאה מעניינת (לא שינוי ל-golden):** בטעינה לפי הכלל החדש, בלי הדגל, המנועים רואים רק שורות approved ולכן 6 חברות שונות מ-golden — ALL, CINF (שורת `alm_disclosed`=NO שלא אומתה) ו-BXP, EQIX, EQR, PSA (שורות occupancy / same_property_noi_growth / ti_lc שלא אומתו). ההבדלים הם בשורות החילוץ שהוסתרו ובדגל `alm_risk_flag_only_in_v1` — לא נבדק בשלב זה אם ציונים משתנים. זו שאלה לפני טעינת ייצור: האם להשאיר שורות כאלה pending (ולקבל את ההבדל) או לאשרן ב-`human_review`. מצב test כרגע: נטען לפי כלל ברירת המחדל (1,247/6).
+
+## 9. מיגרציות 8–11 בייצור (`zwpftrjryxyymrxsprqh`) — בוצעו לפי הרשימה
+1. **גיבוי** לפני כל שינוי: `scripts/backup/legacy_tables_prod_2026-10-25.json` (שתי הטבלאות הישנות ריקות — 0 שורות; מבנה, FK ותלות ה-view; ה-DDL המלא ב-rollback של מיגרציה 8).
+2. **fingerprint לפני:** בייצור זהה ל-test בכל האובייקטים שאינם של מיגרציות 8–11 (670 עמודות, md5 של עמודות/אילוצים/אינדקסים/מדיניות זהים; 21 טבלאות, 8 views). נתונים: companies = שורה אחת (md5 נרשם), extraction_items / ai_assessments / financial_facts = 0.
+3. הורצו לפי הסדר: 8 (drop_legacy — 0 שורות, לא הופסק), 9, 10 (מעודכנת), 11. כולן הצליחו, אף אחת לא דרשה rollback.
+4. **אימות אחרי:** 21 טבלאות / 8 views / 31 מדיניות; הטבלאות הישנות וה-view לא קיימים; 15 עמודות חדשות; `companies_cik_key`, בדיקת processing_state, `UNSUPPORTED` ב-3 ה-CHECK של profile, שני ה-CHECK של extraction_items; md5 של companies (ללא העמודות החדשות) זהה לפני; fingerprint של עמודות/אילוצים/אינדקסים/מדיניות (ללא אובייקטי 8–11) זהה לפני ולזה של test; כ-`authenticated` נראית שורת החברה, 0 שורות חילוץ/הערכות.
+5. **לא נטענו נתונים לייצור.**

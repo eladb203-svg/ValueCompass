@@ -5,6 +5,8 @@ Options:
   --as-of=YYYY-MM-DD   fix date.today() inside the runners (the baseline was made on 2026-10-20)
   --stub-yfinance      the EQR successor-price lookup (VMRK) finds no data, as in the baseline run (no network dependence); the router's provider industry
                        comes from scripts/provider_industry_2026-10-20.csv (K4b)
+  --via-db             code stage K6a: provider output -> facts -> DATABASE (VC_DB_TARGET, default test) -> inputs;  --db-report=<json> writes the statistics
+  --db-approve-all     with --via-db: every extraction row approved (identity test only; refused for VC_DB_TARGET=prod)
   --via-facts          code stage K2: every inputs object takes the detour provider output -> facts -> inputs (src/etl) before the engines run
 
 * Each runner module is imported and its module-level OUT is redirected to <raw_run_dir>/<engine>/, then its own main() runs.
@@ -177,7 +179,7 @@ def patch_via_facts():
 DB_REPORT: list = []
 
 
-def patch_via_db():
+def patch_via_db(approve_all: bool = False):
     """K6a: provider output -> facts -> database (target valuecompass-test; VC_DB_TARGET) -> facts -> inputs. The write statistics and the cache-vs-db differences go to DB_REPORT."""
     from src.etl.db_io import FactSetDb
     from src.etl.to_inputs import via_db
@@ -186,7 +188,7 @@ def patch_via_db():
     import run_managed_care as rmc
     import run_realestate_v5 as v5
     import run_scoring_test as rst
-    sink = FactSetDb()
+    sink = FactSetDb(approve_all=approve_all)
     rst.CompanyInputs = via_db("general", rst.CompanyInputs, sink, DB_REPORT)
     rmc.CompanyInputs = via_db("general", rmc.CompanyInputs, sink, DB_REPORT)
     rbt.BankInputs = via_db("bank", rbt.BankInputs, sink, DB_REPORT)
@@ -199,6 +201,8 @@ def main(argv):
     opts = [a for a in argv if a.startswith("--")]
     argv = [a for a in argv if not a.startswith("--")]
     for o in opts:
+        if o == "--db-approve-all":
+            continue
         if o.startswith("--as-of="):
             patch_date(o.split("=", 1)[1])
         elif o == "--stub-yfinance":
@@ -206,7 +210,7 @@ def main(argv):
         elif o == "--via-facts":
             patch_via_facts()
         elif o == "--via-db":
-            patch_via_db()
+            patch_via_db("--db-approve-all" in opts)
         elif o.startswith("--db-report="):
             db_report = o.split("=", 1)[1]
         else:
