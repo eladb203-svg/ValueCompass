@@ -67,3 +67,22 @@
 3. הורצו לפי הסדר: 8 (drop_legacy — 0 שורות, לא הופסק), 9, 10 (מעודכנת), 11. כולן הצליחו, אף אחת לא דרשה rollback.
 4. **אימות אחרי:** 21 טבלאות / 8 views / 31 מדיניות; הטבלאות הישנות וה-view לא קיימים; 15 עמודות חדשות; `companies_cik_key`, בדיקת processing_state, `UNSUPPORTED` ב-3 ה-CHECK של profile, שני ה-CHECK של extraction_items; md5 של companies (ללא העמודות החדשות) זהה לפני; fingerprint של עמודות/אילוצים/אינדקסים/מדיניות (ללא אובייקטי 8–11) זהה לפני ולזה של test; כ-`authenticated` נראית שורת החברה, 0 שורות חילוץ/הערכות.
 5. **לא נטענו נתונים לייצור.**
+
+## 10. תיקון מקור האישור: legacy_verified (אחרי סעיפים 8–9)
+**הבהרה — מה היה `verified`:** העמודה `verified` (=`YES`) בקובצי ה-CSV (`bank_regulatory.csv`, `insurance_regulatory.csv`, `realestate_extracted.csv`) היא אימות ציטוט **מהתהליך הישן**, לא התאמה של ק5ב. בסעיף 8 קראתי לזה בטעות `k5b_confirmed` — תוקן. התאמות ק5ב אמיתיות הן 74 תוצאות `match` ב-`compare.json` של 7 חברות הפיתוח (JPM, USB, PGR, CB, O, PLD, AMT), שמתמפות לכ-89 שורות CSV — **כולן גם `verified=YES`**. כלומר שורות שהן התאמת ק5ב **בלבד** (ללא אימות ישן): **0**.
+
+**הכלל (קוד + מיגרציה 10):** אימות ציטוט בתהליך הקודם → `approved` + `legacy_verified`; אחרת התאמת ק5ב → `approved` + `k5b_confirmed` (הוק `k5b_matched` ב-`FactSetDb`, נבדק ביחידה; בטעינה לא הועבר כי אין שורות כאלה); אחרת `pending`. הדגל `--db-approve-all` נשאר (`human_review`) ונדחה ב-prod.
+תוצאה בטעינת test: **1,247 `legacy_verified`, 0 `k5b_confirmed`, 6 `pending`** (נשארות pending, לא human_review). 588 בדיקות עוברות.
+
+**מיגרציה 10:** המקור הרביעי `legacy_verified` ב-CHECK. test: rollback של 10 ואז 10 המעודכנת (md5 הליבה של 1,255 השורות זהה לפני ואחרי; 31 מדיניות; `authenticated` רואה רק approved; CHECK נבדקו בבלוק שבוטל: `legacy_verified` מתקבל, ערך לא חוקי נדחה, approved בלי מקור/בלי זמן נדחה). ייצור (0 שורות בטבלה): הוחלף רק ה-CHECK של `approval_source` (מיגרציה `extraction_items_approval_source_legacy_verified`); ההגדרות של שני ה-CHECK זהות ל-test.
+
+**בדיקת זהות על test לפי הכלל (בלי הדגל): 48/54 זהות, 6 שונות.** בכל 6 **הציון, הטווח, הערך ומחיר הקנייה לא השתנו (0 נקודות)** — ה-diff מכיל רק את הנתונים הבאים:
+| חברה | מה שונה | שינוי בציון |
+|---|---|---|
+| ALL | שורת `alm_disclosed`=NO לא נטענת; דגל `alm_risk_flag_only_in_v1:NO` → `None` (טקסט הדגל בלבד) | 0 |
+| CINF | כמו ALL | 0 |
+| BXP | `reg.occupancy FY2022–FY2024` חסר בקלט | 0 |
+| EQIX | `reg.same_property_noi_growth` חסר בקלט | 0 |
+| EQR | `reg.ti_lc_income_preserving` חסר בקלט | 0 |
+| PSA | `reg.ti_lc_income_preserving` חסר בקלט | 0 |
+הערה: בנדל"ן ההבדל בקלט בלבד (אין שינוי בפלט golden); בביטוח משתנה גם טקסט דגל בכרטיס Graham (ללא שינוי בנקודות). golden לא שונה. מצב test כרגע: נטען לפי הכלל.

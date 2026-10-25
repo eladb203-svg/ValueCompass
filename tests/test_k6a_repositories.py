@@ -173,9 +173,10 @@ def reg_rows():
             ExtractionRow("ACM", "c", "", "NA", "NA", quote_verified=False)]
 
 
-def test_default_rule_approves_only_what_k5b_verified():
+def test_default_rule_legacy_verified_then_k5b_match_then_pending():
     r = reg_rows()
-    assert [approval_for(x) for x in r] == [("approved", "k5b_confirmed"), ("pending", ""), ("pending", "")]
+    assert [approval_for(x) for x in r] == [("approved", "legacy_verified"), ("pending", ""), ("pending", "")]
+    assert [approval_for(x, k5b_matched=True) for x in r] == [("approved", "legacy_verified"), ("approved", "k5b_confirmed"), ("approved", "k5b_confirmed")]
     assert approval_for(r[1], approve_all=True) == ("approved", "human_review")
 
 
@@ -186,14 +187,17 @@ def test_csv_rows_load_pending_unless_verified_and_the_table_rules_hold():
     fs.has_reg = True
     sink = FactSetDb(c)
     st = sink.write(fs)["extraction"]
-    assert (st["rule_approved"], st["rule_pending"], st["inserted"]) == (1, 2, 3)
+    assert (st["rule_legacy_verified"], st["rule_k5b_confirmed"], st["rule_pending"], st["inserted"]) == (1, 0, 2, 3)
     rows = {r["item_key"]: r for r in c.tables["extraction_items"]}
-    assert (rows["a"]["approval_status"], rows["a"]["approval_source"], rows["a"]["approved_at"] is not None) == ("approved", "k5b_confirmed", True)
+    assert (rows["a"]["approval_status"], rows["a"]["approval_source"], rows["a"]["approved_at"] is not None) == ("approved", "legacy_verified", True)
     for k in ("b", "c"):
         assert (rows[k]["approval_status"], rows[k]["approval_source"], rows[k]["approved_at"]) == ("pending", None, None)
     for r in rows.values():                                                       # the table's CHECK: approved needs source and time
         assert r["approval_status"] != "approved" or (r["approval_source"] and r["approved_at"])
     assert sink.write(fs)["extraction"]["unchanged"] == 3
+    st = FactSetDb(c, k5b_matched={("ACM", "b", "")}).write(fs)["extraction"]                  # a K5b match approves only the row that was not legacy-verified
+    assert (st["rule_k5b_confirmed"], st["rule_pending"], st["updated"]) == (1, 1, 1)
+    assert {r["item_key"]: r["approval_source"] for r in c.tables["extraction_items"]} == {"a": "legacy_verified", "b": "k5b_confirmed", "c": None}
 
 
 def test_approve_all_flag_works_on_test_and_is_refused_on_prod(monkeypatch):

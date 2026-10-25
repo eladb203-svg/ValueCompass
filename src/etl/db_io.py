@@ -19,12 +19,16 @@ CALCULATION_VERSION = "k6a-cache-load"
 PLACEHOLDER_ACCESSION = "n/a (local SEC cache, K6a load)"      # K6b replaces it with the real accession from the submissions list
 
 
-def approval_for(row, approve_all: bool = False) -> tuple:
-    """(approval_status, approval_source) of a CSV extraction row. Default rule: approved + k5b_confirmed only when K5b verified the value (quote_verified), else pending.
-    ``approve_all`` is for the identity test only (the engines read approved rows only): everything approved, attributed to human_review; refused on the production target."""
+def approval_for(row, approve_all: bool = False, k5b_matched: bool = False) -> tuple:
+    """(approval_status, approval_source) of a CSV extraction row. Default rule:
+    the quote was verified in the earlier CSV process (``quote_verified``) -> approved + legacy_verified;
+    otherwise the value was matched by K5b (``k5b_matched``) -> approved + k5b_confirmed;  everything else -> pending.
+    ``approve_all`` is for the identity test only (everything approved as human_review); it is refused on the production target."""
     if approve_all:
         return "approved", "human_review"
     if row.quote_verified:
+        return "approved", "legacy_verified"
+    if k5b_matched:
         return "approved", "k5b_confirmed"
     return "pending", ""
 
@@ -35,9 +39,11 @@ def check_approve_all(approve_all: bool) -> None:
 
 
 class FactSetDb:
-    def __init__(self, client=None, approve_all: bool = False):
+    def __init__(self, client=None, approve_all: bool = False, k5b_matched=None):
+        """``k5b_matched``: optional set of (ticker, item_key, period) of CSV rows whose value K5b matched (the K5b results are not in the repository; none were needed for the K6a load)."""
         check_approve_all(approve_all)
         self.approve_all = approve_all
+        self.k5b_matched = set(k5b_matched or ())
         self.companies = CompanyRepository(client) if client else CompanyRepository()
         self.financial = FinancialRepository(client) if client else FinancialRepository()
         self.extraction = ExtractionRepository(client) if client else ExtractionRepository()
@@ -50,7 +56,7 @@ class FactSetDb:
 
     def write(self, fs: FactSet) -> dict:
         """-> {"facts": stats, "periods": stats, "extraction": stats}; every stats dict has inserted / updated / unchanged; extraction also counts
-        ``rule_approved`` / ``rule_pending`` (what the default rule gives these rows, whatever ``approve_all`` wrote)."""
+        ``rule_legacy_verified`` / ``rule_k5b_confirmed`` / ``rule_pending`` (what the default rule gives these rows, whatever ``approve_all`` wrote)."""
         check_approve_all(self.approve_all)
         cid = self.company_id(fs)
         periods = [{"fiscal_year": y, "accession": PLACEHOLDER_ACCESSION, "form": "10-K", "fiscal_year_end": e.isoformat() if e else None, "reporting_currency": "USD",
@@ -58,11 +64,12 @@ class FactSetDb:
         out = {"periods": self.financial.upsert_filing_periods(cid, periods), "facts": self.financial.upsert_facts(cid, fs.facts)}
         rows = []
         for r in fs.extraction:
-            status, source = approval_for(r, self.approve_all)
+            status, source = approval_for(r, self.approve_all, (r.ticker, r.item_key, r.period) in self.k5b_matched)
             rows.append(replace(r, approval_status=status, approval_source=source))
         out["extraction"] = self.extraction.upsert_rows(cid, rows) if rows else {"inserted": 0, "updated": 0, "unchanged": 0}
-        out["extraction"]["rule_approved"] = sum(1 for r in fs.extraction if approval_for(r)[0] == "approved")
-        out["extraction"]["rule_pending"] = len(fs.extraction) - out["extraction"]["rule_approved"]
+        rule = [approval_for(r, False, (r.ticker, r.item_key, r.period) in self.k5b_matched) for r in fs.extraction]
+        out["extraction"].update({"rule_legacy_verified": rule.count(("approved", "legacy_verified")), "rule_k5b_confirmed": rule.count(("approved", "k5b_confirmed")),
+                                  "rule_pending": rule.count(("pending", ""))})
         return out
 
     def read(self, template: FactSet) -> FactSet:
