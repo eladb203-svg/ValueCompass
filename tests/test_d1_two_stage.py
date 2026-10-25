@@ -299,12 +299,12 @@ def test_hebrew_length_must_be_within_40_percent_of_the_english_and_the_fixed_co
     assert "competition_sentence_not_translated" in run_he(he(text_he=he_ok.replace("הדוח אינו מתאר את התחרות שלו", "אין מידע")), en_text=en_nc, comps=()).reasons
 
 
-def test_review_status_hebrew_backgrounds_wait_for_review_and_old_rows_are_migrated(tmp_path):
+def test_review_status_hebrew_backgrounds_are_shown_at_once_with_a_marker_and_old_rows_are_migrated(tmp_path):
     store = C.TextStore(tmp_path / "t.jsonl")
     row = C.generate_background(CO, FACTS, SECTIONS, Seq([en(), he()]), store)
-    assert row["approval_status"] == "pending_review" and row["edited_by"] == "ai"
+    assert row["approval_status"] == "approved" and row["edited_by"] == "ai" and row["human_reviewed"] is False
     assert store.get("ACM", 2025, "background", 5, "", "en")["approval_status"] == "approved"
-    assert C.review_status("he", "failed") == "failed" and C.review_status("he", "stored", first_load=False) == "approved"
+    assert C.review_status("he", "failed") == "failed" and C.review_status("he", "stored") == "approved"
     old = tmp_path / "old.jsonl"
     old.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in (
         {"ticker": "A", "fiscal_year": 2025, "kind": "background", "language": "he", "prompt_version": 4, "run_id": "", "state": "stored", "text": "x"},
@@ -314,4 +314,4 @@ def test_review_status_hebrew_backgrounds_wait_for_review_and_old_rows_are_migra
     s2 = C.TextStore(old)
     assert s2.migrate_review_status() == 4
     st = {r["ticker"]: r["approval_status"] for r in C.TextStore(old).rows()}
-    assert st == {"A": "pending_review", "B": "failed", "C": "approved", "D": "approved"} and s2.migrate_review_status() == 0
+    assert st == {"A": "approved", "B": "failed", "C": "approved", "D": "approved"} and s2.migrate_review_status() == 0

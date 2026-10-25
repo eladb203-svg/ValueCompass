@@ -297,6 +297,6 @@ def test_filing_documents_go_through_the_same_client_and_reuse_the_old_cache_rea
     calls = []
     sec = PipelineSec(tmp_path / "live", fetch=lambda u: calls.append(u) or "<html>new</html>", limiter=RateLimiter(sleep=lambda s: None))
     assert sec_filings._get_raw(sec, "https://www.sec.gov/x/cached.htm", "acc_cached.htm") == "<html>old</html>" and calls == []
-    assert sec_filings._get_raw(sec, "https://www.sec.gov/x/new.htm", "acc_new.htm") == "<html>new</html>" and len(calls) == 1 and (tmp_path / "live" / "acc_new.htm").exists()
+    assert sec_filings._get_raw(sec, "https://www.sec.gov/x/new.htm", "acc_new.htm") == "<html>new</html>" and len(calls) == 1 and (old / "acc_new.htm").exists()      # a new file in the shared cache
     sec_filings._get_raw(sec, "https://www.sec.gov/x/new.htm", "acc_new.htm")
-    assert len(calls) == 1 and sec.requests_made == 1 and not list(old.glob("acc_new*"))
+    assert len(calls) == 1 and sec.requests_made == 1 and (old / "acc_cached.htm").read_text(encoding="utf-8") == "<html>old</html>"          # the old file is untouched

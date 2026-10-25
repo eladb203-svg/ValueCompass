@@ -600,14 +600,14 @@ class TextStore:
         return list(self._rows.values())
 
     def migrate_review_status(self) -> int:
-        """Adds ``approval_status`` / ``edited_by`` to rows written before the review rule (Hebrew backgrounds that passed -> ``pending_review``). -> rows changed."""
+        """Adds ``approval_status`` / ``edited_by`` / ``human_reviewed`` to rows written before the review rule; a row that passed is ``approved`` (a Hebrew background that an earlier version
+        stored as ``pending_review`` becomes ``approved``, ``human_reviewed`` False). -> rows changed."""
         n = 0
         for k, r in list(self._rows.items()):
-            if "approval_status" in r:
+            if "approval_status" in r and r["approval_status"] != "pending_review" and "human_reviewed" in r:
                 continue
-            ok = r.get("state") == "stored"
-            st = "failed" if not ok else ("pending_review" if (r["kind"] == "background" and r["language"] == "he") else "approved")
-            self.put({**r, "approval_status": st, "edited_by": r.get("edited_by", "ai")})
+            st = "approved" if r.get("state") == "stored" else "failed"
+            self.put({**r, "approval_status": st, "edited_by": r.get("edited_by", "ai"), "human_reviewed": bool(r.get("human_reviewed", False))})
             n += 1
         return n
 
@@ -655,18 +655,16 @@ class BudgetClient:
 
 
 def review_status(language: str, state: str, first_load: bool = True) -> str:
-    """ai_texts.approval_status: a Hebrew background that passed all checks waits for review on the first load of a company (``pending_review``; not shown until approved); English texts and
-    analyses are not reviewed (``approved``, the English is never shown); anything that failed is ``failed``."""
-    if state != "stored":
-        return "failed"
-    return "pending_review" if (language == "he" and first_load) else "approved"
+    """ai_texts.approval_status (decision 2026-10-25 12:00): a text that passed all checks is ``approved`` at once - the Hebrew background with ``human_reviewed = False`` (the screen adds the
+    marker "תרגום אוטומטי" until a person confirms or edits it); anything that failed is ``failed``. ``pending_review`` is only set by a person who sends a text back."""
+    return "approved" if state == "stored" else "failed"
 
 
 def _row(co, language: str, text, state: str, pv: str, rep, res, attempts: list, extra: Optional[dict] = None) -> dict:
     return {"ticker": co.ticker, "fiscal_year": co.fiscal_year, "kind": "background", "language": language, "text": text, "model": getattr(rep, "model", ""), "prompt_version": pv, "run_id": "",
             "state": state, "accession": co.filing.accession, "quotes": res.quotes if res else [], "competitors": (res.extra.get("competitors", []) if res else []),
             "checks": {"ok": bool(res and res.ok), "reasons": res.reasons if res else [], "flags": res.flags if res else [], "attempts": attempts}, "raw_answer": getattr(rep, "text", None),
-            "competitor_types": (res.extra.get("competitor_types", []) if res else []), "edited_by": "ai", "approval_status": review_status(language, state), **(extra or {})}
+            "competitor_types": (res.extra.get("competitor_types", []) if res else []), "edited_by": "ai", "approval_status": review_status(language, state), "human_reviewed": False, **(extra or {})}
 
 
 def generate_background(co, facts: dict, sections: dict, client, store: TextStore, force: bool = False) -> dict:

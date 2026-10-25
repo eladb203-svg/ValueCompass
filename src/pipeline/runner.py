@@ -61,6 +61,7 @@ class JobResult:
     ai_required: list = field(default_factory=list)
     restated: list = field(default_factory=list)
     price: Optional[dict] = None
+    router_needs: Optional[str] = None       # engine whose profile the router could not confirm yet because its extraction rows do not exist (provisional profile)
     error: Optional[str] = None
     plan: list = field(default_factory=list)
 
@@ -164,7 +165,7 @@ class Pipeline:
         extraction_rows = self._extraction_rows(company)
         decoded = self.extraction.get_rows(company["id"], res.ticker) if company else []
         self.financial._load_items()
-        chosen = None
+        chosen, unconfirmed = None, []
         for eng in _candidates(resolved.sic, engine, cf):
             try:
                 kw, raw = C.provider_kwargs(eng, self.sec, res.ticker, rr.profile if eng == "general" else "STANDARD", self.splits_fn)
@@ -181,7 +182,13 @@ class Pipeline:
             if ENGINE_OF_PROFILE.get(final.profile) == eng:
                 chosen = (eng, kw, raw, final)
                 break
+            if eng != "general" and eng != engine:
+                unconfirmed.append(eng)
         engine, kw, raw, final = chosen
+        if engine == "general" and unconfirmed and not decoded and sic_hint(resolved.sic) == unconfirmed[0]:
+            # a bank / REIT / insurer that the router can only confirm with extraction rows (B1-B13) that do not exist yet: the profile is provisional, the extraction is requested (K6c section 6.2)
+            res.router_needs = unconfirmed[0]
+            res.warnings.append(f"provisional profile: the {unconfirmed[0]} engine fits by SIC / tags but the router needs extraction rows that do not exist yet; extraction requested")
         if engine != res.engine:
             res.warnings.append(f"engine {engine} chosen after the series check (first pass: {res.engine}, profile {rr.profile})")
         elif ENGINE_OF_PROFILE.get(final.profile) != engine:
@@ -208,8 +215,12 @@ class Pipeline:
             res.facts = {"inserted": len(facts), "updated": 0, "unchanged": 0}
             res.periods = {"inserted": len(period_rows), "updated": 0, "unchanged": 0}
         else:
+            if not self.dry_run and (company.get("profile_reason") or "").startswith("provisional") and not res.router_needs:
+                # the profile was provisional (collected with the general provider) and is confirmed now: the facts of the wrong engine are removed before the right ones are written
+                self.client.table("financial_facts").delete().eq("company_id", cid).execute()
             res.periods = self.financial.upsert_filing_periods(cid, period_rows, dry_run=self.dry_run)
             res.facts = self.financial.upsert_facts(cid, facts, dry_run=self.dry_run)
+        self._provisional = bool(res.router_needs)
         if not self.dry_run:
             self._write_profile(cid, final, rr, fs, resolved)
             before = (self.companies.get_by_id(cid) or {}).get("processing_state")
@@ -242,7 +253,7 @@ class Pipeline:
         return self.extraction._all(company["id"])
 
     def _write_profile(self, cid: int, final, first, fs: FactSet, resolved) -> None:
-        reason = "; ".join(str(x) for x in final.reason)[:500]
+        reason = ("provisional - needs extraction: " if getattr(self, "_provisional", False) else "") + "; ".join(str(x) for x in final.reason)[:500]
         want = {"profile": final.profile, "profile_reason": reason, "profile_since": int(str(final.since)[2:]) if final.since and str(final.since).startswith("FY") else None}
         row = self.companies.get_by_id(cid)
         if any(row.get(k) != v for k, v in want.items()):
@@ -285,16 +296,21 @@ class Pipeline:
 
 
 # ---------------------------------------------------------------- helpers
+def sic_hint(sic: str) -> Optional[str]:
+    """The specialised engine a SIC code points at (REIT, bank, insurer), or None."""
+    if sic in ("6798", "6795", "6500", "6510", "6512", "6513"):
+        return "realestate"
+    if sic[:2] in ("60", "61") or sic in ("6199",):
+        return "bank"
+    if sic[:2] == "63" or sic == "6411":
+        return "insurance"
+    return None
+
+
 def _candidates(sic: str, first: str, facts_json: Optional[dict] = None) -> list:
     """The engine of the first router pass, then the engines the SIC code or the company's own XBRL tags point at (the first pass has no series, so a REIT whose SIC is
     not 6798, e.g. a tower company, comes out as STANDARD until its real-estate series is tried)."""
-    hint = []
-    if sic in ("6798", "6795", "6500", "6510", "6512", "6513"):
-        hint.append("realestate")
-    elif sic[:2] in ("60", "61") or sic in ("6199",):
-        hint.append("bank")
-    elif sic[:2] == "63" or sic == "6411":
-        hint.append("insurance")
+    hint = [sic_hint(sic)] if sic_hint(sic) else []
     if facts_json:
         have = facts_json.get("facts", {}).get("us-gaap", {})
         for engine, spec in (("realestate", RE_FIELDS["re_net"]), ("bank", BANK_FIELDS["deposits"]), ("insurance", INS_FIELDS["claims_gross"])):

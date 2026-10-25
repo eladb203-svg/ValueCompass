@@ -64,12 +64,18 @@ class ExtractionRepository:
                 return out
             start += PAGE
 
-    def get_rows(self, company_id: int, ticker: str = "") -> list:
-        return [decode(ticker, r) for r in self._all(company_id)]
+    def get_rows(self, company_id: int, ticker: str = "", source: str = "csv") -> list:
+        """``source``: ``csv`` = the rows loaded from the extraction CSV files (the engines' ``reg``); ``ai`` = rows made by the AI extraction (``skill_id`` set); ``all``."""
+        rows = self._all(company_id)
+        if source == "csv":
+            rows = [r for r in rows if not r.get("skill_id")]
+        elif source == "ai":
+            rows = [r for r in rows if r.get("skill_id")]
+        return [decode(ticker, r) for r in rows]
 
     def upsert_rows(self, company_id: int, rows: list, **provenance) -> dict:
         """Idempotent: rows equal to the stored ones are not written. New rows are inserted in the given order (so ``id`` keeps the order)."""
-        old = {(r["item_key"], r["period"], r["document_ref"]): r for r in self._all(company_id)}
+        old = {(r["item_key"], r["period"], r["document_ref"]): r for r in self._all(company_id) if not r.get("skill_id")}
         todo, stats = [], {"inserted": 0, "updated": 0, "unchanged": 0}
         for r in rows:
             e = encode(company_id, r, **provenance)

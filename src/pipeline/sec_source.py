@@ -1,7 +1,8 @@
 """SEC access for the K6b pipeline: a rate-limited, cached client with its own cache directory.
 
 * At most 10 requests per second is enforced in code (sliding window of one second, plus a minimum gap between two requests).
-* Every downloaded file is saved in the cache directory (``scripts/cache/sec_live`` by default - not ``scripts/cache/sec``, which feeds the golden regression).
+* Every downloaded file is saved in the local cache: JSON documents in ``scripts/cache/sec_live`` (not ``scripts/cache/sec``, which feeds the golden regression), filing documents in the shared
+  ``scripts/cache/filings`` (new files only).
 * Mutable documents (the ticker list, submissions, companyfacts) are downloaded again when the cached copy is older than ``max_age_hours``; filing documents never change and are
   fetched once.
 * ``fetch`` replaces the network (tests); ``transform(cache_name, data)`` lets an acceptance run overlay a simulated amendment or a simulated new annual report on a real document.
@@ -92,8 +93,9 @@ class PipelineSec(SecClient):
         legacy = FILINGS_CACHE / cache_name
         if legacy.exists():
             return legacy.read_text(encoding="utf-8", errors="replace")
-        path = self.cache_dir / cache_name
+        path = FILINGS_CACHE / cache_name                  # the shared filings cache: the AI section finder reads there; a filing never changes, a new file does not touch the old ones
         if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(self._download(url), encoding="utf-8")
             self.downloads.append((cache_name, url))
         return path.read_text(encoding="utf-8", errors="replace")

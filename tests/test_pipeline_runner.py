@@ -172,4 +172,39 @@ def test_engine_candidates_prefer_a_confirmed_specialised_engine_over_general():
     assert _candidates("4899", "general", tags) == ["realestate", "general"]            # a tower company: SIC says communications, the tags say real estate
     assert _candidates("6798", "general", None) == ["realestate", "general"]
     assert _candidates("2080", "general", {"facts": {"us-gaap": {}}}) == ["general"]
+    from src.pipeline.runner import sic_hint
+    assert sic_hint("6798") == "realestate" and sic_hint("6021") == "bank" and sic_hint("6331") == "insurance" and sic_hint("2060") is None and sic_hint("4899") is None     # only the SIC code makes a profile provisional
     assert _candidates("6021", "bank", None) == ["bank"] and _candidates("6021", "general", None) == ["bank", "general"]
+
+
+def test_provisional_profile_requests_the_extraction_first_and_the_wrong_engine_facts_go_when_it_is_confirmed(env, monkeypatch):
+    from src.etl import field_map as fm
+    from src.pipeline.queue_runner import QueueRunner
+    re_fields = [k for k in fm.FIELDS["realestate"] if k in ("net_income", "total_revenue", "assets")][:2]
+
+    def provider(engine, sec, ticker, profile, splits_fn=None, n_years=10):
+        kw = kw_for(env.years, env.revenue_last)
+        if engine == "realestate":
+            kw["f"] = {k: [float(10 + i) for i in range(len(env.years))] for k in re_fields}
+            kw["tag_log"], kw["sbc_state"] = {}, []
+        return kw, {"f": kw["f"], "labels": kw["fy"], "ends": [date(y, 12, 31) for y in env.years]}
+    monkeypatch.setattr(RN.C, "provider_kwargs", provider)
+    env.sec.sub = submissions(sic="6798")
+    # the router with the series says STANDARD (it needs the real-estate extraction rows that do not exist yet)
+    r = env.make().load("ACM")
+    c = env.client
+    assert r.router_needs == "realestate" and r.engine == "general" and "provisional" in c.tables["companies"][0]["profile_reason"]
+    assert any("provisional profile" in w for w in r.warnings)
+    runner = QueueRunner(c, results_dir=__import__("pathlib").Path("scripts/output_k6c/test_results_unused"))
+    out = runner.after_load(r, c.tables["companies"][0]["id"], 1)
+    q = runner.queue.list()
+    assert out["extraction_requested"] == "realestate" and [(t["job_type"], t["priority"], t["payload"]["purpose"]) for t in q] == [("ai_extract", 1, "router")]    # and no score is queued
+    # the extraction exists now and the router confirms the real-estate profile
+    env.profile = "INCOME_REAL_ESTATE"
+    c.tables["extraction_items"] = [{"id": 1, "company_id": 1, "item_key": "occupancy", "period": "FY2025", "value": 0.95, "value_state": "value", "unit": "fraction", "document_ref": "",
+                                     "section": None, "exact_quote": "q", "quote_verified": True, "basis": None, "note": None, "approval_status": "approved", "approval_source": "k5b_confirmed", "skill_id": None}]
+    r2 = env.make().load("ACM", "repair")
+    items = {d["id"]: d["item_key"] for d in c.tables["dictionary_items"]}
+    kept = {items[f["item_id"]] for f in c.tables["financial_facts"]}
+    assert r2.engine == "realestate" and r2.router_needs is None and kept == {fm.FIELDS["realestate"][k] for k in re_fields}        # only the real-estate facts remain: the general-engine ones are gone
+    assert "provisional" not in (c.tables["companies"][0]["profile_reason"] or "") and c.tables["companies"][0]["profile"] == "INCOME_REAL_ESTATE"

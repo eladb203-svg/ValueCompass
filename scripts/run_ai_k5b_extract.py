@@ -42,7 +42,8 @@ def b14_items(t: str, m: dict) -> tuple:
     return B14.b14_items(_DICT, ENGINE_OF[t], m["fins"], m["fy"][-3:])
 
 
-def main(argv=None) -> None:
+def main(argv=None, client=None) -> None:
+    """``client``: an injected model client (the K6c queue passes one with a request budget); without it a real client is built."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--companies", nargs="*")
     ap.add_argument("--model", default=None)
@@ -54,8 +55,7 @@ def main(argv=None) -> None:
     a = ap.parse_args(argv)
     out = Path(a.out_root)
     calls = E.CallStore(out / "calls.jsonl")
-    client = None
-    if not a.no_calls:
+    if not a.no_calls and client is None:
         client = GeminiClient(model=a.model, limiter=RateLimiter(rpm=a.rpm, rpd=a.rpd)) if a.model else GeminiClient(limiter=RateLimiter(rpm=a.rpm, rpd=a.rpd))
     blocks = extraction_blocks()
     all_rows, log = [], {"start": datetime.now(TZ).isoformat(timespec="seconds"), "companies": {}, "b14_counts": {}, "errors": {}}
@@ -66,7 +66,7 @@ def main(argv=None) -> None:
         rep = E.Report(t, m["name"], m["profile"], fy, filing)
         t0 = time.time()
         rows_by_block, per_block = {}, {}
-        for sid in BLOCKS_OF[m["profile"]]:
+        for sid in BLOCKS_OF.get(m["profile"], []):
             b = blocks[sid]
             before = client.calls if client else 0
             try:
