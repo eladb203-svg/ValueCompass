@@ -323,3 +323,30 @@ def test_noncontrolling_by_year_reads_the_minority_tag_then_the_difference_of_th
                                 "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": inst({"2025-12-31": 79_779.0, "2024-12-31": 68_394.0})}}}
     periods = [(2024, "FY2024", date(2024, 12, 31)), (2025, "FY2025", date(2025, 12, 31)), (2023, "FY2023", date(2023, 12, 31))]
     assert D.noncontrolling_by_year(cf, periods) == {2025: 6_022.0, 2024: 4_373.0}                  # 2023: neither tag -> none
+
+
+def test_resolve_adopts_a_legacy_company_without_cik_instead_of_creating_a_second_one():
+    c = FakeClient()
+    c.table("companies").insert({"symbol": "ACM", "company_name": "Acme Corporation", "exchange": "NASDAQ", "country": "US", "reporting_currency": "USD", "sector": "Technology"}).execute()
+    c.table("company_listings").insert({"company_id": 1, "symbol": "ACM", "exchange": "NASDAQ", "is_primary": True, "is_active": True, "trading_currency": "USD", "data_source": "FMP"}).execute()
+    repo = CompanyRepository(c)
+    r = R.resolve(fake_sec(sub(K10, exchanges=("Nasdaq",))), "ACM")
+    row = R.persist(r, repo, c, state="resolved")
+    assert len(c.tables["companies"]) == 1 and row["id"] == 1 and row["cik"] == "0000000001" and row["exchange"] == "US" and row["sector"] == "Technology"      # updated in place, nothing lost
+    assert len(c.tables["company_listings"]) == 1 and c.tables["company_listings"][0]["exchange"] == "NASDAQ"                                                     # same listing, the stored spelling stays
+    w = c.writes
+    R.persist(r, repo, c, state="resolved")
+    assert c.writes == w and len(c.tables["company_listings"]) == 1                                                                                              # and it is idempotent
+
+
+def test_resolve_does_not_adopt_a_company_of_another_cik_and_stops_on_an_ambiguous_legacy():
+    c = FakeClient()
+    c.table("companies").insert({"symbol": "ACM", "company_name": "Other", "exchange": "NYSE", "country": "US", "reporting_currency": "USD", "cik": "0000000999"}).execute()
+    row = R.persist(R.resolve(fake_sec(sub(K10)), "ACM"), CompanyRepository(c), c, state="resolved")
+    assert len(c.tables["companies"]) == 2 and row["cik"] == "0000000001" and c.tables["companies"][0]["cik"] == "0000000999"      # a different CIK is a different company
+    d = FakeClient()
+    for ex in ("NASDAQ", "NYSE"):
+        d.table("companies").insert({"symbol": "ACM", "company_name": "Acme", "exchange": ex, "country": "US", "reporting_currency": "USD"}).execute()
+    with pytest.raises(ValueError, match="have no CIK"):
+        R.persist(R.resolve(fake_sec(sub(K10)), "ACM"), CompanyRepository(d), d, state="resolved")
+    assert len(d.tables["companies"]) == 2

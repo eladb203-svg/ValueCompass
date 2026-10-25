@@ -21,7 +21,7 @@ from src.ai.db_stores import DbAiItemStore, DbAssessmentStore, DbTextStore
 from src.pipeline import scoring as S
 from src.repositories.company_repository import CompanyRepository
 from src.repositories.score_repository import ScoreRepository
-from src.repositories.work_queue_repository import WorkQueueRepository
+from src.repositories.work_queue_repository import SCORING_AI, WorkQueueRepository
 
 ROOT = Path(__file__).resolve().parents[2]
 ISRAEL = ZoneInfo("Asia/Jerusalem")
@@ -130,13 +130,13 @@ class QueueRunner:
             if task is None:
                 break
             task = self.queue.claim(task)
-            if task["job_type"] in AI_JOBS and task["company_id"]:
+            if task["job_type"] in SCORING_AI and task["company_id"]:
                 self.companies.set_processing_state(task["company_id"], "ai_in_progress")
             try:
                 payload = self.executors[task["job_type"]](task) or {}
                 self.queue.done(task, payload)
                 rep.done.append((task["id"], task["job_type"], task.get("skill"), self._label(task)))
-                if task["job_type"] in AI_JOBS and task["company_id"]:
+                if task["job_type"] in SCORING_AI and task["company_id"]:
                     self.after_ai(task)
             except (BudgetExceeded, QuotaSpent) as e:
                 self.queue.defer(task, next_reset(self.now()), str(e)[:200])
@@ -155,9 +155,10 @@ class QueueRunner:
         return rep
 
     def after_ai(self, task: dict) -> None:
-        """When the last open AI task of a company is done: the score with the AI answers and D2 follow (both are idempotent), and the state goes back to scored_partial until that score decides."""
+        """When the last open scoring AI task (C1, B, A) of a company is done: the score with the AI answers and D2 follow (both are idempotent), and the state goes back to scored_partial until that
+        score decides. The background text (D1 + T1) is not waited for."""
         cid = task["company_id"]
-        if any(t["job_type"] in AI_JOBS and t["state"] in ("queued", "running", "deferred_quota") for t in self.queue.list(cid)):
+        if any(t["job_type"] in SCORING_AI and t["state"] in ("queued", "running", "deferred_quota") for t in self.queue.list(cid)):
             return
         self.enqueue(cid, "score", None, "final", task["priority"])
         self.enqueue(cid, "analysis", None, None, task["priority"])

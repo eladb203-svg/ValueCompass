@@ -133,6 +133,13 @@ def persist(r: Resolved, companies, client, state: Optional[str] = None) -> dict
     """Write the company (one per CIK), its listings and the processing state. -> the companies row. Idempotent."""
     row = companies.get_by_cik(r.cik) or companies.get_by_symbol(r.ticker, "US")
     if row is None:
+        # no company with this CIK: a company of the same symbol that has no CIK (a legacy import) is the same stock - it is updated, not duplicated; its exchange becomes the company-level "US"
+        legacy = companies.find_without_cik(r.ticker)
+        if len(legacy) > 1:
+            raise ValueError(f"{r.ticker}: {len(legacy)} companies of this symbol have no CIK ({[x['id'] for x in legacy]}): merge them first")
+        if legacy:
+            row = companies.update(legacy[0]["id"], {"exchange": "US"}) or legacy[0]
+    if row is None:
         row = companies.ensure(r.ticker, r.name, cik=r.cik, sic=r.sic or None)
     fields = {"company_name": r.name, "cik": r.cik, "sic": r.sic or None}
     if any(row.get(k) != v for k, v in fields.items()):
@@ -144,9 +151,11 @@ def persist(r: Resolved, companies, client, state: Optional[str] = None) -> dict
     for ls in r.listings:
         want = {"company_id": row["id"], "symbol": ls["symbol"], "exchange": ls["exchange"], "mic": ls["mic"], "security_type": "common", "is_primary": ls["is_primary"],
                 "is_active": r.e2_ok or not ls["is_primary"], "data_source": "sec_submissions"}
-        old = client.table("company_listings").select("*").eq("symbol", ls["symbol"]).eq("exchange", ls["exchange"]).limit(1).execute().data
-        if not old:
+        same = [x for x in client.table("company_listings").select("*").eq("symbol", ls["symbol"]).execute().data if (x["exchange"] or "").upper() == (ls["exchange"] or "").upper()]
+        if not same:
             client.table("company_listings").insert(want).execute()
-        elif any(old[0].get(k) != v for k, v in want.items()):
-            client.table("company_listings").update(want).eq("id", old[0]["id"]).execute()
+        else:
+            keep = {k: v for k, v in want.items() if k != "exchange"}                 # NASDAQ / Nasdaq is the same listing: the stored spelling stays
+            if any(same[0].get(k) != v for k, v in keep.items()):
+                client.table("company_listings").update(keep).eq("id", same[0]["id"]).execute()
     return companies.get_by_id(row["id"]) if hasattr(companies, "get_by_id") else row

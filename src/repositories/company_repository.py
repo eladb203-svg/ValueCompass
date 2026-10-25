@@ -79,6 +79,11 @@ class CompanyRepository:
         data = q.limit(2).execute().data
         return data[0] if data else None
 
+    def find_without_cik(self, symbol: str) -> list:
+        """Companies of this symbol (on any exchange) that have no CIK: rows made before RESOLVE existed (a legacy import)."""
+        rows = self.client.table("companies").select("*").eq("symbol", symbol).execute().data
+        return [r for r in rows if not r.get("cik")]
+
     def get_by_cik(self, cik: str):
         data = self.client.table("companies").select("*").eq("cik", cik).limit(1).execute().data
         return data[0] if data else None

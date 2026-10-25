@@ -15,9 +15,11 @@ OPEN = ("queued", "running", "deferred_quota")
 RUNNABLE = ("queued", "deferred_quota")
 MAX_ATTEMPTS = 3
 RETRY_DELAY = timedelta(minutes=10)
-# the order of the jobs inside one company (K6 spec 2.8): the first score, then C1, B, A, D1(+T1), the score with the AI answers, D2
-JOB_ORDER = {"initial_import": 0, "backfill": 0, "new_report": 0, "amendment": 0, "repair": 0, "score": 1, "ai_classify": 2, "ai_extract": 3, "ai_assess": 4, "ai_background": 5, "analysis": 7}
-FINAL_SCORE_RANK = 6                       # skill "final" of a score task runs after the AI tasks
+# the order of the jobs inside one company (K6 spec 2.8): the first score, then C1, B, A, the score with the AI answers, D2, and last the background text (D1 + T1). The background does not
+# gate the score: the company is `complete` when its final score is written and no scoring item waits for the AI; a failed or waiting background is shown by itself (v_company_status).
+JOB_ORDER = {"initial_import": 0, "backfill": 0, "new_report": 0, "amendment": 0, "repair": 0, "score": 1, "ai_classify": 2, "ai_extract": 3, "ai_assess": 4, "analysis": 7, "ai_background": 8}
+SCORING_AI = ("ai_classify", "ai_extract", "ai_assess")          # the AI tasks whose answers feed the score
+FINAL_SCORE_RANK = 6                       # skill "final" of a score task runs after the scoring AI tasks
 
 
 def task_rank(t: dict) -> int:

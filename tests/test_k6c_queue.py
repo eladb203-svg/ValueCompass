@@ -41,8 +41,8 @@ def test_order_priority_then_the_jobs_of_a_company_in_their_order_and_the_final_
         q.enqueue(c, jt, None, sk, 3 if c != 3 else 1)
     order = [(t["company_id"], t["job_type"], t.get("skill")) for t in q.runnable()]
     assert order[0] == (3, "score", "first")                                            # priority 1 first, whatever the company
-    assert [o[1:] for o in order if o[0] == 2] == [("score", "first"), ("ai_classify", None), ("ai_extract", None), ("ai_assess", None), ("ai_background", None), ("score", "final"), ("analysis", None)]
-    assert task_rank({"job_type": "score", "skill": "final"}) > task_rank({"job_type": "ai_background", "skill": None})
+    assert [o[1:] for o in order if o[0] == 2] == [("score", "first"), ("ai_classify", None), ("ai_extract", None), ("ai_assess", None), ("score", "final"), ("analysis", None), ("ai_background", None)]
+    assert task_rank({"job_type": "score", "skill": "final"}) > task_rank({"job_type": "ai_assess", "skill": None}) and task_rank({"job_type": "ai_background", "skill": None}) > task_rank({"job_type": "analysis", "skill": None})
 
 
 def test_a_task_waits_for_the_open_tasks_before_it_in_its_company():
@@ -175,3 +175,40 @@ def test_a_failing_task_is_recorded_and_the_loop_goes_on(monkeypatch):
     assert [x[3] for x in rep.done] == ["BBB"] and rep.failed[0][3] == "no profile yet"
     row = next(t for t in r.queue.list(c1))
     assert row["state"] == "queued" and row["attempts"] == 1 and "no profile yet" in row["last_error"]
+
+
+def test_a_failed_or_waiting_background_does_not_hold_the_company_back_it_is_complete_with_its_final_score(monkeypatch):
+    monkeypatch.setattr("src.pipeline.queue_runner.S.seed_results", lambda *a, **k: 0)
+    client = FakeClient()
+    cid = add_company(client)
+    ran = []
+
+    def final_score(t):
+        ran.append(("score", t["skill"]))
+        runner.companies.set_processing_state(cid, "complete" if t["skill"] == "final" else "scored_partial")          # the real executor: complete when no scoring item waits for the AI
+        return {}
+    runner = make_runner(client, budget=0, executors={"score": final_score, "analysis": lambda t: ran.append("analysis") or {}, "ai_background": lambda t: ran.append("background") or {}})
+    runner.queue.enqueue(cid, "score", None, "first", 3)
+    runner.queue.enqueue(cid, "ai_background", 2025, None, 3)                                    # the Hebrew background failed its checks: its retranslation waits for the next stage
+    runner.queue.enqueue(cid, "score", None, "final", 3)
+    runner.queue.enqueue(cid, "analysis", None, None, 3)
+    runner.run()
+    assert ran == [("score", "first"), ("score", "final"), "analysis"]                           # the background is not waited for and does not run without a budget
+    assert runner.companies.get_by_id(cid)["processing_state"] == "complete"
+    assert {t["job_type"]: t["state"] for t in runner.queue.list(cid) if t["job_type"] == "ai_background"} == {"ai_background": "queued"}
+
+
+def test_only_scoring_ai_tasks_put_the_company_in_ai_in_progress_and_the_last_one_queues_the_final_score(monkeypatch):
+    monkeypatch.setattr("src.pipeline.queue_runner.S.seed_results", lambda *a, **k: 0)
+    client = FakeClient()
+    cid = add_company(client)
+    seen = []
+    inner = Inner()
+    r = make_runner(client, gemini=inner, budget=9, executors={"ai_background": lambda t: seen.append(("background", r.companies.get_by_id(cid)["processing_state"])) or {},
+                                                              "ai_assess": lambda t: seen.append(("assess", r.companies.get_by_id(cid)["processing_state"])) or {},
+                                                              "score": lambda t: seen.append(("score", t["skill"])) or {}, "analysis": lambda t: seen.append(("analysis", None)) or {}})
+    r.queue.enqueue(cid, "ai_assess", 2025, None, 3)
+    r.queue.enqueue(cid, "ai_background", 2025, None, 3)
+    r.run()
+    assert seen[0] == ("assess", "ai_in_progress")
+    assert seen[1:] == [("score", "final"), ("analysis", None), ("background", seen[3][1])] and seen[3][1] != "ai_in_progress"      # the final score and D2 were queued by the assess task, and run before the background

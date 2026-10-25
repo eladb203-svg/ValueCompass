@@ -131,7 +131,21 @@
 סיכום בייצור: חילוץ — CSV: 57 `k5b_confirmed` + 192 `legacy_verified`; AI: 202 approved/`ai_controls`, 100 pending, 15 rejected; 7 `score_runs`, 569 `score_details`, 14 `valuations`, 7 `company_score_summary`, 7 `market_snapshot`; 27 משימות תור (18 done, 9 queued: ai_background + ציון סופי + D2 של KO, INTC, JPM); שורות `data_update_log` לכל עבודה; `v_company_status` מציג את מצבי החברות וה-AI n/m (KO 1/2, INTC 1/2, MSFT 1/1). **קריאות Gemini בייצור: 0** (כל ההרצות עם `--budget 0`; אין לקוח מודל בכלל).
 
 ## 13. ממצאים פתוחים מהייצור
-1. **כפילות MSFT בייצור:** קיימת שורת חברה ישנה (id 1, בורסה NASDAQ, נוצרה 2026-08-25, בלי CIK, בלי עובדות, 6 שורות log ישנות, רישום אחד) מהשלב הקודם של ה-DB; הצינור יצר חברה קנונית נפרדת (id 10, בורסה US, CIK 0000789019) כי החיפוש לפי CIK/סימול+US לא מצא את הישנה. `v_company_status` מציג לכן שתי שורות MSFT. **לא מחקתי** (כל מחיקה בייצור באישורך). המלצה: למזג — להעביר את הרישום והלוג לשורה 10 ולארכב/למחוק את שורה 1; ולהוסיף ל-`persist` חיפוש לפי סימול בכל בורסה.
+1. **כפילות MSFT בייצור — טופלה (סעיף 14).**
 2. JPM בייצור יש 9 רישומים (company_listings) — מניות בכורה/סדרות מרשימת ה-SEC; רק הראשי מסומן primary.
-3. KO ו-INTC: הרקע העברי נפסל בייצור לפי המילון (ב-test הוא עדיין approved בגרסה 4); JPM: תרגום נכשל; לכולם משימת ai_background פתוחה — שלב התרגום מחדש.
+3. KO ו-INTC: הרקע העברי נפסל בייצור לפי המילון (ב-test הוא עדיין approved בגרסה 4); JPM: תרגום נכשל; לכולם משימת ai_background פתוחה — שלב התרגום מחדש. **המצב שלהן כבר אינו `scored_partial`** (סעיף 15).
 4. 100 פריטי חילוץ AI בייצור ממתינים לאישור (pending) — תור האישור של ק5ב.
+
+
+## 14. מיזוג MSFT בייצור (באישורך) ותיקון RESOLVE
+**מיזוג** (`scripts/merge_legacy_company.py 1 10 --apply`, בייצור): הפניות לשורה הישנה (id 1) נבדקו בכל 14 הטבלאות שמפנות ל-`companies`: רק רישום אחד ב-`company_listings` ו-6 שורות ב-`data_update_log` (בשאר 0, כולל `portfolio_holdings` ו-`user_watchlist`).
+1. **גיבוי:** `scripts/backup/merge_company_1_into_10_prod_2026-10-25.json` — שורת החברה הישנה, הרישום, 6 שורות ה-log, הספירות, ומצב id 10 והרישום שלו לפני המיזוג.
+2. **נקרא ל-id 10 רק מה שחסר** ושהצינור לא כותב: `public_since_date` = 1986-03-13, `sector` = Technology, `industry` = Software - Infrastructure. **לא נדרסו** שדות של הצינור: `company_name` נשאר "MICROSOFT CORP" (השם מ-SEC; הצינור כותב אותו מחדש בכל טעינה, ולכן העתקת "Microsoft Corporation" הייתה נמחקת בטעינה הבאה — אם תרצה שם תצוגה נפרד זו החלטה לשלב המסך), `exchange` = US, CIK, SIC, פרופיל, מצב.
+3. **6 שורות ה-log** הועברו ל-id 10. **הרישום** היה כפול (אותה מניה, NASDAQ מול Nasdaq): הרישום הישן נמחק (אחרי הגיבוי) ורישום id 10 קיבל את האיות NASDAQ ואת מטבע המסחר USD.
+4. **מחיקת id 1 רק אחרי 0 הפניות** (נבדק לפני המחיקה בכל 14 הטבלאות) — נמחקה. **אימות:** 7 חברות בייצור, שורת MSFT אחת, רישום MSFT אחד; הספירות של id 10 ללא שינוי חוץ מה-log (3→9): ai_assessments 13, ai_texts 3, listings 1, profile_history 1, summary 1, extraction 3, filing_periods 10, financial_facts 369, market_snapshot 1, score_runs 1, work_queue 4.
+**תיקון בקוד (RESOLVE, `resolve.persist` + `CompanyRepository.find_without_cik`):** כשאין התאמה לפי CIK (ולא לפי סימול+US), נחפשת חברה קיימת **באותו סימול שאין לה CIK** (ייבוא ישן) והיא מתעדכנת במקום ליצירת חדשה (CIK, SIC, שם; הבורסה הופכת ל-US; שדות שלא נכתבים — sector, industry, public_since_date — נשמרים). שתי חברות כאלה = עצירה עם הודעה (ValueError). חברה עם CIK **אחר** לא מאומצת. בנוסף: רישום שאותו (סימול, בורסה) באיות אחר (NASDAQ/Nasdaq) נחשב אותו רישום ולא נוצר כפול. 2 בדיקות יחידה חדשות.
+
+## 15. מצב `complete`: הרקע כבר לא מחזיק את החברה
+**הכלל החדש:** `processing_state = complete` כשהציון הסופי נכתב ואין פריטי ניקוד שממתינים ל-AI. הרקע (D1+T1) אינו חלק מהציון: משימת `ai_background` מדורגת אחרי D2 ולא חוסמת את הציון הסופי; רק משימות AI שמזינות את הציון (C1, B, A) מעבירות ל-`ai_in_progress` ומפעילות את הציון הסופי. כתוצאה — רקע שנכשל (או ממתין לתקציב) משאיר את החברה `complete`.
+**`v_company_status` (מיגרציה 16, test וייצור; rollback בקובץ):** עמודות חדשות `background_status` (approved / pending_review / failed / missing) ו-`background_human_reviewed`; `ai_done/ai_total` סופרים רק את משימות הציון. ב-`create or replace` — העמודות נוספו בסוף, בלי פגיעה בקיימות.
+**עדכון בפועל:** בייצור KO, INTC, JPM — ציון סופי + D2 הורצו (0 קריאות מודל) והן `complete`; ב-test JPM `complete` (KO ו-INTC כבר היו). **מצב בייצור:** כל 7 החברות `complete`; `background_status`: approved — AMT, CB, MSFT, O; **failed — INTC, JPM, KO** (3 משימות ai_background ממתינות לשלב התרגום מחדש). השוואה מחודשת (`k6c_compare_prod.py`): **7/7 זהות** לכל העובדות, החילוץ, התשובות, הציונים והשווי, וכעת גם המצב זהה (complete → complete). 2 בדיקות יחידה חדשות (רקע שנכשל לא חוסם; רק משימות ציון מעבירות ל-ai_in_progress). **סה"כ 668 בדיקות עוברות.**
