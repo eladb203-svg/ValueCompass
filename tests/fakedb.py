@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import copy
 
-AUTO_ID = {"companies": "id", "fact_tags": "id", "extraction_items": "id"}
+AUTO_ID = {"companies": "id", "fact_tags": "id", "extraction_items": "id", "company_listings": "id", "data_update_log": "id"}
 UNIQUE = {"companies": [("symbol", "exchange"), ("cik",)], "fact_tags": [("tag",)], "extraction_items": [("company_id", "item_key", "period", "document_ref")],
-          "financial_facts": [("company_id", "fiscal_year", "item_id")], "filing_periods": [("company_id", "fiscal_year")]}
+          "financial_facts": [("company_id", "fiscal_year", "item_id")], "filing_periods": [("company_id", "fiscal_year")], "company_listings": [("symbol", "exchange")],
+          "company_profile_history": [("company_id", "fiscal_year")], "market_snapshot": [("company_id",)]}
 
 
 class Result:
@@ -83,7 +84,8 @@ class Query:
             return Result([copy.deepcopy(self._put(r, None)) for r in items])
         if self._op == "upsert":
             cols = [c.strip() for c in self._conflict.split(",")] if self._conflict else None
-            return Result([copy.deepcopy(self._put(r, cols)) for r in self._payload])
+            items = self._payload if isinstance(self._payload, list) else [self._payload]
+            return Result([copy.deepcopy(self._put(r, cols)) for r in items])
         if self._op == "update":
             hit = [r for r in self.rows if self._match(r)]
             for r in hit:

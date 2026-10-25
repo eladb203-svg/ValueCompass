@@ -59,6 +59,9 @@ def html_to_text(raw: str) -> str:
 
 
 def _get_raw(sec: SecClient, url: str, cache_name: str) -> str:
+    getter = getattr(sec, "get_text", None)          # the K6b pipeline client: rate limit and cache directory in one place
+    if getter is not None:
+        return getter(url, cache_name)
     path = FILINGS / cache_name
     if path.exists():
         return path.read_text(encoding="utf-8", errors="replace")

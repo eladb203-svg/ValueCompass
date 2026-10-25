@@ -176,7 +176,7 @@ def reg_rows():
 def test_default_rule_legacy_verified_then_k5b_match_then_pending():
     r = reg_rows()
     assert [approval_for(x) for x in r] == [("approved", "legacy_verified"), ("pending", ""), ("pending", "")]
-    assert [approval_for(x, k5b_matched=True) for x in r] == [("approved", "legacy_verified"), ("approved", "k5b_confirmed"), ("approved", "k5b_confirmed")]
+    assert [approval_for(x, k5b_matched=True) for x in r] == [("approved", "k5b_confirmed")] * 3        # a K5b match wins over the old YES
     assert approval_for(r[1], approve_all=True) == ("approved", "human_review")
 
 
@@ -195,9 +195,9 @@ def test_csv_rows_load_pending_unless_verified_and_the_table_rules_hold():
     for r in rows.values():                                                       # the table's CHECK: approved needs source and time
         assert r["approval_status"] != "approved" or (r["approval_source"] and r["approved_at"])
     assert sink.write(fs)["extraction"]["unchanged"] == 3
-    st = FactSetDb(c, k5b_matched={("ACM", "b", "")}).write(fs)["extraction"]                  # a K5b match approves only the row that was not legacy-verified
-    assert (st["rule_k5b_confirmed"], st["rule_pending"], st["updated"]) == (1, 1, 1)
-    assert {r["item_key"]: r["approval_source"] for r in c.tables["extraction_items"]} == {"a": "legacy_verified", "b": "k5b_confirmed", "c": None}
+    st = FactSetDb(c, k5b_matched={("ACM", "a", ""), ("ACM", "b", "")}).write(fs)["extraction"]   # a K5b match wins over the old YES and approves an unverified row
+    assert (st["rule_k5b_confirmed"], st["rule_legacy_verified"], st["rule_pending"], st["updated"]) == (2, 0, 1, 2)
+    assert {r["item_key"]: r["approval_source"] for r in c.tables["extraction_items"]} == {"a": "k5b_confirmed", "b": "k5b_confirmed", "c": None}
 
 
 def test_approve_all_flag_works_on_test_and_is_refused_on_prod(monkeypatch):

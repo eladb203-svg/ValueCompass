@@ -45,12 +45,14 @@ class FinancialRepository:
         self._load_items()
         return self._keys[item_id]
 
-    def tag_id(self, tag: Optional[str]) -> Optional[int]:
-        """fact_tags.id of a tag text (created when new); None for no tag."""
+    def tag_id(self, tag: Optional[str], create: bool = True) -> Optional[int]:
+        """fact_tags.id of a tag text (created when new, unless ``create`` is False: then -1 for a new tag); None for no tag."""
         if not tag:
             return None
         if tag not in self._tags:
             r = self.client.table("fact_tags").select("id").eq("tag", tag).limit(1).execute().data
+            if not r and not create:
+                return -1
             if not r:
                 r = self.client.table("fact_tags").insert({"tag": tag}).execute().data
             self._tags[tag] = r[0]["id"]
@@ -113,32 +115,33 @@ class FinancialRepository:
                 "source_kind": r["source_kind"], "tag": self.tag_text(r["tag_id"]), "flags": tuple(r.get("flags") or ()), "basis": r.get("basis"), "extraction_id": r.get("extraction_id")}
 
     # ------------------------------------------------------------ writing
-    def _to_row(self, company_id: int, f) -> dict:
+    def _to_row(self, company_id: int, f, create_tags: bool = True) -> dict:
         return {"company_id": company_id, "fiscal_year": f.fiscal_year, "item_id": self.item_id(f.item_key), "value": f.value, "status": f.status, "source_kind": f.source_kind,
-                "tag_id": self.tag_id(f.tag), "flags": list(f.flags), "basis": f.basis, "extraction_id": None}
+                "tag_id": self.tag_id(f.tag, create_tags), "flags": list(f.flags), "basis": f.basis,
+                "extraction_id": int(f.extraction_ref) if f.extraction_ref else None}
 
-    def upsert_facts(self, company_id: int, facts: list) -> dict:
+    def upsert_facts(self, company_id: int, facts: list, dry_run: bool = False) -> dict:
         """Idempotent upsert of ``Fact`` objects. -> {"inserted", "updated", "unchanged"} (rows written = inserted + updated)."""
         self._load_items()
         existing = {(r["fiscal_year"], r["item_id"]): r for r in self._select_all("financial_facts", "*", {"company_id": company_id})}
         todo, stats = [], {"inserted": 0, "updated": 0, "unchanged": 0}
         for f in facts:
-            row = self._to_row(company_id, f)
+            row = self._to_row(company_id, f, create_tags=not dry_run)
             old = existing.get((row["fiscal_year"], row["item_id"]))
             if old is None:
                 stats["inserted"] += 1
             elif (_same_value(old["value"], row["value"]) and old["status"] == row["status"] and old["source_kind"] == row["source_kind"] and old["tag_id"] == row["tag_id"]
-                  and list(old.get("flags") or []) == row["flags"] and old.get("basis") == row["basis"]):
+                  and list(old.get("flags") or []) == row["flags"] and old.get("basis") == row["basis"] and old.get("extraction_id") == row["extraction_id"]):
                 stats["unchanged"] += 1
                 continue
             else:
                 stats["updated"] += 1
             todo.append(row)
-        for i in range(0, len(todo), BATCH):
+        for i in range(0, 0 if dry_run else len(todo), BATCH):
             self.client.table("financial_facts").upsert(todo[i:i + BATCH], on_conflict="company_id,fiscal_year,item_id").execute()
         return stats
 
-    def upsert_filing_periods(self, company_id: int, periods: list) -> dict:
+    def upsert_filing_periods(self, company_id: int, periods: list, dry_run: bool = False) -> dict:
         """``periods``: dicts with fiscal_year, accession, form, fiscal_year_end (iso), reporting_currency, calculation_version (+ optional filed_at). Idempotent."""
         old = {r["fiscal_year"]: r for r in self._select_all("filing_periods", "*", {"company_id": company_id})}
         todo, stats = [], {"inserted": 0, "updated": 0, "unchanged": 0}
@@ -153,7 +156,7 @@ class FinancialRepository:
             else:
                 stats["updated"] += 1
             todo.append(row)
-        if todo:
+        if todo and not dry_run:
             self.client.table("filing_periods").upsert(todo, on_conflict="company_id,fiscal_year").execute()
         return stats
 

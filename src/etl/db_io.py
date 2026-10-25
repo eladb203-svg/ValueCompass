@@ -21,15 +21,15 @@ PLACEHOLDER_ACCESSION = "n/a (local SEC cache, K6a load)"      # K6b replaces it
 
 def approval_for(row, approve_all: bool = False, k5b_matched: bool = False) -> tuple:
     """(approval_status, approval_source) of a CSV extraction row. Default rule:
-    the quote was verified in the earlier CSV process (``quote_verified``) -> approved + legacy_verified;
-    otherwise the value was matched by K5b (``k5b_matched``) -> approved + k5b_confirmed;  everything else -> pending.
+    K5b matched the value (``k5b_matched``) -> approved + k5b_confirmed (also when the old process verified it too);
+    otherwise the quote was verified in the earlier CSV process (``quote_verified``) -> approved + legacy_verified;  everything else -> pending.
     ``approve_all`` is for the identity test only (everything approved as human_review); it is refused on the production target."""
     if approve_all:
         return "approved", "human_review"
-    if row.quote_verified:
-        return "approved", "legacy_verified"
     if k5b_matched:
         return "approved", "k5b_confirmed"
+    if row.quote_verified:
+        return "approved", "legacy_verified"
     return "pending", ""
 
 
@@ -76,8 +76,9 @@ class FactSetDb:
         """The FactSet of the database for the company of ``template`` (pass-through parts are copied from the template)."""
         cid = self.company_id(template)
         periods = [(p["fiscal_year"], year_to_label(p["fiscal_year"]), date.fromisoformat(p["fiscal_year_end"]) if p["fiscal_year_end"] else None) for p in self.financial.get_filing_periods(cid)]
+        # facts that came from approved extraction (source_kind 'extraction', K6b) are not part of the engine input: the engines read those values from the extraction rows themselves
         facts = [Fact(template.ticker, d["fiscal_year"], d["item_key"], _num(d["value"]), d["status"], d["source_kind"], tag=d["tag"], flags=tuple(d["flags"]), basis=d["basis"])
-                 for d in self.financial.get_history(cid)]
+                 for d in self.financial.get_history(cid) if d["source_kind"] != "extraction"]
         fs = FactSet(ticker=template.ticker, name=template.name, engine=template.engine, periods=periods, facts=facts, extras=template.extras, extraction=[],
                      context=template.context, extra_tags=template.extra_tags, series_fields=template.series_fields, has_reg=template.has_reg)
         fs.extraction = self.extraction.get_rows(cid, template.ticker) if template.has_reg else []

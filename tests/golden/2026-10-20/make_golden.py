@@ -188,7 +188,8 @@ def patch_via_db(approve_all: bool = False):
     import run_managed_care as rmc
     import run_realestate_v5 as v5
     import run_scoring_test as rst
-    sink = FactSetDb(approve_all=approve_all)
+    from src.etl.k5b_match import k5b_matched_keys
+    sink = FactSetDb(approve_all=approve_all, k5b_matched=k5b_matched_keys())
     rst.CompanyInputs = via_db("general", rst.CompanyInputs, sink, DB_REPORT)
     rmc.CompanyInputs = via_db("general", rmc.CompanyInputs, sink, DB_REPORT)
     rbt.BankInputs = via_db("bank", rbt.BankInputs, sink, DB_REPORT)
