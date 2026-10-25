@@ -5,9 +5,12 @@ Keys come only from .env and are never printed or logged: an error names the mis
 """
 import os
 
+import httpx
 from supabase import Client, create_client
+from supabase.lib.client_options import SyncClientOptions
 
 from src import config
+from src.net import RetryTransport
 
 VARS = {"test": ("SUPABASE_TEST_URL", "SUPABASE_TEST_SECRET_KEY"), "prod": ("SUPABASE_URL", "SUPABASE_SECRET_KEY")}
 
@@ -34,5 +37,7 @@ def credentials(target: str = None) -> tuple:
 
 
 def get_supabase_client(target: str = None) -> Client:
+    """The client retries a failed connection with a gradual wait (30, 60, 120, 120 s; five attempts - ``src/net.py``) before it raises."""
     url, key = credentials(target)
-    return create_client(url, key)
+    http = httpx.Client(transport=RetryTransport(), timeout=httpx.Timeout(120.0, connect=30.0), follow_redirects=True)
+    return create_client(url, key, options=SyncClientOptions(httpx_client=http))

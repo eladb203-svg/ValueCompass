@@ -300,3 +300,26 @@ def test_filing_documents_go_through_the_same_client_and_reuse_the_old_cache_rea
     assert sec_filings._get_raw(sec, "https://www.sec.gov/x/new.htm", "acc_new.htm") == "<html>new</html>" and len(calls) == 1 and (old / "acc_new.htm").exists()      # a new file in the shared cache
     sec_filings._get_raw(sec, "https://www.sec.gov/x/new.htm", "acc_new.htm")
     assert len(calls) == 1 and sec.requests_made == 1 and (old / "acc_cached.htm").read_text(encoding="utf-8") == "<html>old</html>"          # the old file is untouched
+
+
+def test_balance_identity_counts_noncontrolling_interests_without_changing_the_equity_fact():
+    facts = [F(2025, "total_assets", 272_327.0), F(2025, "total_liabilities", 192_548.0), F(2025, "equity", 73_757.0)]
+    res = []
+    flagged = D.check_balance_identity(facts, res)                                                  # CB 2025 without the noncontrolling interest: 2.2% apart
+    assert res and all("balance_identity" in f.flags for f in flagged)
+    res2 = []
+    out = D.check_balance_identity(facts, res2, {2025: 6_022.0})                                    # + MinorityInterest: balanced
+    assert res2 == [] and all(not f.flags for f in out) and [f.value for f in out] == [272_327.0, 192_548.0, 73_757.0]       # the equity fact is the parent's, unchanged
+    res3 = []
+    D.check_balance_identity(facts, res3, {2025: 500.0})                                            # a noncontrolling interest that does not explain the gap still flags
+    assert res3
+
+
+def test_noncontrolling_by_year_reads_the_minority_tag_then_the_difference_of_the_two_equity_tags():
+    def inst(vals):
+        return {"units": {"USD": [{"end": e, "val": v, "form": "10-K", "fp": "FY", "filed": "2026-02-01", "accn": "a"} for e, v in vals.items()]}}
+    cf = {"facts": {"us-gaap": {"MinorityInterest": inst({"2025-12-31": 6_022.0}),
+                                "StockholdersEquity": inst({"2025-12-31": 73_757.0, "2024-12-31": 64_021.0}),
+                                "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": inst({"2025-12-31": 79_779.0, "2024-12-31": 68_394.0})}}}
+    periods = [(2024, "FY2024", date(2024, 12, 31)), (2025, "FY2025", date(2025, 12, 31)), (2023, "FY2023", date(2023, 12, 31))]
+    assert D.noncontrolling_by_year(cf, periods) == {2025: 6_022.0, 2024: 4_373.0}                  # 2023: neither tag -> none

@@ -15,6 +15,7 @@ from collections import deque
 from pathlib import Path
 from typing import Callable, Optional
 
+from src.net import retry_network
 from src.providers.sec_companyfacts import SecClient
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -73,7 +74,7 @@ class PipelineSec(SecClient):
             text = self._fetch(url)
         else:
             import requests
-            r = requests.get(url, headers=self._headers, timeout=60)
+            r = retry_network(lambda: requests.get(url, headers=self._headers, timeout=60))        # a network error waits 30, 60, 120, 120 s between five attempts
             r.raise_for_status()
             text = r.text
         self.requests_made += 1

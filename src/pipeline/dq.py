@@ -80,8 +80,29 @@ def check_currency(facts: list, currency: Optional[str], results: list) -> list:
     return out
 
 
-def check_balance_identity(facts: list, results: list) -> list:
-    """Total assets = total liabilities + equity (including noncontrolling interests), within 1%: the year is flagged on the three items."""
+def noncontrolling_by_year(facts_json: dict, periods: list) -> dict:
+    """Noncontrolling interests per fiscal year, for the balance identity only (the equity fact and the cards keep the parent's equity): the ``MinorityInterest`` tag, else equity including
+    the noncontrolling portion minus the parent's equity. -> {fiscal_year: value}; a year without either tag is absent (no noncontrolling interest to add)."""
+    from src.providers.sec_companyfacts import _match, annual_series
+    minority = annual_series(facts_json, "MinorityInterest", "USD", "instant")
+    total = annual_series(facts_json, "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "USD", "instant")
+    parent = annual_series(facts_json, "StockholdersEquity", "USD", "instant")
+    out = {}
+    for year, _label, end in periods:
+        m = _match(minority, end) if end else None
+        if m is not None:
+            out[year] = m.val
+            continue
+        t, p = (_match(total, end), _match(parent, end)) if end else (None, None)
+        if t is not None and p is not None and t.val != p.val:
+            out[year] = t.val - p.val
+    return out
+
+
+def check_balance_identity(facts: list, results: list, nci: Optional[dict] = None) -> list:
+    """Total assets = total liabilities + equity (including noncontrolling interests), within 1%: the year is flagged on the three items. ``nci``: noncontrolling interests per year, added to
+    the parent's equity for this check only."""
+    nci = nci or {}
     by = {}
     for f in facts:
         by.setdefault(f.fiscal_year, {})[f.item_key] = f
@@ -90,10 +111,11 @@ def check_balance_identity(facts: list, results: list) -> list:
         a, l, e = (d.get(k) for k in ("total_assets", "total_liabilities", "equity"))
         if not (a and l and e and a.value):
             continue
-        gap = abs(a.value - (l.value + e.value)) / abs(a.value)
+        rhs = l.value + e.value + nci.get(y, 0.0)
+        gap = abs(a.value - rhs) / abs(a.value)
         if gap > BALANCE_TOLERANCE:
             bad[y] = gap
-            results.append(DqResult("balance_identity", "flagged", y, None, f"assets {a.value:,.0f} vs liabilities + equity {l.value + e.value:,.0f} ({gap:.1%} apart; noncontrolling interests may explain it)"))
+            results.append(DqResult("balance_identity", "flagged", y, None, f"assets {a.value:,.0f} vs liabilities + equity (+ noncontrolling interests {nci.get(y, 0.0):,.0f}) {rhs:,.0f} ({gap:.1%} apart)"))
     return [(_with_flag(f, "balance_identity") if f.fiscal_year in bad and f.item_key in ("total_assets", "total_liabilities", "equity") else f) for f in facts]
 
 
@@ -153,13 +175,13 @@ def reconciliation_inputs(facts: list) -> dict:
     return {name: {y: {k: d.get(k) for k in keys} for y, d in sorted(by.items())} for name, keys in need.items()}
 
 
-def run_checks(facts: list, previous: Optional[dict] = None, currency: Optional[str] = None, engine: str = "general") -> tuple:
+def run_checks(facts: list, previous: Optional[dict] = None, currency: Optional[str] = None, engine: str = "general", nci: Optional[dict] = None) -> tuple:
     """All checks in order. -> (facts after the checks, [DqResult])."""
     results: list = []
     out = check_currency(list(facts), currency, results)
     out = check_share_scale(out, results)
     out = check_signs(out, results)
-    out = check_balance_identity(out, results)
+    out = check_balance_identity(out, results, nci)
     out = check_restatement(out, previous or {}, results)
     check_year_coverage(out, results, engine)
     return out, results

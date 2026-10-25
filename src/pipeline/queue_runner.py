@@ -334,6 +334,30 @@ class QueueRunner:
         K5.golden = lambda t, _r=res: _r
         return K5
 
+    def d1_context(self, ticker: str) -> dict:
+        """What D1 is checked against, without a model call: the facts, the report sections that were sent and the prompt text. Used to re-run the checks on stored texts."""
+        S._paths()
+        from src.ai import assess, content as C
+        from src.ai.sections import find_filing
+        from src.scoring import peer_source as PS
+        co = self.companies.get_by_symbol(ticker, "US")
+        res = self.load_result(ticker)
+        if not co or res is None:
+            raise RuntimeError(f"no score result for {ticker}")
+        K5 = self._meta_context(co, res)
+        import run_ai_k5c as K5C
+        rec = next(r for r in PS.load_records(self.results_dir) if r["ticker"] == ticker)
+        facts, _moat, _missing = K5C.d1_inputs(rec, self.ai_store)
+        m = K5.meta(ticker)
+        filing = find_filing(ticker, str(m["end"][-1])[:10])
+        if filing is None:
+            raise RuntimeError(f"the 10-K of {ticker} is not in the local filings cache")
+        a = assess.Company(ticker, m["name"], m["profile"], int(rec["fiscal_year"][2:]), filing)
+        secs = {k: v.text for k, v in a.sections().items() if k in ("TXT-001", "TXT-003", "TXT-005") and v.found}
+        secs, _trimmed = C.trim_d1_sections(facts, filing.accession, secs)
+        _prompt, text_sent, sent = C.build_d1_prompt(facts, filing.accession, secs)
+        return {"facts": facts, "text_sent": text_sent, "sent": sent, "fiscal_year": a.fiscal_year}
+
     def exec_background(self, task: dict) -> dict:
         """D1 in English, then T1 (the Hebrew translation); both checked in code; the passing Hebrew text is approved at once with human_reviewed = false."""
         if self.gemini is None:

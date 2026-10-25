@@ -17,6 +17,8 @@ from typing import Optional
 
 import requests
 
+from src.net import retry_network
+
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / "scripts" / "cache" / "sec"
 MIN_INTERVAL = 0.15  # seconds between requests (< 10 req/s)
@@ -205,7 +207,7 @@ class SecClient:
         wait = MIN_INTERVAL - (time.monotonic() - self._last)
         if wait > 0:
             time.sleep(wait)
-        r = requests.get(url, headers=self._headers, timeout=60)
+        r = retry_network(lambda: requests.get(url, headers=self._headers, timeout=60))          # a network error waits 30, 60, 120, 120 s between five attempts
         self._last = time.monotonic()
         self.requests_made += 1
         r.raise_for_status()

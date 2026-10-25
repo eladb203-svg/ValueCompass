@@ -203,7 +203,7 @@ class Pipeline:
         want = set(years)
         facts = [f for f in fs.facts if f.fiscal_year in want]
         previous_facts = {(d["fiscal_year"], d["item_key"]): d for d in (self.financial.get_history(company["id"]) if company else [])}
-        facts, dq_results = D.run_checks(facts, previous_facts, _currency(cf), engine)
+        facts, dq_results = D.run_checks(facts, previous_facts, _currency(cf), engine, D.noncontrolling_by_year(cf, fs.periods))
         res.dq = [(r.check, r.outcome, r.fiscal_year, r.item_key, r.detail) for r in dq_results]
         res.restated = sorted({(r.fiscal_year, r.item_key) for r in dq_results if r.check == "restatement"})
         res.sources = _count_kinds(facts)

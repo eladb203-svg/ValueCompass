@@ -7,7 +7,7 @@
 Every row keeps model, prompt version / skill version and accession. Texts: what passed the checks is ``approved`` with ``human_reviewed = false`` (the Hebrew backgrounds are shown with the
 "automatic translation" marker); what failed (JPM and O among the first five) is ``failed``. Rows of companies that are not in the database are skipped and listed.
 
-    .venv/Scripts/python scripts/migrate_ai_store.py [--dry-run]
+    .venv/Scripts/python scripts/migrate_ai_store.py [--dry-run] [--skip-texts]
 """
 from __future__ import annotations
 
@@ -51,6 +51,7 @@ def item_keys(rows: list) -> dict:
 
 def main(argv) -> int:
     dry = "--dry-run" in argv
+    skip_texts = "--skip-texts" in argv                  # production: the texts are copied from test by copy_texts.py, after their checks are run again
     client = get_supabase_client()
     print(f"[database target: {db_target()}]" + ("  (dry run: nothing written)" if dry else ""))
     report, skipped = {}, defaultdict(set)
@@ -98,7 +99,7 @@ def main(argv) -> int:
     # ---- texts
     ts = DbTextStore(client)
     c, per = Counter(), Counter()
-    for r in TextStore(TEXTS).rows():
+    for r in ([] if skip_texts else TextStore(TEXTS).rows()):
         if (r["kind"], str(r["prompt_version"])) not in CURRENT:
             c["superseded version (not moved)"] += 1
             continue

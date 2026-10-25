@@ -12,6 +12,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Optional
 
+from src.net import retry_network
+
 from .sec_companyfacts import ROOT, SecClient
 
 FILINGS = ROOT / "scripts" / "cache" / "filings"
@@ -70,7 +72,7 @@ def _get_raw(sec: SecClient, url: str, cache_name: str) -> str:
     wait = 0.15 - (time.monotonic() - sec._last)
     if wait > 0:
         time.sleep(wait)
-    r = requests.get(url, headers=sec._headers, timeout=180)
+    r = retry_network(lambda: requests.get(url, headers=sec._headers, timeout=180))
     sec._last = time.monotonic()
     sec.requests_made += 1
     r.raise_for_status()

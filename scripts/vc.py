@@ -1,7 +1,7 @@
 """Runner commands (K6 spec 7). The database is chosen by VC_DB_TARGET (default test); `prod` writes to production.
 
   Data
-    vc.py load <ticker> [--job initial_import|backfill|new_report|amendment|repair] [--dry-run] [--budget N]
+    vc.py load <ticker> [--job initial_import|backfill|new_report|amendment|repair] [--dry-run] [--no-score] [--budget N]
                        the whole pipeline up to data_loaded, then the first score (scored_partial) and the AI tasks go to the queue (priority 1 for a company that is new);
                        --budget N lets the queue make up to N model requests right away (default 0: the data and score tasks run, the AI tasks wait in the queue)
     vc.py audit <ticker>     the plan per fiscal year; writes nothing
@@ -92,6 +92,7 @@ def main(argv=None) -> int:
     ap.add_argument("arg2", nargs="?", help="id of a text / number of a proposal / ticker for queue status")
     ap.add_argument("--job", choices=JOBS, default="initial_import")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--no-score", action="store_true", help="load: stop at data_loaded (no first score, nothing queued)")
     ap.add_argument("--budget", type=int, default=0)
     ap.add_argument("--max-tasks", type=int, default=1000)
     ap.add_argument("--tickers", nargs="*", help="ai-queue: run only the tasks of these companies")
@@ -114,7 +115,7 @@ def main(argv=None) -> int:
         before = p.companies.get_by_symbol(a.arg.upper(), "US")
         res = p.load(a.arg, a.job)
         print_result(res)
-        if a.dry_run or res.status == "failed":
+        if a.dry_run or res.status == "failed" or a.no_score:
             return 1 if res.status == "failed" else 0
         runner = make_runner(a.budget)
         row = runner.companies.get_by_symbol(a.arg.upper(), "US")
