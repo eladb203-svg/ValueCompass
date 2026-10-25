@@ -174,7 +174,28 @@ def patch_via_facts():
     v5.REInputs = via_facts("realestate", v5.REInputs)
 
 
+DB_REPORT: list = []
+
+
+def patch_via_db():
+    """K6a: provider output -> facts -> database (target valuecompass-test; VC_DB_TARGET) -> facts -> inputs. The write statistics and the cache-vs-db differences go to DB_REPORT."""
+    from src.etl.db_io import FactSetDb
+    from src.etl.to_inputs import via_db
+    import run_bank_test as rbt
+    import run_insurance_test_v3 as r3
+    import run_managed_care as rmc
+    import run_realestate_v5 as v5
+    import run_scoring_test as rst
+    sink = FactSetDb()
+    rst.CompanyInputs = via_db("general", rst.CompanyInputs, sink, DB_REPORT)
+    rmc.CompanyInputs = via_db("general", rmc.CompanyInputs, sink, DB_REPORT)
+    rbt.BankInputs = via_db("bank", rbt.BankInputs, sink, DB_REPORT)
+    r3.InsuranceInputs = via_db("insurance", r3.InsuranceInputs, sink, DB_REPORT)
+    v5.REInputs = via_db("realestate", v5.REInputs, sink, DB_REPORT)
+
+
 def main(argv):
+    db_report = None
     opts = [a for a in argv if a.startswith("--")]
     argv = [a for a in argv if not a.startswith("--")]
     for o in opts:
@@ -184,6 +205,10 @@ def main(argv):
             patch_yfinance()
         elif o == "--via-facts":
             patch_via_facts()
+        elif o == "--via-db":
+            patch_via_db()
+        elif o.startswith("--db-report="):
+            db_report = o.split("=", 1)[1]
         else:
             raise SystemExit(f"unknown option {o}")
     raw_dir = Path(argv[0]).resolve()
@@ -194,6 +219,9 @@ def main(argv):
         log = run_engine(eng, raw_dir)
         summary[eng] = [ln for ln in log.splitlines() if "SEC requests" in ln or "FAILED" in ln or "Traceback" in ln]
         print(eng, summary[eng] or "ok")
+    if db_report:
+        Path(db_report).write_text(json.dumps(DB_REPORT, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
+        print("db report:", len(DB_REPORT), "inputs objects")
     if golden:
         idx = {}
         for eng in ENGINES:

@@ -1,23 +1,23 @@
 from src.repositories.company_repository import CompanyRepository
 from src.repositories.financial_repository import FinancialRepository
 
+# Dictionary keys (Part E) of the lines the audit expects in every year (the general model's key statement lines).
 FINANCIAL_AUDIT_FIELDS = {
     "revenue",
     "gross_profit",
-    "operating_income",
+    "ebit",
     "net_income",
     "eps_diluted",
-    "operating_cash_flow",
+    "cfo",
     "capex",
     "total_assets",
     "total_liabilities",
-    "total_equity",
-    "total_debt",
+    "equity",
     "long_term_debt",
-    "cash_and_equivalents",
+    "cash",
     "current_assets",
     "current_liabilities",
-    "shares_outstanding",
+    "shares_diluted_weighted",
 }
 
 
@@ -46,11 +46,12 @@ class FinancialCoverageService:
                 f"Company with id {company_id} was not found."
             )
 
-        history = self.financial_repository.get_history(company_id)
+        history = self.financial_repository.get_wide_history(company_id)
 
         return self.audit_year_fields(history)
 
     def audit_year_fields(self, history: list[dict]):
+        # history: one dict per fiscal year, {"fiscal_year": y, <item_key>: value, ...} (FinancialRepository.get_wide_history)
         incomplete_years = {}
 
         for year_data in history:

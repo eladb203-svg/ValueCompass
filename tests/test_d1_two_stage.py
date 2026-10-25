@@ -18,8 +18,8 @@ def make_facts(level=2, source="brand", name="ACME CORP"):
 
 FACTS = make_facts()
 EN = {"skill_id": "BG-1", "version": 4,
-      "text_en": "Acme designs and sells industrial widgets and earned $12.5 billion in revenue. It operates through one segment in 54 countries across North America and Europe. "
-                 "It competes with Globex and Initech. Clear competitive advantage: a well known brand.",
+      "text_en": "Acme designs and sells industrial widgets and earned $12.5 billion in revenue. It operates through one segment. It is present in 54 countries across North America and Europe. "
+                 "It competes with Globex and Initech. A clear competitive advantage: a well known brand.",
       "competitors": ["Globex", "Initech"], "quotes": [{"text": "We compete with Globex and Initech in North America and Europe.", "section": "TXT-001"}]}
 HE_TEXT = ("Acme מעצבת ומוכרת רכיבים תעשייתיים והכנסותיה הגיעו ל-12.5 מיליארד $. היא פועלת במגזר אחד ב-54 מדינות בצפון אמריקה ובאירופה. היא מתחרה ב-Globex וב-Initech. "
            "יתרון תחרותי ברור: מותג מוכר.")
@@ -44,7 +44,7 @@ def test_stage_a_good_english_background_passes_and_the_prompt_is_english_with_f
     r = run_en(en())
     assert r.ok, r.reasons
     p = C.build_d1_prompt(FACTS, "acc", SECTIONS)[0]
-    assert "Write in English" in p and "$12.5 billion" in p and 'exactly "Clear competitive advantage:"' in p and "company name: Acme" in p
+    assert "Write in English" in p and "$12.5 billion" in p and 'exactly "A clear competitive advantage:"' in p and "company name: Acme" in p
 
 
 def test_stage_a_checks_numbers_quotes_competitors_company_name_and_wording():
@@ -57,19 +57,20 @@ def test_stage_a_checks_numbers_quotes_competitors_company_name_and_wording():
     assert any(x.startswith("company_name_wrong_case") for x in run_en(en(text_en=EN["text_en"].replace("Acme", "acme"))).reasons)
     assert any(x.startswith("forbidden_word (buy)") for x in run_en(en(text_en=EN["text_en"] + " Investors should buy.")).reasons)
     assert "not_english" in run_en(en(text_en=EN["text_en"] + " מותג")).reasons
-    assert any(x.startswith("over_140_words") for x in run_en(en(text_en=EN["text_en"] + " " + " ".join(["word"] * 120))).reasons)
-    assert run_en(en(competitors=[], quotes=[])).ok
+    assert any(x.startswith("over_140_words") for x in run_en(en(text_en=EN["text_en"].replace("industrial widgets", "industrial " + " ".join(["word"] * 120) + " widgets", 1))).reasons)
+    assert run_en(en(text_en=EN["text_en"].replace("It competes with Globex and Initech.", "The report does not describe its competition."), competitors=[], quotes=[])).ok
+    assert "competition_sentence_missing" in run_en(en(competitors=[], quotes=[])).reasons
 
 
 def test_stage_a_competitive_advantage_follows_the_a7_level_and_a_single_source():
     assert any(x.startswith("moat_source_not_in_text") for x in run_en(en(text_en=EN["text_en"].replace("a well known brand", "high switching costs"))).reasons)
     assert any(x.startswith("moat_other_source") for x in run_en(en(text_en=EN["text_en"].replace("a well known brand", "a brand and high switching costs"))).reasons)
-    assert any(x.startswith("moat_level_phrase_missing") for x in run_en(en(text_en=EN["text_en"].replace("Clear", "Strong"))).reasons)
+    assert any(x.startswith("moat_level_phrase_missing") for x in run_en(en(text_en=EN["text_en"].replace("A clear", "Strong"))).reasons)
     l1 = make_facts(1)
-    assert run_en(en(text_en=EN["text_en"].replace("Clear competitive", "Unproven competitive")), l1).ok
+    assert run_en(en(text_en=EN["text_en"].replace("A clear competitive advantage", "A competitive advantage that is not proven")), l1).ok
     assert any(x.startswith("moat_level_phrase_missing") for x in run_en(en(), l1).reasons)
     l0 = make_facts(0, "none")
-    assert run_en(en(text_en=EN["text_en"].replace("Clear competitive advantage: a well known brand", "No identified competitive advantage")), l0).ok
+    assert run_en(en(text_en=EN["text_en"].replace("A clear competitive advantage: a well known brand", "No identifiable competitive advantage")), l0).ok
 
 
 def run_he(raw, en_text=EN["text_en"], facts=None, comps=("Globex", "Initech")):
@@ -117,7 +118,7 @@ def test_two_stages_store_both_languages_and_the_translation_prompt_carries_the_
     cl = Seq([en(), he()])
     row = C.generate_background(CO, FACTS, SECTIONS, cl, store)
     assert cl.n == 2 and row["state"] == "stored" and row["language"] == "he" and row["text"] == HE_TEXT
-    e = store.get("ACM", 2025, "background", 4, "", "en")
+    e = store.get("ACM", 2025, "background", 5, "", "en")
     assert e["state"] == "stored" and e["text"] == EN["text_en"] and "ENGLISH TEXT" in cl.prompts[1] and EN["text_en"] in cl.prompts[1] and "Globex, Initech" in cl.prompts[1]
     assert C.generate_background(CO, FACTS, SECTIONS, cl, store) == row and cl.n == 2
 
@@ -131,13 +132,13 @@ def test_each_stage_has_one_retry_with_the_reasons_and_a_stored_english_text_is_
     store2 = C.TextStore(tmp_path / "t2.jsonl")
     cl2 = Seq([en(), he(text_he="חסר"), he(text_he="חסר")])                              # the translation fails twice: failed, the English stays
     r2 = C.generate_background(CO, FACTS, SECTIONS, cl2, store2)
-    assert r2["state"] == "failed" and r2["text"] is None and store2.get("ACM", 2025, "background", 4, "", "en")["state"] == "stored"
+    assert r2["state"] == "failed" and r2["text"] is None and store2.get("ACM", 2025, "background", 5, "", "en")["state"] == "stored"
     cl3 = Seq([he()])                                                                    # a later run asks only the translation again
     assert C.generate_background(CO, FACTS, SECTIONS, cl3, store2)["state"] == "stored" and cl3.n == 1
     cl4 = Seq([en(competitors=["other banks"]), en(competitors=["other banks"])])        # stage A fails twice: no translation call
     store4 = C.TextStore(tmp_path / "t4.jsonl")
     r4 = C.generate_background(CO, FACTS, SECTIONS, cl4, store4)
-    assert r4["state"] == "failed" and r4["stage_failed"] == "A" and cl4.n == 2 and store4.get("ACM", 2025, "background", 4, "", "he") is None
+    assert r4["state"] == "failed" and r4["stage_failed"] == "A" and cl4.n == 2 and store4.get("ACM", 2025, "background", 5, "", "he") is None
 
 
 def test_the_call_cap_is_enforced_in_code(tmp_path):
@@ -197,15 +198,15 @@ def test_recheck_applies_the_current_checks_to_the_stored_raw_answers_without_a_
     bad_he = he(text_he=HE_TEXT.replace("12.5 מיליארד $.", "12.5 מיליארד $ בשנת 2025."))
     cl = Seq([en(), bad_he.replace("2025", "2019"), bad_he.replace("2025", "2019")])
     assert C.generate_background(CO, FACTS, SECTIONS, cl, store)["state"] == "failed"
-    store.put({**store.get("ACM", 2025, "background", 4, "", "he"), "raw_answer": bad_he})                         # the stored answer would pass the current checks
+    store.put({**store.get("ACM", 2025, "background", 5, "", "he"), "raw_answer": bad_he})                         # the stored answer would pass the current checks
     r = C.recheck_background(CO, FACTS, SECTIONS, store)
     assert r["he"]["state"] == "stored" and r["he"]["text"] and r["he"]["rechecked"] and cl.n == 3
 
 
 def test_length_limit_is_140_words_competitors_at_most_5_and_retry_notes_say_what_to_fix():
     ok = " ".join(["word"] * 50)
-    assert run_en(en(text_en=EN["text_en"] + " " + ok)).ok                                       # ~85 + 50 = ~135 words: within the check limit
-    assert any(x.startswith("over_140_words") for x in run_en(en(text_en=EN["text_en"] + " " + " ".join(["word"] * 120))).reasons)
+    assert run_en(en(text_en=EN["text_en"].replace("industrial widgets", "industrial " + ok + " widgets", 1))).ok                                       # ~85 + 50 = ~135 words: within the check limit
+    assert any(x.startswith("over_140_words") for x in run_en(en(text_en=EN["text_en"].replace("industrial widgets", "industrial " + " ".join(["word"] * 120) + " widgets", 1))).reasons)
     six = ["Globex", "Initech", "Umbrella", "Hooli", "Soylent", "Vandelay"]
     q = [{"text": "We compete with Globex, Initech, Umbrella, Hooli, Soylent and Vandelay in North America and Europe.", "section": "TXT-001"}]
     secs = {"TXT-001": TXT + " We compete with Globex, Initech, Umbrella, Hooli, Soylent and Vandelay in North America and Europe."}
@@ -215,23 +216,102 @@ def test_length_limit_is_140_words_competitors_at_most_5_and_retry_notes_say_wha
     n = C.retry_note(["over_140_words (151)"], FACTS)
     assert "Your text has 151 words: shorten it to about 100 words" in n
     m = C.retry_note(["moat_source_not_in_text (brand)"], FACTS)
-    assert 'Clear competitive advantage:' in m and "brand" in m and "מותג" in m
-    assert "about 90-100 words" in C.build_d1_prompt(FACTS, "acc", SECTIONS)[0] and "at most 5 main competitors" in C.build_d1_prompt(FACTS, "acc", SECTIONS)[0]
+    assert 'A clear competitive advantage:' in m and "brand" in m and "מותג" in m
+    assert "about 90-100 words" in C.build_d1_prompt(FACTS, "acc", SECTIONS)[0] and "at most 5 main ones" in C.build_d1_prompt(FACTS, "acc", SECTIONS)[0]
 
 
 def test_the_retry_prompt_carries_the_actual_word_count_and_a_failure_stays_failed(tmp_path):
     store = C.TextStore(tmp_path / "t.jsonl")
-    long = en(text_en=EN["text_en"] + " " + " ".join(["word"] * 120))
+    long = en(text_en=EN["text_en"].replace("industrial widgets", "industrial " + " ".join(["word"] * 120) + " widgets", 1))
     cl = Seq([long, en(), he()])
     row = C.generate_background(CO, FACTS, SECTIONS, cl, store)
     assert "shorten it to about 100 words" in cl.prompts[1] and row["state"] == "stored"
     store2 = C.TextStore(tmp_path / "t2.jsonl")
     cl2 = Seq([long, long])
     r = C.generate_background(CO, FACTS, SECTIONS, cl2, store2)
-    assert r["state"] == "failed" and r["text"] is None and store2.get("ACM", 2025, "background", 4, "", "he") is None
+    assert r["state"] == "failed" and r["text"] is None and store2.get("ACM", 2025, "background", 5, "", "he") is None
 
 
 def test_letters_of_any_other_script_inside_hebrew_text_are_rejected():
     assert any(x.startswith("foreign_script_letters") for x in C.language_issues("העסק מדווח דרך פาวנדרי של Intel", ["Intel"]))
     assert any(x.startswith("mixed_script") for x in C.language_issues("פาวנדרי", []))
     assert not C.language_issues("חברת Nestlé מתחרה ב-Intel.", ["Nestlé", "Intel"])
+
+
+# ---------------------------------------------------------------- K6a: competitor types, T1 glossary, review status
+JPM_TXT = ("JPMorgan Chase is a financial holding company. It provides investment banking, commercial and consumer banking and asset management. It operates through three segments. "
+           "It serves clients worldwide. Our businesses are highly competitive with other banks, broker-dealers and fintech companies.")
+JPM_FACTS = make_facts(0, "none", "JPMORGAN CHASE & CO")
+
+
+def jpm_en(**kw):
+    base = {"skill_id": "BG-1", "version": 5,
+            "text_en": "JPMorgan Chase is a financial holding company providing investment banking, consumer banking and asset management. It operates through three segments. It serves clients worldwide, mainly in the United States. "
+                       "It competes with other banks, broker-dealers and fintech companies. No identifiable competitive advantage.",
+            "competitors": [], "competitor_types": ["other banks, broker-dealers and fintech companies"],
+            "quotes": [{"text": "highly competitive with other banks, broker-dealers and fintech companies", "section": "TXT-001"}]}
+    return json.dumps({**base, **kw}, ensure_ascii=False)
+
+
+def run_jpm(raw, facts=None):
+    f = facts or JPM_FACTS
+    _, text, sent = C.build_d1_prompt(f, "acc", {"TXT-001": JPM_TXT})
+    return C.check_background_en(raw, f, text, sent, 2025)
+
+
+def test_competitor_types_only_when_no_names_at_most_four_never_mixed_and_each_one_quoted():
+    assert run_jpm(jpm_en()).ok, run_jpm(jpm_en()).reasons
+    r = run_jpm(jpm_en(competitors=["Globex"]))
+    assert "competitors_and_types_mixed" in r.reasons
+    assert any(x.startswith("competitor_type_not_in_quote") for x in run_jpm(jpm_en(competitor_types=["hedge funds"])).reasons)
+    assert any(x.startswith("too_many_competitor_types (5)") for x in run_jpm(jpm_en(competitor_types=["a", "b", "c", "d", "e"])).reasons)
+    assert "no_quote" in run_jpm(jpm_en(quotes=[])).reasons
+    nt = json.loads(jpm_en())["text_en"].replace("It competes with other banks, broker-dealers and fintech companies.", "The report does not describe its competition.")
+    fixed = jpm_en(competitor_types=[], quotes=[], text_en=nt)
+    assert run_jpm(fixed).ok
+    assert "competition_sentence_missing" in run_jpm(jpm_en(competitor_types=[], quotes=[])).reasons
+
+
+def test_five_sentences_abbreviations_do_not_end_a_sentence():
+    assert C.sentence_count("PepsiCo, Inc. and Nestlé S.A. compete in the U.S. market. Second. Third. Fourth. Fifth.") == 5
+    assert any(x.startswith("sentences_not_five (4)") for x in run_en(en(text_en=EN["text_en"].replace("It operates through one segment. ", ""))).reasons)
+
+
+def test_the_glossary_sends_only_the_terms_in_the_text_and_the_hebrew_form_must_appear():
+    text_en = "Acme sells concentrates and syrups to bottlers, with data centers and wealth management. A clear competitive advantage: a well known brand."
+    found = dict(C.industry_terms_in(text_en))
+    assert found == {"concentrates": "תרכיזים", "syrups": "סירופים", "bottlers": "יצרני בקבוקים", "data centers": "מרכזי נתונים", "wealth management": "ניהול עושר"}
+    assert C.industry_terms_in("Acme sells widgets.") == []
+    p = C.build_d1_translation_prompt(FACTS, text_en, [])
+    assert "concentrates -> תרכיזים" in p and "foundry" not in p and "INDUSTRY TERMS" in p
+    assert C.hebrew_term_present("מוכרת את התרכיזים", "תרכיזים") and C.hebrew_term_present("ולתרכיזים", "תרכיזים") and not C.hebrew_term_present("מוכרת תרכובות", "תרכיזים")
+    assert C.hebrew_term_present("שירותי ייצור שבבים", "שירותי ייצור שבבים (foundry)")
+    en_t = EN["text_en"].replace("industrial widgets", "industrial concentrates", 1)
+    assert any(x.startswith("industry_term_missing") for x in run_he(he(text_he=HE_TEXT.replace("רכיבים תעשייתיים", "תרכובות")), en_text=en_t).reasons)
+    assert run_he(he(text_he=HE_TEXT.replace("רכיבים תעשייתיים", "תרכיזים")), en_text=en_t).ok
+
+
+def test_hebrew_length_must_be_within_40_percent_of_the_english_and_the_fixed_competition_sentence_is_translated():
+    assert any(x.startswith("length_off_by_more_than_40_percent") for x in run_he(he(text_he="Acme. יתרון תחרותי ברור: מותג.")).reasons)
+    en_nc = EN["text_en"].replace("It competes with Globex and Initech.", "The report does not describe its competition.")
+    he_ok = HE_TEXT.replace("היא מתחרה ב-Globex וב-Initech.", "הדוח אינו מתאר את התחרות שלו.")
+    assert run_he(he(text_he=he_ok), en_text=en_nc, comps=()).ok
+    assert "competition_sentence_not_translated" in run_he(he(text_he=he_ok.replace("הדוח אינו מתאר את התחרות שלו", "אין מידע")), en_text=en_nc, comps=()).reasons
+
+
+def test_review_status_hebrew_backgrounds_wait_for_review_and_old_rows_are_migrated(tmp_path):
+    store = C.TextStore(tmp_path / "t.jsonl")
+    row = C.generate_background(CO, FACTS, SECTIONS, Seq([en(), he()]), store)
+    assert row["approval_status"] == "pending_review" and row["edited_by"] == "ai"
+    assert store.get("ACM", 2025, "background", 5, "", "en")["approval_status"] == "approved"
+    assert C.review_status("he", "failed") == "failed" and C.review_status("he", "stored", first_load=False) == "approved"
+    old = tmp_path / "old.jsonl"
+    old.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in (
+        {"ticker": "A", "fiscal_year": 2025, "kind": "background", "language": "he", "prompt_version": 4, "run_id": "", "state": "stored", "text": "x"},
+        {"ticker": "B", "fiscal_year": 2025, "kind": "background", "language": "he", "prompt_version": 4, "run_id": "", "state": "failed", "text": None},
+        {"ticker": "C", "fiscal_year": 2025, "kind": "background", "language": "en", "prompt_version": 4, "run_id": "", "state": "stored", "text": "y"},
+        {"ticker": "D", "fiscal_year": 2025, "kind": "analysis", "language": "he", "prompt_version": "t4", "run_id": "r", "state": "stored", "text": "z"})), encoding="utf-8")
+    s2 = C.TextStore(old)
+    assert s2.migrate_review_status() == 4
+    st = {r["ticker"]: r["approval_status"] for r in C.TextStore(old).rows()}
+    assert st == {"A": "pending_review", "B": "failed", "C": "approved", "D": "approved"} and s2.migrate_review_status() == 0

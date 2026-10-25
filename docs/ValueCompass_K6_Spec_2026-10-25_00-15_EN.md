@@ -1,6 +1,6 @@
 ---
 title: "ValueCompass — Stage K6 Specification: Data Loading and Database Connection"
-subtitle: "2026-10-23_14-59 · English (source of truth) · approved"
+subtitle: "2026-10-25_00-15 · English (source of truth) · approved"
 ---
 
 # Stage K6 — Data Loading and Database Connection
@@ -211,7 +211,7 @@ Run before writing. A failed check either rescales and flags, flags only, or hol
 | 9 | `companies`: add `cik` (unique), `sic`, `vc_industry`, `classification_tier`, `classification_status`, `processing_state`, `unsupported_reason`; the profile check in `companies`, `company_profile_history` and `score_runs` accepts `UNSUPPORTED` | Part B, CL15; open item from K4b |
 | 10 | `extraction_items`: add `skill_id`, `skill_version`, `model`, `prompt_version`, `control` (jsonb: name, result, values) | Provenance (R18) and the approval queue |
 | 11 | `ai_assessments`: add `accession`, `skill_version` | R18: source document per answer |
-| 12 | New `ai_texts`: company, fiscal year, kind (`background` / `analysis`), language, text, model, prompt version, `run_id` for the analysis | D1 / D2 must be stored (the "texts not stored" rule is about report text, not generated text) |
+| 12 | New `ai_texts`: company, fiscal year, kind (`background` / `analysis`), language, text, model, prompt version, `run_id` for the analysis; `approval_status` (`pending_review` / `approved` / `failed`), `edited_by` (`ai` / `human`), `checks` (jsonb) — Hebrew background reviewed on first load (Skills 2026-10-25_00-15) | D1 / D2 must be stored (the "texts not stored" rule is about report text, not generated text) |
 | 13 | New `work_queue`: company, job type, fiscal year, skill, priority, state (`queued`, `running`, `done`, `failed`, `deferred_quota`), attempts, next run time, last error, payload | One queue for data jobs and AI tasks |
 | 14 | `score_runs`: add `peer_group` (jsonb: company ids, definition, fallback flag) | D2 compares to a fixed group per run |
 | 15 | View `v_company_status` for the screen: processing state, last run, AI progress | K7 |

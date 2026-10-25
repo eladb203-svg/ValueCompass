@@ -1,6 +1,6 @@
 ---
 title: "ValueCompass — מפרט שלב ק6: טעינת נתונים וחיבור ל-DB"
-subtitle: "2026-10-23_14-59 · תרגום לעברית · אושר"
+subtitle: "2026-10-25_00-15 · תרגום לעברית · אושר"
 ---
 
 # שלב ק6 — טעינת נתונים וחיבור ל-DB
@@ -169,7 +169,7 @@ subtitle: "2026-10-23_14-59 · תרגום לעברית · אושר"
 | 9 | `companies`: הוספת `cik` (ייחודי), ‏`sic`, ‏`vc_industry`, ‏`classification_tier`, ‏`classification_status`, ‏`processing_state`, ‏`unsupported_reason`; בדיקת הפרופיל ב-`companies`, ‏`company_profile_history` ו-`score_runs` מקבלת `UNSUPPORTED` | חלק ב, ‏CL15; פתוח מק4ב |
 | 10 | `extraction_items`: הוספת `skill_id`, ‏`skill_version`, ‏`model`, ‏`prompt_version`, ‏`control` (jsonb: שם, תוצאה, ערכים) | תיעוד מקור (R18) ותור האישורים |
 | 11 | `ai_assessments`: הוספת `accession`, ‏`skill_version` | ‏R18: מסמך המקור לכל תשובה |
-| 12 | טבלה חדשה `ai_texts`: חברה, שנת כספים, סוג (`background` / `analysis`), שפה, טקסט, מודל, גרסת prompt, ‏`run_id` לניתוח | צריך לשמור את D1 / D2 (הכלל "טקסטים לא נשמרים" מתייחס לטקסט מהדוח, לא לטקסט שנוצר) |
+| 12 | טבלה חדשה `ai_texts`: חברה, שנת כספים, סוג (`background` / `analysis`), שפה, טקסט, מודל, גרסת prompt, ‏`run_id` לניתוח; ‏`approval_status` (`pending_review` / `approved` / `failed`), ‏`edited_by` (`ai` / `human`), ‏`checks` (jsonb) — רקע עברי נבדק על ידי אלעד בטעינה הראשונה (סקילים 2026-10-25_00-15) | צריך לשמור את D1 / D2 (הכלל "טקסטים לא נשמרים" מתייחס לטקסט מהדוח, לא לטקסט שנוצר) |
 | 13 | טבלה חדשה `work_queue`: חברה, סוג עבודה, שנת כספים, סקיל, עדיפות, מצב (`queued`, ‏`running`, ‏`done`, ‏`failed`, ‏`deferred_quota`), ניסיונות, זמן ההרצה הבאה, שגיאה אחרונה, נתונים | תור אחד לעבודות נתונים ולמשימות AI |
 | 14 | `score_runs`: הוספת `peer_group` (jsonb: מזהי חברות, ההגדרה, סימון קבוצת גיבוי) | ‏D2 משווה לקבוצה קבועה לכל ריצה |
 | 15 | ‏view ‏`v_company_status` למסך: מצב עיבוד, ריצה אחרונה, התקדמות ה-AI | ק7 |

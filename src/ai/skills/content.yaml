@@ -2,11 +2,13 @@
 version: 1
 d1:
   skill_id: BG-1
-  version: 4
+  version: 5
   sections: [TXT-001, TXT-003, TXT-005]
   caps: {TXT-001: 35000, TXT-003: 12000, TXT-005: 12000}       # characters per section when the prompt is cut
   moat_prefix: {2: "יתרון תחרותי ברור:", 1: "יתרון תחרותי לא מוכח:", 0: "אין יתרון תחרותי מזוהה"}
-  moat_prefix_en: {2: "Clear competitive advantage:", 1: "Unproven competitive advantage:", 0: "No identified competitive advantage"}
+  moat_prefix_en: {2: "A clear competitive advantage:", 1: "A competitive advantage that is not proven:", 0: "No identifiable competitive advantage"}
+  no_competition_en: "The report does not describe its competition."
+  no_competition_he: "הדוח אינו מתאר את התחרות שלו."
   moat_terms_en: {brand: "brand", switching_costs: "switching costs", scale: "scale", network_effect: "network effect", regulation: "regulation", data: "data",
                   infrastructure: "infrastructure", location: "location", none: "none"}
   forbidden_en: ["buy", "sell", "undervalued", "overvalued", "recommend", "recommended", "recommendation", "price target", "outperform", "underperform"]
@@ -17,17 +19,23 @@ d1:
     ONLY the annual-report text and the facts provided. Do not use outside knowledge. Do not
     give opinions on the stock, its price or its score. Write in English, plain and neutral.
     Numbers: use only numbers that appear in the TEXT or in FACTS (copy revenue exactly as in FACTS).
-    "competitors" lists only companies named BY NAME in the report text (an empty list when none is
-    named; never a category such as "other banks"); name at most 5 main competitors, and every competitor you name must appear in one of your quotes (several quotes are allowed). Write the
-    company name exactly as given in FACTS, and begin the first sentence with it. Copy each quote as one continuous passage, exactly as it
-    appears in the TEXT, without shortening or joining passages; quotes must come from the report text,
-    never from FACTS. Never use the ASCII double-quote character inside the text.
+    Competitors: "competitors" lists only companies named BY NAME in the report (at most 5 main ones, as written);
+    "competitor_types" is used ONLY when the report names no competitor but describes the competition (at most 4 TYPES of
+    competitors, in the report's own words); never fill both. Every name or type you use must appear in one of your
+    quotes (several quotes are allowed). Write the company name exactly as given in FACTS, and begin the first sentence with
+    it. Copy each quote as one continuous passage, exactly as it appears in the TEXT, without shortening or joining passages;
+    quotes must come from the report text, never from FACTS. Never use the ASCII double-quote character inside the text.
+    Write your final text, not your thinking process.
 
     STRUCTURE (exactly these five parts, one sentence each; about 90-100 words in total)
     1. What the company does and its main products or services.
     2. Main segments.
     3. Where it operates (main markets / geographies).
-    4. Business environment and at most 5 main competitors (as named in the report; each one quoted).
+    4. Business environment and main competitors:
+       a. If the report NAMES competitors: at most 5 main ones, by name as written.
+       b. If it names none but describes the competition: at most 4 TYPES of competitors, in the report's own words.
+       c. If it does not describe the competition: write exactly "{no_competition_en}"
+       Never mix names and types.
     5. Competitive advantage. Level {moat_answer}: {moat_instruction_en}
 
     FACTS (from ValueCompass): industry {industry}; revenue {revenue_en} (FY{fiscal_year}); company name: {company_name};
@@ -40,7 +48,7 @@ d1:
 
     OUTPUT
     {{"skill_id": "BG-1", "version": {version}, "text_en": "<background>",
-     "competitors": ["<as named>"], "quotes": [{{"text": "<exact quote>", "section": "..."}}]}}
+     "competitors": ["<as named>"], "competitor_types": ["<as written>"], "quotes": [{{"text": "<exact quote>", "section": "..."}}]}}
   # stage B: translation of the checked English text into Hebrew with the glossary
   template_he: |
     SYSTEM
@@ -53,6 +61,12 @@ d1:
     for example נדל״ן). Keep each of the five parts to one sentence and the whole text at about 100 words.
     The fifth part must begin with exactly this phrase, followed by the same single source in Hebrew:
     {moat_translation}
+    Glossary of the fifth part: "A clear competitive advantage" -> "יתרון תחרותי ברור"; "A competitive advantage that is not
+    proven" -> "יתרון תחרותי לא מוכח"; "No identifiable competitive advantage" -> "אין יתרון תחרותי מזוהה"; and the sentence
+    "{no_competition_en}" -> "{no_competition_he}". Moat sources: brand -> מותג, switching costs -> עלויות מעבר, scale -> יתרון לגודל,
+    network effect -> אפקט רשת, regulation -> רגולציה, data -> נתונים, infrastructure -> תשתית, location -> מיקום.
+    INDUSTRY TERMS (use exactly these Hebrew terms):
+    {industry_terms}
 
     NAMES to keep in Latin letters: company: {company_name}; competitors: {competitors}
 

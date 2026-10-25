@@ -86,3 +86,22 @@ def via_facts(engine: str, cls):
         fs = facts_from_kwargs(engine, kw)
         return cls(**kwargs_from_facts(engine, fs))
     return build
+
+
+def via_db(engine: str, cls, sink, report: list = None):
+    """Wrap an inputs class (K6a): provider output -> facts -> DATABASE (idempotent write) -> facts read back -> inputs. ``sink`` is a ``FactSetDb``; ``report`` collects the write statistics
+    and the differences between the inputs from the cache path and from the database path (the identity test)."""
+    from .db_io import differences
+    from .from_providers import facts_from_kwargs
+
+    def build(*args, **kw):
+        assert not args, "inputs classes are built with keyword arguments"
+        fs = facts_from_kwargs(engine, kw)
+        stats = sink.write(fs)
+        fs2 = sink.read(fs)
+        cache_kw, db_kw = kwargs_from_facts(engine, fs), kwargs_from_facts(engine, fs2)
+        if report is not None:
+            report.append({"ticker": fs.ticker, "engine": engine, "stats": stats, "differences": differences(cache_kw, db_kw)})
+        return cls(**db_kw)
+    return build
+

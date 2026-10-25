@@ -128,15 +128,50 @@ def build_d1_prompt(facts: dict, accession: str, sections: dict, note: str = "")
     p = d1["template_en"].format(industry=facts["industry"], revenue_en=facts["revenue_en"], fiscal_year=facts["fiscal_year"], one_sentence=facts["one_sentence"],
                                  company_name=facts.get("company_display") or facts.get("company_name", ""), moat_answer=facts["moat_answer"], moat_source=facts["moat_source"],
                                  moat_reasoning=facts["moat_reasoning"], moat_instruction_en=facts["moat_instruction_en"], sections=", ".join(s for s, _ in sent), accession=accession,
-                                 section_text=text, version=d1["version"])
+                                 section_text=text, version=d1["version"], no_competition_en=d1["no_competition_en"])
     return (p + f"\nNOTE: {note}\n" if note else p), text, [s for s, _ in sent]
+
+
+_T1 = None
+
+
+def t1_terms() -> list:
+    """[(english variants, hebrew variants)] of the industry glossary (``t1_glossary.yaml``); variants correspond by position."""
+    global _T1
+    if _T1 is None:
+        import yaml
+        raw = yaml.safe_load((Path(__file__).with_name("skills") / "t1_glossary.yaml").read_text(encoding="utf-8"))["terms"]
+        _T1 = [([x.strip() for x in t["en"].split(" / ")], [x.strip() for x in t["he"].split(" / ")]) for t in raw]
+    return _T1
+
+
+def industry_terms_in(text_en: str) -> list:
+    """The glossary terms that appear in the English text -> [(english variant found, hebrew variant)]. Only these are sent to the translation and checked in the Hebrew."""
+    out = []
+    for ens, hes in t1_terms():
+        for i, en in enumerate(ens):
+            if re.search(r"(?<![A-Za-z])%s(?![A-Za-z])" % re.escape(en), text_en or "", re.I):
+                out.append((en, hes[i] if i < len(hes) else hes[0]))
+                break
+    return out
+
+
+_HE_PREFIX = "ובהלמשכ"
+
+
+def hebrew_term_present(text: str, term: str) -> bool:
+    """The Hebrew term appears in the text, with up to two prefix letters (ו/ה/ב/ל/מ/ש/כ) before it. A Latin gloss in parentheses is optional."""
+    core = re.sub(r"\s*\([A-Za-z ]+\)\s*$", "", term).strip()
+    return bool(re.search(r"(?<![\u0590-\u05FF])[%s]{0,2}%s" % (_HE_PREFIX, re.escape(core)), text))
 
 
 def build_d1_translation_prompt(facts: dict, text_en: str, competitors: list, note: str = "") -> str:
     """Stage B (Hebrew translation of the checked English text)."""
     d1 = content_cfg()["d1"]
+    terms = [f"{en} -> {he}" for en, he in industry_terms_in(text_en)] or ["(none)"]
     p = d1["template_he"].format(moat_translation=facts["moat_translation"], company_name=facts.get("company_display") or facts.get("company_name", ""),
-                                 competitors=", ".join(competitors) or "(none)", text_en=text_en, version=d1["version"])
+                                 competitors=", ".join(competitors) or "(none)", text_en=text_en, version=d1["version"], no_competition_en=d1["no_competition_en"],
+                                 no_competition_he=d1["no_competition_he"], industry_terms="\n    ".join(terms))
     return p + f"\nNOTE: {note}\n" if note else p
 
 
@@ -262,6 +297,14 @@ def _is_year(v: float, dec: int, mult: float) -> bool:
 
 WORD_LIMIT = 140          # check limit of a D1 text; the prompt asks for about 90-100 words
 MAX_COMPETITORS = 5
+MAX_COMPETITOR_TYPES = 4
+_ABBREV = re.compile(r"\b(?:Inc|Corp|Co|Ltd|Plc|Cos|S\.A|N\.V|U\.S|S\.p\.A|S\.A\.B|de C\.V|A\.G|Bros|Mr|Dr|vs|e\.g|i\.e)\.", re.I)
+
+
+def sentence_count(text: str) -> int:
+    """Number of sentences of an English text (legal-form and country abbreviations such as Inc., S.A., U.S. do not end a sentence)."""
+    t = _ABBREV.sub(lambda m: m.group(0).replace(".", ""), text or "")
+    return len([x for x in re.split(r"(?<=[.!?])\s+", t.strip()) if x.strip()])
 
 
 def number_signature(text: str) -> list:
@@ -328,21 +371,30 @@ def check_background_en(raw: str, facts: dict, text_sent: str, sent: list, fisca
     if bad:
         res.reasons.append("number_not_in_report (" + ", ".join(str(int(b) if b == int(b) else b) for b in bad) + ")")
     res.quotes = checks._check_quotes(d.get("quotes"), checks.normalize(text_sent), sent, res.reasons, res.flags)
-    comps = d.get("competitors")
-    if not isinstance(comps, list) or not all(isinstance(c, str) for c in comps):
+    comps, types = d.get("competitors") or [], d.get("competitor_types") or []
+    if not (isinstance(comps, list) and all(isinstance(c, str) for c in comps) and isinstance(types, list) and all(isinstance(c, str) for c in types)):
         res.reasons.append("competitors_invalid")
-        comps = []
-    if not res.quotes and comps:
+        comps, types = [], []
+    if comps and types:
+        res.reasons.append("competitors_and_types_mixed")                  # names or types, never both
+    if not res.quotes and (comps or types):
         res.reasons.append("no_quote")
     if len(comps) > MAX_COMPETITORS:
         res.reasons.append(f"too_many_competitors ({len(comps)})")
+    if len(types) > MAX_COMPETITOR_TYPES:
+        res.reasons.append(f"too_many_competitor_types ({len(types)})")
     qtext = " ".join(checks.normalize(q["text"]).casefold() for q in res.quotes if q["found"])
     res.reasons += [f"competitor_is_a_category ({c})" for c in comps if c[:1].islower()]
     res.reasons += [f"competitor_not_in_quote ({c})" for c in comps if checks.normalize(c).casefold() not in qtext]
+    res.reasons += [f"competitor_type_not_in_quote ({c})" for c in types if checks.normalize(c).casefold() not in qtext]
+    if not comps and not types and d1["no_competition_en"] not in text:
+        res.reasons.append("competition_sentence_missing")                 # no name and no type: the fixed sentence
+    if sentence_count(text) != 5:
+        res.reasons.append(f"sentences_not_five ({sentence_count(text)})")
     _name_case(text, _company_token(facts.get("company_display") or facts.get("company_name", "")), res.reasons)
     _moat_check(text, facts.get("moat_level"), facts["moat_source"], d1["moat_prefix_en"], {k: [v] for k, v in d1["moat_terms_en"].items()}, res.reasons)
     res.reasons += [f"forbidden_word ({w})" for w in d1["forbidden_en"] if re.search(r"\b%s\b" % re.escape(w), text, re.I)]
-    res.extra = {"competitors": comps, "words": count_words(text)}
+    res.extra = {"competitors": comps, "competitor_types": types, "words": count_words(text)}
     res.ok = not res.reasons
     res.state = "stored" if res.ok else "failed"
     return res
@@ -372,6 +424,12 @@ def check_translation(raw: str, en_text: str, facts: dict, competitors: list) ->
     res.reasons += language_issues(text, names + latin_terms())
     if unformatted_numbers(text):
         res.reasons.append("unformatted_number (" + ", ".join(unformatted_numbers(text)) + ")")
+    en_words = count_words(en_text)
+    if en_words and not (0.6 * en_words <= count_words(text) <= 1.4 * en_words):
+        res.reasons.append(f"length_off_by_more_than_40_percent (english {en_words}, hebrew {count_words(text)})")
+    res.reasons += [f"industry_term_missing ({en} -> {he})" for en, he in industry_terms_in(en_text) if not hebrew_term_present(text, he)]
+    if d1["no_competition_en"] in en_text and d1["no_competition_he"] not in text:
+        res.reasons.append("competition_sentence_not_translated")
     en_sig, he_sig = number_signature(en_text), number_signature(text)
     if en_sig != he_sig:
         res.reasons.append(f"numbers_differ (english {en_sig}, hebrew {he_sig})")
@@ -533,12 +591,25 @@ class TextStore:
         row = {**row, "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         self._rows[self.key(row)] = row
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        lead = "\n" if (self.path.exists() and self.path.stat().st_size and not self.path.read_bytes().endswith(b"\n")) else ""
         with self.path.open("a", encoding="utf-8", newline="\n") as fh:
-            fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+            fh.write(lead + json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
         return row
 
     def rows(self) -> list:
         return list(self._rows.values())
+
+    def migrate_review_status(self) -> int:
+        """Adds ``approval_status`` / ``edited_by`` to rows written before the review rule (Hebrew backgrounds that passed -> ``pending_review``). -> rows changed."""
+        n = 0
+        for k, r in list(self._rows.items()):
+            if "approval_status" in r:
+                continue
+            ok = r.get("state") == "stored"
+            st = "failed" if not ok else ("pending_review" if (r["kind"] == "background" and r["language"] == "he") else "approved")
+            self.put({**r, "approval_status": st, "edited_by": r.get("edited_by", "ai")})
+            n += 1
+        return n
 
 
 # ---------------------------------------------------------------- generation
@@ -583,10 +654,19 @@ class BudgetClient:
         return self._client.generate(*a, **kw)
 
 
+def review_status(language: str, state: str, first_load: bool = True) -> str:
+    """ai_texts.approval_status: a Hebrew background that passed all checks waits for review on the first load of a company (``pending_review``; not shown until approved); English texts and
+    analyses are not reviewed (``approved``, the English is never shown); anything that failed is ``failed``."""
+    if state != "stored":
+        return "failed"
+    return "pending_review" if (language == "he" and first_load) else "approved"
+
+
 def _row(co, language: str, text, state: str, pv: str, rep, res, attempts: list, extra: Optional[dict] = None) -> dict:
     return {"ticker": co.ticker, "fiscal_year": co.fiscal_year, "kind": "background", "language": language, "text": text, "model": getattr(rep, "model", ""), "prompt_version": pv, "run_id": "",
             "state": state, "accession": co.filing.accession, "quotes": res.quotes if res else [], "competitors": (res.extra.get("competitors", []) if res else []),
-            "checks": {"ok": bool(res and res.ok), "reasons": res.reasons if res else [], "flags": res.flags if res else [], "attempts": attempts}, "raw_answer": getattr(rep, "text", None), **(extra or {})}
+            "checks": {"ok": bool(res and res.ok), "reasons": res.reasons if res else [], "flags": res.flags if res else [], "attempts": attempts}, "raw_answer": getattr(rep, "text", None),
+            "competitor_types": (res.extra.get("competitor_types", []) if res else []), "edited_by": "ai", "approval_status": review_status(language, state), **(extra or {})}
 
 
 def generate_background(co, facts: dict, sections: dict, client, store: TextStore, force: bool = False) -> dict:
