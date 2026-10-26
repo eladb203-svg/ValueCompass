@@ -104,6 +104,18 @@ def show_profile(profile: dict, ticker: str) -> None:
             print(f"      {str(val)[:70]}{extra}  | {it.get('source')} | {ev} | {it.get('status')}")
 
 
+def companies_using_phrases(builder, ens: list) -> list:
+    """Tickers (with a profile) whose Hebrew text uses any of these phrases (profiles are read once)."""
+    from src.bp.pipeline import phrases_needed
+    from src.bp.translate import phrase_key
+    keys = {phrase_key(e) for e in ens}
+    out = []
+    for p in builder.client.table("company_business_profiles").select("*").execute().data:
+        if any(phrase_key(x[0]) in keys for x in phrases_needed(p)):
+            out.append(builder.companies.get_by_id(p["company_id"])["symbol"])
+    return sorted(set(out))
+
+
 def rerender_for_phrase(builder, en: str) -> list:
     """The companies whose Hebrew text uses this phrase are rendered again."""
     from src.bp.pipeline import phrases_needed
@@ -121,37 +133,46 @@ def rerender_for_phrase(builder, en: str) -> list:
 
 
 def apply_terms_file(builder, path: Path) -> int:
-    """`terms apply-file <file>`: corrections from a markdown/text table. A line is `| id | english | hebrew |` or `english | hebrew` or `id | hebrew`; each is applied like `terms edit` (human / approved)
-    and the texts that use the phrase are rendered again. Lines that do not match a phrase are listed and skipped."""
+    """`terms apply-file <file>`: corrections from a table `| company | en | he |` (or `| id | en | he |`, or `en | he`). The English phrase is matched as written, then without a trailing parenthetical note
+    (\"North America (Segment)\"), then as the cleaned name the template shows (names.py). \"(להשאיר בלטינית)\" in the Hebrew column keeps the phrase as the English text. Each match is applied like
+    `terms edit` (human / approved); the texts that use the phrase are rendered again; rows that match no phrase are listed."""
     import re
+    from src.bp.names import clean_name
     from src.bp.translate import phrase_key
     rows = {r["id"]: r for r in builder.terms.rows()}
     by_en = {phrase_key(r["en"]): r for r in rows.values()}
     done, skipped = [], []
     for ln in path.read_text(encoding="utf-8").splitlines():
-        cells = [c.strip().strip("`") for c in ln.strip().strip("|").split("|")]
-        if len(cells) < 2 or set("".join(cells)) <= set("-: "):
+        if not ln.strip().startswith("|"):
             continue
-        cells = [c for c in cells if c != ""]
-        is_id = bool(re.fullmatch(r"#?\d+", cells[0]))
-        row, he = None, cells[-1]
-        if is_id and int(cells[0].lstrip("#")) in rows:
+        cells = [c.strip().strip("`") for c in ln.strip().strip("|").split("|")]
+        if len(cells) < 2 or set("".join(cells)) <= set("-: ") or cells[-1] in ("he (תיקון)", "he", "hebrew"):
+            continue
+        he = cells[-1]
+        if re.fullmatch(r"#?\d+", cells[0]) and int(cells[0].lstrip("#")) in rows and len(cells) >= 2:
             row = rows[int(cells[0].lstrip("#"))]
-        elif is_id and len(cells) >= 3 and phrase_key(cells[1]) in by_en:
-            row = by_en[phrase_key(cells[1])]
-        elif not is_id and phrase_key(cells[0]) in by_en:
-            row = by_en[phrase_key(cells[0])]
+        else:
+            en_raw = cells[-2]
+            plain = re.sub(r"\s*\([^)]*\)\s*$", "", en_raw).strip()
+            cands = [en_raw, plain, clean_name(plain, "segments"), clean_name(plain, "products_services")]
+            row = next((by_en[phrase_key(c)] for c in cands if c and phrase_key(c) in by_en), None)
+        keep_latin = "להשאיר בלטינית" in he
+        he = re.sub(r"\s*\(להשאיר בלטינית\)\s*", "", he).strip()
         if row is None or not he:
             skipped.append(ln.strip())
             continue
+        if keep_latin:
+            he = row["en"]
         builder.terms.edit(row["id"], he)
         done.append((row["id"], row["en"], he))
-    for _id, en, _he in done:
-        rerender_for_phrase(builder, en)
+    touched = set(companies_using_phrases(builder, [en for _i, en, _h in done]))      # every company whose text uses an edited phrase is rendered once, after all the edits
+    for t in sorted(touched):
+        builder.render_only(t)
+    print("rendered again:", sorted(touched))
     for d in done:
         print("edited:", d)
     for sk in skipped:
-        print("skipped (no such phrase):", sk)
+        print("NOT FOUND:", sk)
     return 0
 
 

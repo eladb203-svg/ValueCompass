@@ -56,9 +56,6 @@ def test_a_bank_earns_first_from_interest():
     p = profile(revenue_models={"status": "ok", "items": [item(code="fees_asset_mgmt"), item(code="services"), item(code="interest_income")]})
     assert "earning its revenue from interest income, fees and asset management and services" in R.render(inp(p, profile_name="BANK"), "en")[0]
     assert "earning its revenue from fees and asset management, services and interest income" in R.render(inp(p), "en")[0]
-    no_interest = profile(revenue_models={"status": "ok", "items": [item(code="fees_asset_mgmt")]})
-    assert "earning its revenue from interest income and fees and asset management" in R.render(inp(no_interest, profile_name="BANK"), "en")[0]       # added by code for a bank
-    assert "interest" not in R.render(inp(no_interest), "en")[0]
 
 
 def test_licensing_needs_a_quote_about_licensing_income():
@@ -147,3 +144,68 @@ def test_terms_apply_file_edits_phrases_by_id_or_english(world, tmp_path):
     m = b.terms.map()
     assert m["windows"]["he"] == "Windows" and m["windows"]["status"] == "approved" and m["windows"]["source"] == "human"
     assert m["concentrate operations"]["he"] == "פעילות התרכיזים" and m["concentrate operations"]["status"] == "approved"
+
+
+# ---------------------------------------------------------------- round 4: bank interest by evidence, mixed regions, terms table with notes
+def bank_ctx(nii, revenue):
+    return {"rec": {"profile": "BANK", "fiscal_year": "FY2025", "metrics": {"revenue": revenue}}, "json": {"financials": {"nii": {"FY2025": nii}}}}
+
+
+def test_a_bank_gets_interest_income_only_when_net_interest_is_at_least_30_percent_of_revenue(world):
+    b, _ = world.build(gem=FakeGemini(bp_answer()))
+    out = b.run("ACM")
+    p = b.profiles.by_id(out["profile_id"])
+    assert [i["code"] for i in p["revenue_models"]["items"]] == ["product_sales", "subscriptions"]
+    p2 = b.apply_bank_interest(bank_ctx(520.0, 1000.0), p)
+    first = p2["revenue_models"]["items"][0]
+    assert first["code"] == "interest_income" and first["source"] == "code" and first["share"] == pytest.approx(0.52) and "52.0%" in first["tag"] and "financial_facts" in first["tag"]
+    assert b.apply_bank_interest(bank_ctx(520.0, 1000.0), p2) == p2                                      # idempotent
+    p3 = b.apply_bank_interest(bank_ctx(200.0, 1000.0), p2)                                              # the rule no longer holds: the code-added item goes
+    assert [i["code"] for i in p3["revenue_models"]["items"]] == ["product_sales", "subscriptions"]
+    assert b.apply_bank_interest(bank_ctx(None, 1000.0), p)["revenue_models"]["items"] == p["revenue_models"]["items"]
+    p4 = b.apply_bank_interest(bank_ctx(300.0, 1000.0), p)                                               # exactly 30% counts
+    assert p4["revenue_models"]["items"][0]["code"] == "interest_income"
+    assert b.apply_bank_interest({"rec": {"profile": "STANDARD"}, "json": {}}, p) == p                   # banks only
+
+
+def test_the_model_s_own_interest_income_is_kept_and_not_duplicated(world):
+    a = bp_answer()
+    a["revenue_models"] = [{"code": "fees_asset_mgmt", "other_text": None, "quote": "earns its revenue from product sales and subscriptions"},
+                           {"code": "interest_income", "other_text": None, "quote": "earns its revenue from product sales and subscriptions"}]
+    b, _ = world.build(gem=FakeGemini(a))
+    p = b.profiles.by_id(b.run("ACM")["profile_id"])
+    p2 = b.apply_bank_interest(bank_ctx(900.0, 1000.0), p)
+    assert [i["code"] for i in p2["revenue_models"]["items"]] == ["fees_asset_mgmt", "interest_income"] and all(i["source"] == "ai" for i in p2["revenue_models"]["items"])
+
+
+def test_mixed_region_names_split_into_several_codes_only_without_a_share():
+    from src.bp.vocab import regions_of
+    assert regions_of("Africa & APAC") == ["mea", "asia_pacific"] and regions_of("Europe, Middle East & Africa") == ["europe", "mea"] and regions_of("Israel") == ["israel"]
+    p = profile(segments={"status": "not_found", "items": []}, regions={"status": "ok", "items": [dict(item(code="other", name="Africa & APAC"), source="ai"), dict(item(code="us", name="United States"), source="ai")]})
+    assert [i["code"] for i in display_items(p, "regions")] == ["mea", "asia_pacific", "us"]
+    assert "It operates in the Middle East and Africa, Asia-Pacific and the United States." in R.render(inp(p), "en")[0]
+    with_share = profile(regions={"status": "ok", "items": [dict(item(code="europe", name="Europe, Middle East & Africa", share=0.3), source="ai")]})
+    assert [i["code"] for i in display_items(with_share, "regions")] == ["europe"]                         # a share is not split
+
+
+def test_the_terms_table_with_company_column_notes_and_keep_latin(world, tmp_path):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import vc
+    b, _ = world.build()
+    for en in ("North America", "Windows", "Europe, Middle East, Africa", "Life", "Retail"):
+        b.terms.put(en, "x", "azure")
+    f = tmp_path / "fix.md"
+    f.write_text("""# fix
+| חברה | en | he (תיקון) |
+|---|---|---|
+| KO | North America (Segment) | צפון אמריקה |
+| MSFT | Windows | Windows (להשאיר בלטינית) |
+| KO | Europe, Middle East, Africa (Europe, Middle East & Africa) | אירופה, המזרח התיכון ואפריקה |
+| CB | Life (segment) | ביטוח חיים |
+| O | Retail | נכסי מסחר קמעונאי |
+| O | Missing phrase | x |
+""", encoding="utf-8")
+    vc.apply_terms_file(b, f)
+    m = b.terms.map()
+    assert m["north america"]["he"] == "צפון אמריקה" and m["windows"]["he"] == "Windows" and m["life"]["he"] == "ביטוח חיים" and m["retail"]["he"] == "נכסי מסחר קמעונאי"
+    assert m["europe, middle east, africa"]["he"] == "אירופה, המזרח התיכון ואפריקה" and all(v["status"] == "approved" and v["source"] == "human" for v in m.values())

@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from .vocab import region_of
+from .vocab import region_of, regions_of
 
 _SEGMENT_WORD = re.compile(r"\s*\bSegments?\b\s*", re.I)
 _PRODUCT_LINE = re.compile(r"\s*\bProduct\s+Lines?\b\s*", re.I)
@@ -60,7 +60,10 @@ def display_items(profile: dict, field: str) -> list:
                 continue
             it.update(raw_name=raw, name=name, latin=keeps_latin(it) if field == "products_services" else False)
         elif field == "regions" and it.get("source") == "ai" and it.get("name"):
-            it["code"] = region_of(it["name"])
-            it["status"] = "ok" if it["code"] != "other" else "other"
+            codes = regions_of(it["name"]) if it.get("share") is None else [region_of(it["name"])]       # a mixed name is split only when there is no share to split
+            for k, code in enumerate(codes):
+                part = dict(it, code=code, status="ok" if code != "other" else "other")
+                out.append(part)
+            continue
         out.append(it)
     return out

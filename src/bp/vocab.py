@@ -102,6 +102,13 @@ def region_of(name: str) -> str:
     return _REGIONS.get(n2, "other")
 
 
+def regions_of(name: str) -> list:
+    """The region codes a name stands for: several for a mixed name (\"Africa & APAC\" -> mea, asia_pacific), else the one of ``region_of``."""
+    n = norm_region_name(name)
+    multi = _yaml("regions.yaml").get("multi") or {}
+    return list(multi[n]) if n in multi else [region_of(name)]
+
+
 def industry_name(code: str) -> Optional[str]:
     """A ValueCompass industry code of the vocabulary (internet_platforms_advertising) -> the router's industry name ("Internet platforms and advertising"); None for an unknown code."""
     for name, c in Vocab.from_rows().industry_codes.items():

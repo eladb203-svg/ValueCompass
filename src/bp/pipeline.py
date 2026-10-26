@@ -312,8 +312,31 @@ class BackgroundBuilder:
         return R.RenderInput(name=dn[0]["value"] if dn else pretty_name(co["company_name"]), property_type=rec.get("profile") == "INCOME_REAL_ESTATE", profile_name=rec.get("profile") or "", profile=profile, vocab=self.vocab, revenue=(rec.get("metrics") or {}).get("revenue"), fiscal_year=ctx["fy"],
                              moat_level=level, moat_source=src, similar=[] if names else self.similar_names(ctx), translations=translations)
 
+    INTEREST_SHARE = 0.30
+
+    def apply_bank_interest(self, ctx: dict, profile: dict) -> dict:
+        """A bank's first revenue model is interest income. When the model did not return it, the code adds it - but only when net interest income is at least 30% of the bank's revenue (both from the
+        score result, i.e. from financial_facts); the item is source=code and keeps the tag and the share as evidence. When the rule does not hold, a code-added item is removed. Saves the profile if it changed."""
+        rec = ctx["rec"]
+        if rec.get("profile") != "BANK":
+            return profile
+        fld = dict(profile.get("revenue_models") or {})
+        items = [i for i in fld.get("items") or [] if i.get("source") != "code"]
+        nii = ((ctx["json"].get("financials") or {}).get("nii") or {}).get(rec["fiscal_year"])
+        rev = (rec.get("metrics") or {}).get("revenue")
+        share = (nii / rev) if (nii and rev) else None
+        has_ai = any(i.get("code") == "interest_income" for i in items)
+        if not has_ai and share is not None and share >= self.INTEREST_SHARE:
+            items = [{"code": "interest_income", "other_text": None, "source": "code", "status": "ok",
+                      "tag": f"financial_facts: net_interest_income / bank revenue = {share:.1%} ({rec['fiscal_year']}, threshold {self.INTEREST_SHARE:.0%})", "share": share}] + items
+        if items == (fld.get("items") or []):
+            return profile
+        fld.update(items=items, status="ok" if items else "not_found", source=fld.get("source") or "ai")
+        return self.profiles.put({**{k: v for k, v in profile.items() if k != "created_at"}, "revenue_models": fld})
+
     def render_store(self, ctx: dict, profile: dict) -> dict:
         co = ctx["co"]
+        profile = self.apply_bank_interest(ctx, profile)
         tr = self.terms.map()
         inp = self.render_inputs(ctx, profile, tr)
         out = {}

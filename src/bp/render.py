@@ -185,8 +185,6 @@ def s_customers_revenue(c: _Ctx) -> Optional[str]:
     cts = _labels(c, "customer_types", _items(c.i, "customer_types"), MAX_LIST)
     rm_items = _items(c.i, "revenue_models")
     if c.i.profile_name == "BANK":                                       # a bank earns first from interest
-        if not any(i.get("code") == "interest_income" for i in rm_items):
-            rm_items = [{"code": "interest_income", "source": "code", "status": "ok"}] + rm_items       # a bank always earns interest: added by code (profile BANK), marked source=code
         rm_items = sorted(rm_items, key=lambda i: i.get("code") != "interest_income")
     rms = _labels(c, "revenue_models", rm_items, MAX_LIST, prefix_he="מ")
     if c.lang == "en":
@@ -262,7 +260,7 @@ def s_operates(c: _Ctx) -> Optional[str]:
             codes.append(code)
     if not codes:
         return None
-    labs = [c.i.vocab.label("regions", k, c.lang) for k in codes[:5]]
+    labs = [c.i.vocab.label("regions", k, c.lang) for k in codes[:6]]
     if c.lang == "en":
         return f"It operates in {join_en(labs)}."
     return f"פועלת {join_he([('ב' + l[1:]) if l.startswith('ה') else 'ב' + l for l in labs])}."

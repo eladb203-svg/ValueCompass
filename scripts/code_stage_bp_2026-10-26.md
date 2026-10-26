@@ -1,27 +1,15 @@
-# שלב BP — סבב 3 (תיקונים לפני ייצור) — 2026-10-26
+# שלב BP — סבב 4 (תיקוני תרגום, ריבית בבנק, אזורים מעורבים — לפני ייצור) — 2026-10-26
 
-> מסד: **test בלבד**. ייצור לא נגע. מבנה הדוח כמו בסבבים הקודמים; סעיף 1 מתאר מה שונה בסבב הזה.
+> מסד: **test בלבד**. ייצור לא נגע. בסבב הזה **לא בוצעה אף קריאת Gemini ואף קריאת תרגום** (סה"כ Gemini בכל השלבים: 36).
 
 ## 1. סיכום
 
-- **קריאות Gemini בסבב 3: 3** (תקרה 20): JPM ו-INTC — `revenue_models`; AMT — `customer_types`. סבבים קודמים: 23 + 10; סה"כ 36. flash-lite בלבד, תהליך אחד, המונה המשותף.
-- **Azure Translator בסבב 3: 9 ביטויים** (4 אחרי הסרת מילים כלליות מהשמות, 5 בתרגום מחדש); בטבלה 51 ביטויים `azure`/`unreviewed` ו-22 `human`/`approved`.
-- 7 הטקסטים באנגלית ובעברית מוצגים בסעיף 2 (העברית מאושרת, `human_reviewed=false`). `render --all` נותן 0 שינויים בריצה שנייה.
-
-### מה בוצע (לפי סעיפי ההודעה)
-
-1. **שמות (קוד, `src/bp/names.py`):** (א) מוסרים מהשם לפני תרגום ותצוגה: "Segment", "Product Line(s)"; במגזרים גם הקידומות "Property, " ו-"Insurance " (בקווי מוצרים הן נשארות — "Property, Liability and Casualty Insurance" הוא שם אמיתי). (ב) שם מסחרי נשאר לטיני ולא מתורגם: `kind=brand`, או מוצר שהטקסט נתן בשם באותיות גדולות בכל מילה (Windows, Azure, Microsoft 365 Copilot); שמות מ-XBRL (Concentrate Operations, Retail) לעולם מתורגמים. (ג) קו מוצרים בשם כללי (Property Revenue, Service(s), Product(s), Other…, Total…) לא מוצג; ואותו כלל לשמות מגזרים Other. אצל AMT קווי המוצרים נעלמו (Property Revenue / Service) ובמקומם נשאר המשפט על המגזרים. 
-2. **`terms edit` לפי טבלה:** הקובץ `scripts/terms_fix_2026-10-26.md` **עדיין לא קיים** ולכן לא החלתי תיקונים. נוסף הפקודה `vc.py terms apply-file <קובץ>` שמקבלת שורות `| id | english | hebrew |` (או `english | hebrew`), מחילה כל שורה כמו `terms edit` (`human`/`approved`) ומרנדרת מחדש את החברות שמשתמשות בביטוי. שגיאות התרגום הידועות שמחכות לתיקון: "Concentrate operations" → "פעולות ריכוז", JPM "עוסקת בנקאות השקעות … וניהול ניהול נכסים", שמות מגזרי CB ("Overseas General" → "גנרל מעבר לים", "Life" → "חייו"), "Intelligent Cloud" → "ענן אינטליגנטי".
-3. **רשימות:** נוסף `customer_types.telecom_operators` (ספקי תקשורת); AMT נשאל מחדש על `customer_types` — עכשיו telecom_operators, government, enterprises ("לקוחותיה הם בעיקר ספקי תקשורת, ממשלות…"). **למה צפון אמריקה חסרה אצל AMT:** אזורי AMT באים מהטקסט (אין ציר אזורים ב-XBRL); "U.S. & Canada" נשמר בפרופיל עם הקוד `other` מלפני שהמפה למדה אותו, והקוד מוסתר בתבנית. תיקון: קוד אזור מהטקסט נגזר כל פעם מחדש מהשם לפי המפה העדכנית; עכשיו "פועלת בצפון אמריקה, באירופה ובאמריקה הלטינית". **"Africa & APAC" עדיין לא מופיע באזורים** — שם מעורב של שני אזורים (מפה אחד→אחד); לכן נשאר `other` ומוסתר. אפשר להוסיף קוד אזור `africa_apac` או לפצל — החלטה שלך.
-4. **מודל ההכנסות:** *למה חסר ב-JPM ו-INTC:* בסבב 2 הוספתי ל-BP-1 "רק כשהטקסט מתאר ממה מגיעות ההכנסות" (לפי ההנחיה), ופתיחת Item 1 של שתיהן לא מתארת זאת במפורש — המודל החזיר `[]`. ניסחתי מחדש (גרסה 3): "לפי מה שהטקסט אומר שהחברה מוכרת או גובה עליו, הראשי ראשון; `[]` רק אם הטקסט לא אומר דבר". אחרי השאלה מחדש: INTC — מכירת מוצרים ושירותים; JPM — עמלות וניהול נכסים. **בבנק interest_income ראשון** (קוד, פרופיל BANK): אם המודל לא החזיר אותו, הקוד מוסיף אותו ראשון עם `source=code` (בלי ציטוט — הערה: זה פריט בלי ציטוט, מסומן). **KO:** `licensing` נדרש לציטוט שמדבר על רישוי/תמלוגים כהכנסה (licens/royalt/franchis + revenue/fee/income…); הציטוט של KO היה "We own or license and market numerous beverage brands" — הוסר. הכלל חל גם על כל פעם הבאה, ובדיקה חוזרת (`recheck`) החילה אותו על פרופילים קיימים.
-5. **UBER:** מיגרציה 19 (`companies.industry_override`, `industry_override_reason`; חוסמת override בלי סיבה; rollback נוסה). הערך קוד אוצר מילים (`internet_platforms_advertising`) → שם הענף של הנתב. הנתב (`route(..., override=...)`) מקבל את ה-Override מהשורה בכל טעינה (`runner.py`, שני המעברים), ולכן הוא נשמר בטעינות; גם רשומות העמיתים (`peer_source.load_records`) מקבלות אותו. UBER הוגדרה `internet_platforms_advertising` עם הנימוק. בפועל: UBER כבר לא מופיעה כ"חברה דומה" ל-MSFT (הופיעו Oracle, Salesforce, Adobe). **הציון של UBER לא חושב מחדש** — היא ב-test רק כתוצאת golden; השפעת הענף על הפרופיל/הציון תיבדק בטעינה הבאה שלה.
-6. **מדיניות שמירה — נדחה ל-K6d.** נושא שמירת פרופילים וטקסטים ישנים (מחיקה/ארכוב של גרסאות קודמות, כמה גרסאות של פרופיל נשמרות לכל חברה) לא נקבע עכשיו; כרגע: פרופיל אחד לכל (חברה, accession), טקסטי D1/T1 הישנים `superseded` ולא נמחקו. 
-
-### החלטות שאני מבקש שתבדוק
-
-1. **שורת interest_income בלי ציטוט** ב-JPM (קוד מוסיף לבנק) — מאשר שזה מקובל, או שעדיף להשאיר ריק.
-2. **"Africa & APAC"** — ראו סעיף 3.
-3. **"Intel Core Ultra Series 3 processors"** (מותג) ו-"CPUs" נשארים/מתורגמים לפי הכלל: מוצר שהטקסט נתן באותיות גדולות בכל מילה — לטיני; כל השאר מתורגם ("CPUs" נשאר כי הוא ראשי תיבות).
+- **`scripts/terms_fix_2026-10-26.md` הוחל:** 37 שורות עודכנו ל-`human`/`approved` (שורות שהשם בהן נוקה בסעיף 1 הותאמו לשם המנוקה; "(להשאיר בלטינית)" נשמר כערך באנגלית: Windows, Azure, Microsoft 365 Copilot). `render --all` הורץ; ריצה שנייה — 0 שינויים בכל 7 החברות.
+- **שורות שלא נמצאו (2):** (א) `INTC | Intel Core Ultra Series 3 processors (מותג)` — שם מותג אינו ביטוי מתורגם; ביצעתי את ההוראה על הפרופיל עצמו: שם הפריט שונה ל-"Intel Core Ultra" (המקור נשמר ב-`name_original`). (ב) `AMT | Europe (Property, …)` — אין ביטוי כזה בטבלה: הטקסט העברי מתרגם רק 3 מגזרים ראשונים (US and Canada, Latin America, Africa & APAC), "Europe" אינו ביניהם.
+- **חפיפה בטבלה:** "Latin America" מופיע ב-KO וב-AMT וגם "Europe, Middle East, Africa" — מפתח הביטוי משותף, ולכן התיקון חל על שתיהן; שורת "Accident and Health Insurance" ושורת "Data Centers" התאימו לשורות המילון הקיימות (אותו תרגום) ולכן לא שינו דבר.
+- **ביטויים שנשארו `unreviewed`:** 17 (ראו סעיף 2א, עם התרגום הנוכחי). `human`/`approved`: 56. נותרו 17 שורות `azure` — מהן 17 עדיין לא נסקרו. בטקסט העברי של חברה `human_reviewed=true` רק כשכל הביטויים שבו `approved` (סעיף 2א מציין).
+- **interest_income בבנק (סעיף 2 בהודעה):** הקוד מוסיף את `interest_income` כראשון רק כשהכנסות הריבית נטו ≥ 30% מהכנסות הבנק (שניהם מתוצאת הציון, כלומר מ-`financial_facts`); הפריט `source=code`, עם תגית ("financial_facts: net_interest_income / bank revenue = X%") והשיעור. אחרת לא מוסיף, ופריט שהוסף בעבר בקוד ומפר את הכלל מוסר. JPM: הריבית נטו 95.4 מיליארד $ מתוך הכנסות 182.4 מיליארד $ = 52.3% — ולכן נוסף, והוא ראשון. אם המודל כבר החזיר אותו (בלי ציטוט קוד) הוא נשאר כפי שהוא.
+- **אזורים מעורבים (סעיף 3):** במפת האזורים נוסף מקטע `multi`: "Africa & APAC" → mea + asia_pacific; "Europe, Middle East & Africa" / EMEA → europe + mea, ועוד כמה צירופים. הפיצול קורה רק לפריט בלי שיעור (שיעור אי אפשר לפצל; ציר XBRL עם שיעור נשאר בקוד אחד, ו-EMEA ב-JPM ממשיך להיות europe). AMT: "פועלת בצפון אמריקה, באמריקה הלטינית, …" — ראו הטקסט.
 
 ## 2. 7 חברות סט הפיתוח
 
@@ -59,20 +47,20 @@
 
 **הטקסט בעברית** — מצב: `stored` / `approved`. להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.
 
-> חברת Coca-Cola מחזיקה או מעניקה רישיונות ומשווקת מותגי משקאות רבים. קווי המוצרים העיקריים: פעולות ריכוז (59% מההכנסות) ותפעול המוצר הסופי (41%). לקוחותיה הם בעיקר צרכנים, מפיצים ושותפי הפצה וקמעונאים, והכנסותיה ממכירת מוצרים. היא מדווחת על 5 מגזרים, הגדולים שבהם צפון אמריקה (41%), אירופה, המזרח התיכון, אפריקה (23%) ואמריקה הלטינית (13%); 60% מההכנסות מחוץ לארה"ב ו-40% מארצות הברית. הכנסות ב-FY2025: 47.9 מיליארד $.
+> חברת Coca-Cola מחזיקה ומשווקת מותגי משקאות רבים, בבעלותה או ברישיון. קווי המוצרים העיקריים: פעילות התרכיזים (59% מההכנסות) ופעילות המוצרים המוגמרים (41%). לקוחותיה הם בעיקר צרכנים, מפיצים ושותפי הפצה וקמעונאים, והכנסותיה ממכירת מוצרים. היא מדווחת על 5 מגזרים, הגדולים שבהם צפון אמריקה (41%), אירופה, המזרח התיכון ואפריקה (23%) ואמריקה הלטינית (13%); 60% מההכנסות מחוץ לארה"ב ו-40% מארצות הברית. הכנסות ב-FY2025: 47.9 מיליארד $.
 >
 > בין המתחרים העיקריים: PepsiCo, Inc., Nestlé S.A., Keurig Dr Pepper Inc., Danone S.A. ו-Suntory Beverage & Food Limited. יתרון תחרותי ברור: מותג.
 
-**ביטויים שתורגמו (אנגלית → עברית):** 
+**ביטויים שתורגמו (אנגלית → עברית):** אין.
 
 | אנגלית | עברית | סוג | מקור/סטטוס |
 |---|---|---|---|
-| owns or licenses and markets numerous beverage brands | מחזיקה או מעניקה רישיונות ומשווקת מותגי משקאות רבים | core_activity | azure/unreviewed |
-| Concentrate operations | פעולות ריכוז | product_line | azure/unreviewed |
-| Finished product operations | תפעול המוצר הסופי | product_line | azure/unreviewed |
-| North America | צפון אמריקה | segment | azure/unreviewed |
-| Europe, Middle East, Africa | אירופה, המזרח התיכון, אפריקה | segment | azure/unreviewed |
-| Latin America | אמריקה הלטינית | segment | azure/unreviewed |
+| owns or licenses and markets numerous beverage brands | מחזיקה ומשווקת מותגי משקאות רבים, בבעלותה או ברישיון | core_activity | human/approved |
+| Concentrate operations | פעילות התרכיזים | product_line | human/approved |
+| Finished product operations | פעילות המוצרים המוגמרים | product_line | human/approved |
+| North America | צפון אמריקה | segment | human/approved |
+| Europe, Middle East, Africa | אירופה, המזרח התיכון ואפריקה | segment | human/approved |
+| Latin America | אמריקה הלטינית | segment | human/approved |
 
 ### MSFT — MICROSOFT CORP  (FY2026, accession `0001193125-26-323660`, פרופיל #2, מודל `gemini-3.5-flash-lite`, גרסת סקיל 2)
 
@@ -108,18 +96,18 @@
 
 **הטקסט בעברית** — מצב: `stored` / `approved`. להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.
 
-> חברת Microsoft מפתחת ותומכת בתוכנה, שירותים, מכשירים ופתרונות. קווי המוצרים העיקריים: Windows, Azure ו-Microsoft 365 Copilot; בין המותגים: LinkedIn. לקוחותיה הם בעיקר צרכנים, ארגונים גדולים ועסקים קטנים ובינוניים, והכנסותיה ממכירת מוצרים, ממנויים ומפרסום. היא מדווחת על 3 מגזרים, הגדולים שבהם פרודוקטיביות ותהליכים עסקיים (42%), ענן אינטליגנטי (42%) ומחשוב אישי נוסף (16%); 51% מההכנסות מארצות הברית ו-49% מחוץ לארה"ב. הכנסות ב-FY2026: 331.8 מיליארד $.
+> חברת Microsoft מפתחת ותומכת בתוכנה, בשירותים, במכשירים ובפתרונות. קווי המוצרים העיקריים: Windows, Azure ו-Microsoft 365 Copilot; בין המותגים: LinkedIn. לקוחותיה הם בעיקר צרכנים, ארגונים גדולים ועסקים קטנים ובינוניים, והכנסותיה ממכירת מוצרים, ממנויים ומפרסום. היא מדווחת על 3 מגזרים, הגדולים שבהם פרודוקטיביות ותהליכים עסקיים (42%), ענן חכם (42%) ומחשוב אישי (16%); 51% מההכנסות מארצות הברית ו-49% מחוץ לארה"ב. הכנסות ב-FY2026: 331.8 מיליארד $.
 >
 > מתחרה בחברות תוכנה בינלאומיות ובפלטפורמות אינטרנט וחברות פרסום. חברות דומות ב-ValueCompass: Oracle, Salesforce, Adobe. יתרון תחרותי ברור: יתרון לגודל.
 
-**ביטויים שתורגמו (אנגלית → עברית):** 
+**ביטויים שתורגמו (אנגלית → עברית):** אין.
 
 | אנגלית | עברית | סוג | מקור/סטטוס |
 |---|---|---|---|
-| develops and supports software, services, devices, and solutions | מפתחת ותומכת בתוכנה, שירותים, מכשירים ופתרונות | core_activity | azure/unreviewed |
-| Productivity and Business Processes | פרודוקטיביות ותהליכים עסקיים | segment | azure/unreviewed |
-| Intelligent Cloud | ענן אינטליגנטי | segment | azure/unreviewed |
-| More Personal Computing | מחשוב אישי נוסף | segment | azure/unreviewed |
+| develops and supports software, services, devices, and solutions | מפתחת ותומכת בתוכנה, בשירותים, במכשירים ובפתרונות | core_activity | human/approved |
+| Productivity and Business Processes | פרודוקטיביות ותהליכים עסקיים | segment | human/approved |
+| Intelligent Cloud | ענן חכם | segment | human/approved |
+| More Personal Computing | מחשוב אישי | segment | human/approved |
 
 ### INTC — INTEL CORP  (FY2025, accession `0000050863-26-000011`, פרופיל #3, מודל `gemini-3.5-flash-lite`, גרסת סקיל 3)
 
@@ -132,7 +120,7 @@
 |  | Other Operating Segment 6.7% | xbrl | us-gaap:StatementBusinessSegmentsAxis/us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | תקין |
 | מוצרים ושירותים | CPUs [product_line] | ai | The CPUs and other semiconductor solutions that we design, manufacture, market, sell and service | תקין |
 |  | foundry services [service] | ai | we offer third-party foundry services to external customers and aim to establish this business as a leading external foundry. | תקין |
-|  | Intel Core Ultra Series 3 processors [brand] | ai | In 2025, we released our initial Intel Core Ultra Series 3 processors, the first products to be manufactured using our new Intel … | תקין |
+|  | Intel Core Ultra [brand] | ai | In 2025, we released our initial Intel Core Ultra Series 3 processors, the first products to be manufactured using our new Intel … | תקין |
 | סוגי לקוחות | consumers (צרכנים) | ai | utilized globally by consumers, enterprises, governments and educational organizations. | תקין |
 |  | enterprises (ארגונים גדולים) | ai | utilized globally by consumers, enterprises, governments and educational organizations. | תקין |
 |  | government (ממשלות וגופים ציבוריים) | ai | utilized globally by consumers, enterprises, governments and educational organizations. | תקין |
@@ -150,13 +138,13 @@
 
 **הטקסט באנגלית** (מאושר, `ai_texts` kind=background, template_version=1, profile_id=3):
 
-> Intel designs and manufactures semiconductor products. Its main product lines are CPUs and foundry services; its brands include Intel Core Ultra Series 3 processors. It sells mainly to consumers, large enterprises and governments and public bodies, earning its revenue from product sales and services. It reports 2 segments, the largest being Client Computing Group (61%) and Datacenter and AI (32%); 57% of revenue comes from Asia-Pacific and 30% from the United States. Revenue in FY2025: $52.9 billion.
+> Intel designs and manufactures semiconductor products. Its main product lines are CPUs and foundry services; its brands include Intel Core Ultra. It sells mainly to consumers, large enterprises and governments and public bodies, earning its revenue from product sales and services. It reports 2 segments, the largest being Client Computing Group (61%) and Datacenter and AI (32%); 57% of revenue comes from Asia-Pacific and 30% from the United States. Revenue in FY2025: $52.9 billion.
 >
 > Its main competitors include AMD, Apple, Qualcomm, MediaTek and NVIDIA. A clear competitive advantage: switching costs.
 
 **הטקסט בעברית** — מצב: `stored` / `approved`. להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.
 
-> חברת Intel מתכננת ומייצרת מוצרי מוליכים למחצה. קווי המוצרים העיקריים: CPUs ושירותי ייצור שבבים (Foundry); בין המותגים: Intel Core Ultra Series 3 processors. לקוחותיה הם בעיקר צרכנים, ארגונים גדולים וממשלות וגופים ציבוריים, והכנסותיה ממכירת מוצרים ומשירותים. היא מדווחת על 2 מגזרים, הגדולים שבהם קבוצת מחשוב לקוחות (61%) ומרכז נתונים ו- AI (32%); 57% מההכנסות מאסיה-פסיפיק ו-30% מארצות הברית. הכנסות ב-FY2025: 52.9 מיליארד $.
+> חברת Intel מתכננת ומייצרת מוצרי מוליכים למחצה. קווי המוצרים העיקריים: CPUs ושירותי ייצור שבבים (Foundry); בין המותגים: Intel Core Ultra. לקוחותיה הם בעיקר צרכנים, ארגונים גדולים וממשלות וגופים ציבוריים, והכנסותיה ממכירת מוצרים ומשירותים. היא מדווחת על 2 מגזרים, הגדולים שבהם מחשוב לקוחות (61%) ומרכזי נתונים ובינה מלאכותית (32%); 57% מההכנסות מאסיה-פסיפיק ו-30% מארצות הברית. הכנסות ב-FY2025: 52.9 מיליארד $.
 >
 > בין המתחרים העיקריים: AMD, Apple, Qualcomm, MediaTek ו-NVIDIA. יתרון תחרותי ברור: עלויות מעבר.
 
@@ -165,9 +153,9 @@
 | אנגלית | עברית | סוג | מקור/סטטוס |
 |---|---|---|---|
 | designs and manufactures semiconductor products | מתכננת ומייצרת מוצרי מוליכים למחצה | core_activity | azure/unreviewed |
-| foundry services | שירותי ייצור שבבים (Foundry) | product_line | azure/unreviewed |
-| Client Computing Group | קבוצת מחשוב לקוחות | segment | azure/unreviewed |
-| Datacenter and AI | מרכז נתונים ו- AI | segment | azure/unreviewed |
+| foundry services | שירותי ייצור שבבים (Foundry) | product_line | human/approved |
+| Client Computing Group | מחשוב לקוחות | segment | human/approved |
+| Datacenter and AI | מרכזי נתונים ובינה מלאכותית | segment | human/approved |
 
 ### JPM — JPMORGAN CHASE & CO  (FY2025, accession `0001628280-26-008131`, פרופיל #4, מודל `gemini-3.5-flash-lite`, גרסת סקיל 3)
 
@@ -186,7 +174,8 @@
 | סוגי לקוחות | consumers (צרכנים) | ai | financial services for consumers and small businesses | תקין |
 |  | smb (עסקים קטנים ובינוניים) | ai | financial services for consumers and small businesses | תקין |
 |  | government (ממשלות וגופים ציבוריים) | ai | many of the world’s most prominent corporate, institutional and government clients globally. | תקין |
-| מודלי הכנסות | fees_asset_mgmt (עמלות וניהול נכסים) | ai | The Firm is a leader in investment banking, financial services for consumers and small businesses, commercial banking, financial … | תקין |
+| מודלי הכנסות | interest_income (הכנסות ריבית) | code | financial_facts: net_interest_income / bank revenue = 52.3% (FY2025, threshold 30%) | תקין |
+|  | fees_asset_mgmt (עמלות וניהול נכסים) | ai | The Firm is a leader in investment banking, financial services for consumers and small businesses, commercial banking, financial … | תקין |
 | אזורים | north_america (צפון אמריקה) 76.6% [North America] | xbrl | srt:StatementGeographicalAxis/us-gaap:Revenues | תקין |
 |  | europe (אירופה) 13.4% [EMEA] | xbrl | srt:StatementGeographicalAxis/us-gaap:Revenues | תקין |
 |  | asia_pacific (אסיה-פסיפיק) 7.7% [Asia Pacific] | xbrl | srt:StatementGeographicalAxis/us-gaap:Revenues | תקין |
@@ -202,21 +191,21 @@
 
 **הטקסט בעברית** — מצב: `stored` / `approved`. להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.
 
-> חברת JPMorganChase עוסקת בנקאות השקעות, שירותים פיננסיים, בנקאות מסחרית וניהול ניהול נכסים. קווי המוצרים העיקריים: בנקאות השקעות, שירותים פיננסיים לצרכנים ולעסקים קטנים ובנקאות מסחרית. לקוחותיה הם בעיקר צרכנים, עסקים קטנים ובינוניים וממשלות וגופים ציבוריים, והכנסותיה מהכנסות ריבית ומעמלות וניהול נכסים. היא מדווחת על 3 מגזרים, הגדולים שבהם בנק מסחרי והשקעות (43%), בנקאות צרכנית וקהילתית (42%) וניהול עושר ונכסים (13%); 77% מההכנסות מצפון אמריקה ו-13% מאירופה, ו-10% מאזורים אחרים. הכנסות ב-FY2025: 182.4 מיליארד $.
+> חברת JPMorganChase עוסקת בבנקאות השקעות, בשירותים פיננסיים, בבנקאות מסחרית ובניהול נכסים. קווי המוצרים העיקריים: בנקאות השקעות, שירותים פיננסיים לצרכנים ולעסקים קטנים ובנקאות מסחרית. לקוחותיה הם בעיקר צרכנים, עסקים קטנים ובינוניים וממשלות וגופים ציבוריים, והכנסותיה מהכנסות ריבית ומעמלות וניהול נכסים. היא מדווחת על 3 מגזרים, הגדולים שבהם בנקאות מסחרית והשקעות (43%), בנקאות צרכנית וקהילתית (42%) וניהול נכסים ועושר (13%); 77% מההכנסות מצפון אמריקה ו-13% מאירופה, ו-10% מאזורים אחרים. הכנסות ב-FY2025: 182.4 מיליארד $.
 >
 > מתחרה בבנקים. חברות דומות ב-ValueCompass: Bank of America, Citigroup, Wells Fargo. יתרון תחרותי ברור: יתרון לגודל.
 
-**ביטויים שתורגמו (אנגלית → עברית):** 
+**ביטויים שתורגמו (אנגלית → עברית):** אין.
 
 | אנגלית | עברית | סוג | מקור/סטטוס |
 |---|---|---|---|
-| engages in investment banking, financial services, commercial banking, asset management | עוסקת בנקאות השקעות, שירותים פיננסיים, בנקאות מסחרית וניהול ניהול נכסים | core_activity | azure/unreviewed |
+| engages in investment banking, financial services, commercial banking, asset management | עוסקת בבנקאות השקעות, בשירותים פיננסיים, בבנקאות מסחרית ובניהול נכסים | core_activity | human/approved |
 | investment banking | בנקאות השקעות | product_line | human/approved |
-| financial services for consumers and small businesses | שירותים פיננסיים לצרכנים ולעסקים קטנים | product_line | azure/unreviewed |
-| commercial banking | בנקאות מסחרית | product_line | azure/unreviewed |
-| Commercial And Investment Bank | בנק מסחרי והשקעות | segment | azure/unreviewed |
-| Consumer & Community Banking | בנקאות צרכנית וקהילתית | segment | azure/unreviewed |
-| Asset and Wealth Management | ניהול עושר ונכסים | segment | azure/unreviewed |
+| financial services for consumers and small businesses | שירותים פיננסיים לצרכנים ולעסקים קטנים | product_line | human/approved |
+| commercial banking | בנקאות מסחרית | product_line | human/approved |
+| Commercial And Investment Bank | בנקאות מסחרית והשקעות | segment | human/approved |
+| Consumer & Community Banking | בנקאות צרכנית וקהילתית | segment | human/approved |
+| Asset and Wealth Management | ניהול נכסים ועושר | segment | human/approved |
 
 ### CB — Chubb Ltd  (FY2025, accession `0000896159-26-000005`, פרופיל #5, מודל `gemini-3.5-flash-lite`, גרסת סקיל 2)
 
@@ -251,21 +240,21 @@
 
 **הטקסט בעברית** — מצב: `stored` / `approved`. להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.
 
-> חברת Chubb מספקת ביטוח רכוש וחבויות מסחרי וצרכני, ביטוח תאונות ובריאות, ביטוח משנה וביטוח חיים. קווי המוצרים העיקריים: ביטוח רכוש, אחריות ונזקים (72% מההכנסות), ביטוח תאונות ובריאות (11%) וביטוח חיים (6.5%). לקוחותיה הם בעיקר ארגונים גדולים וצרכנים, והכנסותיה מפרמיות ביטוח ומהכנסות מהשקעות. היא מדווחת על 6 מגזרים, הגדולים שבהם ביטוח רכוש וחבויות של צפון אמריקה (34%), גנרל מעבר לים (24%) וחייו (12%). הכנסות ב-FY2025: 59.2 מיליארד $.
+> חברת Chubb מספקת ביטוח רכוש וחבויות לעסקים ולצרכנים, ביטוח תאונות ובריאות, ביטוח משנה וביטוח חיים. קווי המוצרים העיקריים: ביטוח רכוש וחבויות (72% מההכנסות), ביטוח תאונות ובריאות (11%) וביטוח חיים (6.5%). לקוחותיה הם בעיקר ארגונים גדולים וצרכנים, והכנסותיה מפרמיות ביטוח ומהכנסות מהשקעות. היא מדווחת על 6 מגזרים, הגדולים שבהם ביטוח רכוש וחבויות מסחרי בצפון אמריקה (34%), ביטוח כללי מחוץ לצפון אמריקה (24%) וביטוח חיים (12%). הכנסות ב-FY2025: 59.2 מיליארד $.
 >
 > מתחרה בחברות ביטוח בינלאומיות ובבנקים. חברות דומות ב-ValueCompass: American International, Travelers Companies, Progressive. יתרון תחרותי ברור: יתרון לגודל.
 
-**ביטויים שתורגמו (אנגלית → עברית):** 
+**ביטויים שתורגמו (אנגלית → עברית):** אין.
 
 | אנגלית | עברית | סוג | מקור/סטטוס |
 |---|---|---|---|
-| provides commercial and consumer P&C insurance, A&H, reinsurance, and life insurance | מספקת ביטוח רכוש וחבויות מסחרי וצרכני, ביטוח תאונות ובריאות, ביטוח משנה וביטוח חיים | core_activity | azure/unreviewed |
-| Property, Liability and Casualty Insurance | ביטוח רכוש, אחריות ונזקים | product_line | azure/unreviewed |
+| provides commercial and consumer P&C insurance, A&H, reinsurance, and life insurance | מספקת ביטוח רכוש וחבויות לעסקים ולצרכנים, ביטוח תאונות ובריאות, ביטוח משנה וביטוח חיים | core_activity | human/approved |
+| Property, Liability and Casualty Insurance | ביטוח רכוש וחבויות | product_line | human/approved |
 | Accident and Health Insurance | ביטוח תאונות ובריאות | product_line | human/approved |
-| Life Insurance | ביטוח חיים | product_line | azure/unreviewed |
-| North American Commercial P&C | ביטוח רכוש וחבויות של צפון אמריקה | segment | azure/unreviewed |
-| Overseas General | גנרל מעבר לים | segment | azure/unreviewed |
-| Life | חייו | segment | azure/unreviewed |
+| Life Insurance | ביטוח חיים | product_line | human/approved |
+| North American Commercial P&C | ביטוח רכוש וחבויות מסחרי בצפון אמריקה | segment | human/approved |
+| Overseas General | ביטוח כללי מחוץ לצפון אמריקה | segment | human/approved |
+| Life | ביטוח חיים | segment | human/approved |
 
 ### O — REALTY INCOME CORP  (FY2025, accession `0000726728-26-000011`, פרופיל #6, מודל `gemini-3.5-flash-lite`, גרסת סקיל 2)
 
@@ -293,17 +282,17 @@
 
 **הטקסט בעברית** — מצב: `stored` / `approved`. להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.
 
-> חברת Realty Income רוכשת, מחזיקה ומנהלת באופן פעיל נכסים מסחריים עצמאיים. סוגי הנכסים העיקריים: קמעונאות (75% מההכנסות) ותעשייתי (15%). לקוחותיה הם בעיקר שוכרים, והכנסותיה מהכנסות שכירות. פועלת בארצות הברית ובאירופה. הכנסות ב-FY2025: 5.7 מיליארד $.
+> חברת Realty Income רוכשת, מחזיקה ומנהלת באופן פעיל נכסים מסחריים עצמאיים. סוגי הנכסים העיקריים: נכסי מסחר קמעונאי (75% מההכנסות) ונכסים תעשייתיים (15%). לקוחותיה הם בעיקר שוכרים, והכנסותיה מהכנסות שכירות. פועלת בארצות הברית ובאירופה. הכנסות ב-FY2025: 5.7 מיליארד $.
 >
 > מתחרה בחברות נדל"ן מניב וקרנות ריט. חברות דומות ב-ValueCompass: Simon Property, Public Storage, Prologis. יתרון תחרותי ברור: יתרון לגודל.
 
-**ביטויים שתורגמו (אנגלית → עברית):** 
+**ביטויים שתורגמו (אנגלית → עברית):** אין.
 
 | אנגלית | עברית | סוג | מקור/סטטוס |
 |---|---|---|---|
-| acquires, owns, and actively manages freestanding commercial properties | רוכשת, מחזיקה ומנהלת באופן פעיל נכסים מסחריים עצמאיים | core_activity | azure/unreviewed |
-| Retail | קמעונאות | product_line | azure/unreviewed |
-| Industrial | תעשייתי | product_line | azure/unreviewed |
+| acquires, owns, and actively manages freestanding commercial properties | רוכשת, מחזיקה ומנהלת באופן פעיל נכסים מסחריים עצמאיים | core_activity | human/approved |
+| Retail | נכסי מסחר קמעונאי | product_line | human/approved |
+| Industrial | נכסים תעשייתיים | product_line | human/approved |
 
 ### AMT — AMERICAN TOWER CORP /MA/  (FY2025, accession `0001053507-26-000035`, פרופיל #7, מודל `gemini-3.5-flash-lite`, גרסת סקיל 3)
 
@@ -336,13 +325,13 @@
 
 **הטקסט באנגלית** (מאושר, `ai_texts` kind=background, template_version=1, profile_id=7):
 
-> American Tower leases space on communications sites to wireless service providers. It sells mainly to telecom operators, governments and public bodies and large enterprises, earning its revenue from rental income and services. It reports 5 segments, the largest being US And Canada (52%), Latin America (15%) and Africa & APAC (13%). It operates in North America, Europe and Latin America. Revenue in FY2025: $10.6 billion.
+> American Tower leases space on communications sites to wireless service providers. It sells mainly to telecom operators, governments and public bodies and large enterprises, earning its revenue from rental income and services. It reports 5 segments, the largest being US And Canada (52%), Latin America (15%) and Africa & APAC (13%). It operates in North America, the Middle East and Africa, Asia-Pacific, Europe and Latin America. Revenue in FY2025: $10.6 billion.
 >
 > Its main competitors include Crown Castle International Corp., SBA Communications Corporation, Vertical Bridge, Telesites S.A.B. de C.V. and Cellnex Telecom, S.A. A clear competitive advantage: switching costs.
 
 **הטקסט בעברית** — מצב: `stored` / `approved`. להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.
 
-> חברת American Tower משכירה שטחים באתרי תקשורת לספקי שירותי אלחוט. לקוחותיה הם בעיקר ספקי תקשורת, ממשלות וגופים ציבוריים וארגונים גדולים, והכנסותיה מהכנסות שכירות ומשירותים. היא מדווחת על 5 מגזרים, הגדולים שבהם US וקנדה (52%), אמריקה הלטינית (15%) ואפריקה & APAC (13%). פועלת בצפון אמריקה, באירופה ובאמריקה הלטינית. הכנסות ב-FY2025: 10.6 מיליארד $.
+> חברת American Tower משכירה שטחים באתרי תקשורת לספקי שירותי אלחוט. לקוחותיה הם בעיקר ספקי תקשורת, ממשלות וגופים ציבוריים וארגונים גדולים, והכנסותיה מהכנסות שכירות ומשירותים. היא מדווחת על 5 מגזרים, הגדולים שבהם ארה"ב וקנדה (52%), אמריקה הלטינית (15%) ואפריקה ואסיה-פסיפיק (13%). פועלת בצפון אמריקה, במזרח התיכון ואפריקה, באסיה-פסיפיק, באירופה ובאמריקה הלטינית. הכנסות ב-FY2025: 10.6 מיליארד $.
 >
 > בין המתחרים העיקריים: Crown Castle International Corp., SBA Communications Corporation, Vertical Bridge, Telesites S.A.B. de C.V. ו-Cellnex Telecom, S.A. יתרון תחרותי ברור: עלויות מעבר.
 
@@ -351,9 +340,33 @@
 | אנגלית | עברית | סוג | מקור/סטטוס |
 |---|---|---|---|
 | leases space on communications sites to wireless service providers | משכירה שטחים באתרי תקשורת לספקי שירותי אלחוט | core_activity | azure/unreviewed |
-| US And Canada | US וקנדה | segment | azure/unreviewed |
-| Latin America | אמריקה הלטינית | segment | azure/unreviewed |
-| Africa & APAC | אפריקה & APAC | segment | azure/unreviewed |
+| US And Canada | ארה"ב וקנדה | segment | human/approved |
+| Latin America | אמריקה הלטינית | segment | human/approved |
+| Africa & APAC | אפריקה ואסיה-פסיפיק | segment | human/approved |
+
+## 2א. ביטויים שנשארו `unreviewed` — עם התרגום הנוכחי
+
+| # | אנגלית | עברית (נוכחית, Azure) | בשימוש ב |
+|---|---|---|---|
+| 68 | North America Segment | צפון אמריקה | (לא בשימוש בטקסט) |
+| 70 | Latin America Segment | אמריקה הלטינית | (לא בשימוש בטקסט) |
+| 78 | designs and manufactures semiconductor products | מתכננת ומייצרת מוצרי מוליכים למחצה | INTC |
+| 82 | Other Operating Segment | פעילות נוספת | (לא בשימוש בטקסט) |
+| 88 | Asset and Wealth Management Segment | ניהול עושר ונכסים | (לא בשימוש בטקסט) |
+| 90 | Property, Liability and Casualty Insurance Product Line | קו מוצרי ביטוח רכוש, אחריות ונזקים | (לא בשימוש בטקסט) |
+| 91 | Accident and Health Insurance Product Line | קו מוצרי ביטוח תאונות ובריאות | (לא בשימוש בטקסט) |
+| 92 | Life Insurance Product Line | קו מוצרי ביטוח חיים | (לא בשימוש בטקסט) |
+| 99 | Other | אחר | (לא בשימוש בטקסט) |
+| 100 | leases space on communications sites to wireless service providers | משכירה שטחים באתרי תקשורת לספקי שירותי אלחוט | AMT |
+| 101 | Property Revenue | הכנסות מקרקעין | (לא בשימוש בטקסט) |
+| 102 | Service | שירות | (לא בשימוש בטקסט) |
+| 103 | Property, US And Canada | נדל"ן, US וקנדה | (לא בשימוש בטקסט) |
+| 104 | Property, Latin America | נדל"ן, אמריקה הלטינית | (לא בשימוש בטקסט) |
+| 105 | Property, Africa & APAC | נדל"ן, אפריקה APAC | (לא בשימוש בטקסט) |
+| 108 | Insurance North American Commercial P&C | ביטוח ביטוח רכוש וחבויות מסחריות בצפון אמריקה | (לא בשימוש בטקסט) |
+| 109 | Insurance Overseas General | אינשורנס אוברסיז ג'נרל | (לא בשימוש בטקסט) |
+
+`human_reviewed` של הטקסט העברי: KO: כן, MSFT: כן, INTC: לא, JPM: כן, CB: כן, O: כן, AMT: לא. שורות "(לא בשימוש בטקסט)" הן שאריות של שמות לפני הניקוי (Segment, Product Line, "Property, "): הטקסט משתמש עכשיו בשם המנוקה, שתוקן בטבלה; השאריות לא משפיעות על שום טקסט. שני הביטויים היחידים שבשימוש ועדיין לא נסקרו הם פעילות מרכזית של INTC ושל AMT, ולכן הטקסט העברי שלהן `human_reviewed=false`.
 
 ## 3. טבלת התוויות ברבים לסוגי המתחרים
 
@@ -431,14 +444,13 @@
 | | מספר |
 |---|---|
 | Gemini — סבב 1 | 23 (מתוך 25) |
-| Gemini — סבב 2 (תקרה 20) | **10** |
-| **Gemini — סבב 3 (תקרה 20, נאכפת בקוד)** | **3** |
+| Gemini — סבב 2 | 10 (מתוך 20) |
+| Gemini — סבב 3 | 3 (מתוך 20) |
+| **Gemini — סבב 4 (זה)** | **0** |
 | Gemini — סה"כ | 36 |
-| Azure Translator — ביטויים שנשלחו בסבב 3 | 9 (בבקשות של עד 25 ביטויים; תקרה 200) |
-| Azure — ביטויים שנשמרו | 51 |
+| Azure Translator — סבב 4 | 0 |
+| Azure — שורות `azure` בטבלה | 17 |
 | Google Translate | 0 (חלופה, לא בשימוש) |
-
-ביטויים שנדחו בבדיקות (נשארים "ממתינים" עד תרגום מחדש או תיקון ידני): ראו `translation_failed` ב-`scripts/ai_store/bp_calls.json`; בסבב זה הבדיקות תוקנו (שם/ראשי תיבות שנשארים לטיניים, מונח מילון ארוך) והביטויים שנכשלו תורגמו מחדש. הניסיון החוזר של BP-1 (אחד לכל קריאה, עם הסיבה המדויקת) כלול בספירה.
 
 ## 7. מבנה ומסד
 
@@ -452,4 +464,5 @@
 - **אידמפוטנטיות (מסד test, בפועל):** `vc.py render --all` הורץ פעמיים ברצף — בשתי הריצות 0 שינויים בכל 7 החברות; `bp_stage.py recheck` לא קורא ל-Gemini ולא יוצר פרופילים חדשים. פרופיל קיים של אותו `accession` לא נשאל שוב (נשאל רק במפורש, על שדות נבחרים).
 - **מיגרציה 19 על test:** md5 של `companies` זהה אחרי rollback בבלוק שבוטל; ה-md5 של 5 הטבלאות הקיימות נבדק בסבב 2 ולא נגענו בהן.
 - **golden:** לא שונה. ייצור לא נגע.
+- **סבב 4 (בדיקות חדשות ב-`tests/test_bp_round3.py`; סה"כ 788 passed):** ריבית בבנק לפי כלל 30% (נוסף / לא נוסף / מוסר / חד-פעמי / ערך המודל נשמר ולא משוכפל), פיצול אזורים מעורבים רק בלי שיעור, וטבלת התיקונים עם עמודת חברה, הערות בסוגריים ו"להשאיר בלטינית". `render --all` הורץ פעמיים אחרי התיקונים — 0 שינויים בכל 7 החברות בריצה השנייה.
 

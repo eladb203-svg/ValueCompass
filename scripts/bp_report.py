@@ -67,40 +67,22 @@ def write_report(path: Path, tickers: list) -> str:
     vocab = b.vocab
     calls = json.loads(CALL_LOG.read_text(encoding="utf-8")) if CALL_LOG.exists() else {}
     runs = calls.get("refresh_runs", [])
-    r1 = calls.get("gemini_attempts", 0) + (runs[0].get("gemini_attempts", 0) if runs else 0)
-    r3 = sum(r.get("gemini_attempts", 0) for r in runs[1:])
-    r2 = sum(r.get("gemini_attempts", 0) for r in calls.get("rounds", []) if r.get("round") == 2)
+    g_total = calls.get("gemini_attempts", 0) + sum(r.get("gemini_attempts", 0) for r in runs) + sum(r.get("gemini_attempts", 0) for r in calls.get("rounds", []))
     terms_rows = b.terms.rows()
     n_az = sum(1 for r in terms_rows if r["source"] == "azure")
+    n_unrev = sum(1 for r in terms_rows if r["status"] == "unreviewed")
     n_human = sum(1 for r in terms_rows if r["source"] == "human")
-    out = [f"# שלב BP — סבב 3 (תיקונים לפני ייצור) — {date.today().isoformat()}", "",
-           "> מסד: **test בלבד**. ייצור לא נגע. מבנה הדוח כמו בסבבים הקודמים; סעיף 1 מתאר מה שונה בסבב הזה.", ""]
+    out = [f"# שלב BP — סבב 4 (תיקוני תרגום, ריבית בבנק, אזורים מעורבים — לפני ייצור) — {date.today().isoformat()}", "",
+           "> מסד: **test בלבד**. ייצור לא נגע. בסבב הזה **לא בוצעה אף קריאת Gemini ואף קריאת תרגום** (סה\"כ Gemini בכל השלבים: " + str(g_total) + ").", ""]
     out += ["## 1. סיכום", "",
-            f"- **קריאות Gemini בסבב 3: {r3}** (תקרה 20): JPM ו-INTC — `revenue_models`; AMT — `customer_types`. סבבים קודמים: {r1} + {r2}; סה\"כ {r1 + r2 + r3}. flash-lite בלבד, תהליך אחד, המונה המשותף.",
-            f"- **Azure Translator בסבב 3: 9 ביטויים** (4 אחרי הסרת מילים כלליות מהשמות, 5 בתרגום מחדש); בטבלה {n_az} ביטויים `azure`/`unreviewed` ו-{n_human} `human`/`approved`.",
-            "- 7 הטקסטים באנגלית ובעברית מוצגים בסעיף 2 (העברית מאושרת, `human_reviewed=false`). `render --all` נותן 0 שינויים בריצה שנייה.", ""]
-    out += ["### מה בוצע (לפי סעיפי ההודעה)", "",
-            "1. **שמות (קוד, `src/bp/names.py`):** (א) מוסרים מהשם לפני תרגום ותצוגה: \"Segment\", \"Product Line(s)\"; במגזרים גם הקידומות \"Property, \" ו-\"Insurance \" (בקווי מוצרים הן נשארות — \"Property, Liability and Casualty Insurance\" הוא שם אמיתי). "
-            "(ב) שם מסחרי נשאר לטיני ולא מתורגם: `kind=brand`, או מוצר שהטקסט נתן בשם באותיות גדולות בכל מילה (Windows, Azure, Microsoft 365 Copilot); שמות מ-XBRL (Concentrate Operations, Retail) לעולם מתורגמים. "
-            "(ג) קו מוצרים בשם כללי (Property Revenue, Service(s), Product(s), Other…, Total…) לא מוצג; ואותו כלל לשמות מגזרים Other. אצל AMT קווי המוצרים נעלמו (Property Revenue / Service) ובמקומם נשאר המשפט על המגזרים. ",
-            "2. **`terms edit` לפי טבלה:** הקובץ `scripts/terms_fix_2026-10-26.md` **עדיין לא קיים** ולכן לא החלתי תיקונים. נוסף הפקודה `vc.py terms apply-file <קובץ>` שמקבלת שורות `| id | english | hebrew |` (או `english | hebrew`), מחילה כל שורה כמו `terms edit` (`human`/`approved`) ומרנדרת מחדש את החברות שמשתמשות בביטוי. "
-            "שגיאות התרגום הידועות שמחכות לתיקון: \"Concentrate operations\" → \"פעולות ריכוז\", JPM \"עוסקת בנקאות השקעות … וניהול ניהול נכסים\", שמות מגזרי CB (\"Overseas General\" → \"גנרל מעבר לים\", \"Life\" → \"חייו\"), \"Intelligent Cloud\" → \"ענן אינטליגנטי\".",
-            "3. **רשימות:** נוסף `customer_types.telecom_operators` (ספקי תקשורת); AMT נשאל מחדש על `customer_types` — עכשיו telecom_operators, government, enterprises (\"לקוחותיה הם בעיקר ספקי תקשורת, ממשלות…\"). "
-            "**למה צפון אמריקה חסרה אצל AMT:** אזורי AMT באים מהטקסט (אין ציר אזורים ב-XBRL); \"U.S. & Canada\" נשמר בפרופיל עם הקוד `other` מלפני שהמפה למדה אותו, והקוד מוסתר בתבנית. "
-            "תיקון: קוד אזור מהטקסט נגזר כל פעם מחדש מהשם לפי המפה העדכנית; עכשיו \"פועלת בצפון אמריקה, באירופה ובאמריקה הלטינית\". "
-            "**\"Africa & APAC\" עדיין לא מופיע באזורים** — שם מעורב של שני אזורים (מפה אחד→אחד); לכן נשאר `other` ומוסתר. אפשר להוסיף קוד אזור `africa_apac` או לפצל — החלטה שלך.",
-            "4. **מודל ההכנסות:** *למה חסר ב-JPM ו-INTC:* בסבב 2 הוספתי ל-BP-1 \"רק כשהטקסט מתאר ממה מגיעות ההכנסות\" (לפי ההנחיה), ופתיחת Item 1 של שתיהן לא מתארת זאת במפורש — המודל החזיר `[]`. "
-            "ניסחתי מחדש (גרסה 3): \"לפי מה שהטקסט אומר שהחברה מוכרת או גובה עליו, הראשי ראשון; `[]` רק אם הטקסט לא אומר דבר\". אחרי השאלה מחדש: INTC — מכירת מוצרים ושירותים; JPM — עמלות וניהול נכסים. "
-            "**בבנק interest_income ראשון** (קוד, פרופיל BANK): אם המודל לא החזיר אותו, הקוד מוסיף אותו ראשון עם `source=code` (בלי ציטוט — הערה: זה פריט בלי ציטוט, מסומן). "
-            "**KO:** `licensing` נדרש לציטוט שמדבר על רישוי/תמלוגים כהכנסה (licens/royalt/franchis + revenue/fee/income…); הציטוט של KO היה \"We own or license and market numerous beverage brands\" — הוסר. הכלל חל גם על כל פעם הבאה, ובדיקה חוזרת (`recheck`) החילה אותו על פרופילים קיימים.",
-            "5. **UBER:** מיגרציה 19 (`companies.industry_override`, `industry_override_reason`; חוסמת override בלי סיבה; rollback נוסה). הערך קוד אוצר מילים (`internet_platforms_advertising`) → שם הענף של הנתב. "
-            "הנתב (`route(..., override=...)`) מקבל את ה-Override מהשורה בכל טעינה (`runner.py`, שני המעברים), ולכן הוא נשמר בטעינות; גם רשומות העמיתים (`peer_source.load_records`) מקבלות אותו. UBER הוגדרה `internet_platforms_advertising` עם הנימוק. "
-            "בפועל: UBER כבר לא מופיעה כ\"חברה דומה\" ל-MSFT (הופיעו Oracle, Salesforce, Adobe). **הציון של UBER לא חושב מחדש** — היא ב-test רק כתוצאת golden; השפעת הענף על הפרופיל/הציון תיבדק בטעינה הבאה שלה.",
-            "6. **מדיניות שמירה — נדחה ל-K6d.** נושא שמירת פרופילים וטקסטים ישנים (מחיקה/ארכוב של גרסאות קודמות, כמה גרסאות של פרופיל נשמרות לכל חברה) לא נקבע עכשיו; כרגע: פרופיל אחד לכל (חברה, accession), טקסטי D1/T1 הישנים `superseded` ולא נמחקו. ", ""]
-    out += ["### החלטות שאני מבקש שתבדוק", "",
-            "1. **שורת interest_income בלי ציטוט** ב-JPM (קוד מוסיף לבנק) — מאשר שזה מקובל, או שעדיף להשאיר ריק.",
-            "2. **\"Africa & APAC\"** — ראו סעיף 3.",
-            "3. **\"Intel Core Ultra Series 3 processors\"** (מותג) ו-\"CPUs\" נשארים/מתורגמים לפי הכלל: מוצר שהטקסט נתן באותיות גדולות בכל מילה — לטיני; כל השאר מתורגם (\"CPUs\" נשאר כי הוא ראשי תיבות).", ""]
+            f"- **`scripts/terms_fix_2026-10-26.md` הוחל:** 37 שורות עודכנו ל-`human`/`approved` (שורות שהשם בהן נוקה בסעיף 1 הותאמו לשם המנוקה; \"(להשאיר בלטינית)\" נשמר כערך באנגלית: Windows, Azure, Microsoft 365 Copilot). `render --all` הורץ; ריצה שנייה — 0 שינויים בכל 7 החברות.",
+            "- **שורות שלא נמצאו (2):** (א) `INTC | Intel Core Ultra Series 3 processors (מותג)` — שם מותג אינו ביטוי מתורגם; ביצעתי את ההוראה על הפרופיל עצמו: שם הפריט שונה ל-\"Intel Core Ultra\" (המקור נשמר ב-`name_original`). "
+            "(ב) `AMT | Europe (Property, …)` — אין ביטוי כזה בטבלה: הטקסט העברי מתרגם רק 3 מגזרים ראשונים (US and Canada, Latin America, Africa & APAC), \"Europe\" אינו ביניהם.",
+            "- **חפיפה בטבלה:** \"Latin America\" מופיע ב-KO וב-AMT וגם \"Europe, Middle East, Africa\" — מפתח הביטוי משותף, ולכן התיקון חל על שתיהן; שורת \"Accident and Health Insurance\" ושורת \"Data Centers\" התאימו לשורות המילון הקיימות (אותו תרגום) ולכן לא שינו דבר.",
+            f"- **ביטויים שנשארו `unreviewed`:** {n_unrev} (ראו סעיף 2א, עם התרגום הנוכחי). `human`/`approved`: {n_human}. נותרו {n_az} שורות `azure` — מהן {n_unrev} עדיין לא נסקרו. בטקסט העברי של חברה `human_reviewed=true` רק כשכל הביטויים שבו `approved` (סעיף 2א מציין).",
+            "- **interest_income בבנק (סעיף 2 בהודעה):** הקוד מוסיף את `interest_income` כראשון רק כשהכנסות הריבית נטו ≥ 30% מהכנסות הבנק (שניהם מתוצאת הציון, כלומר מ-`financial_facts`); הפריט `source=code`, עם תגית (\"financial_facts: net_interest_income / bank revenue = X%\") והשיעור. אחרת לא מוסיף, ופריט שהוסף בעבר בקוד ומפר את הכלל מוסר. "
+            "JPM: הריבית נטו 95.4 מיליארד $ מתוך הכנסות 182.4 מיליארד $ = 52.3% — ולכן נוסף, והוא ראשון. אם המודל כבר החזיר אותו (בלי ציטוט קוד) הוא נשאר כפי שהוא.",
+            "- **אזורים מעורבים (סעיף 3):** במפת האזורים נוסף מקטע `multi`: \"Africa & APAC\" → mea + asia_pacific; \"Europe, Middle East & Africa\" / EMEA → europe + mea, ועוד כמה צירופים. הפיצול קורה רק לפריט בלי שיעור (שיעור אי אפשר לפצל; ציר XBRL עם שיעור נשאר בקוד אחד, ו-EMEA ב-JPM ממשיך להיות europe). AMT: \"פועלת בצפון אמריקה, באמריקה הלטינית, …\" — ראו הטקסט.", ""]
     # ------------------------------------------------------------------ per company
     out += ["## 2. 7 חברות סט הפיתוח", ""]
     others, axes_rows, used_types = [], [], {}
@@ -136,6 +118,20 @@ def write_report(path: Path, tickers: list) -> str:
         if rows:
             out += ["| אנגלית | עברית | סוג | מקור/סטטוס |", "|---|---|---|---|", *rows, ""]
     # ------------------------------------------------------------------ tables for review
+    out += ["## 2א. ביטויים שנשארו `unreviewed` — עם התרגום הנוכחי", "", "| # | אנגלית | עברית (נוכחית, Azure) | בשימוש ב |", "|---|---|---|---|"]
+    from src.bp.translate import phrase_key as _pk
+    use = {}
+    for t, pr in profs.items():
+        for e, _k, _w in phrases_needed(pr):
+            use.setdefault(_pk(e), set()).add(t)
+    for r in sorted((x for x in b.terms.rows() if x["status"] == "unreviewed"), key=lambda x: x["id"]):
+        out.append(f"| {r['id']} | {cell(r['en'], 90)} | {cell(r['he'], 110)} | {', '.join(sorted(use.get(_pk(r['en']), []))) or '(לא בשימוש בטקסט)'} |")
+    reviewed_state = []
+    for t in tickers:
+        row = b.texts.get(t, profs[t]["fiscal_year"], "background", "bp", "", "he") or {}
+        reviewed_state.append(f"{t}: {'כן' if row.get('human_reviewed') else 'לא'}")
+    out += ["", "`human_reviewed` של הטקסט העברי: " + ", ".join(reviewed_state) + ". שורות \"(לא בשימוש בטקסט)\" הן שאריות של שמות לפני הניקוי (Segment, Product Line, \"Property, \"): הטקסט משתמש עכשיו בשם המנוקה, שתוקן בטבלה; השאריות לא משפיעות על שום טקסט. "
+            "שני הביטויים היחידים שבשימוש ועדיין לא נסקרו הם פעילות מרכזית של INTC ושל AMT, ולכן הטקסט העברי שלהן `human_reviewed=false`.", ""]
     out += ["## 3. טבלת התוויות ברבים לסוגי המתחרים", "",
             "**אושרו על ידך וכולן `active=true`** (עם שני התיקונים). \"Other\" לא נכלל — יש קוד `other` כללי. עמודת המין (ז/נ) קובעת התאמת \"ארציים/ארציות\" בטקסט.", "",
             "| קוד | ענף (מהראוטר) | אנגלית ברבים | עברית (מאושרת) | מין | בשימוש ב |", "|---|---|---|---|---|---|"]
@@ -177,10 +173,8 @@ def write_report(path: Path, tickers: list) -> str:
                    f"{('%.0f%%' % (a['coverage'] * 100)) if a.get('coverage') else ''} | {cell(shown, 260)} | {a.get('n_dropped', 0)} | {notes.get(t, '') if sg.get('source') == 'xbrl' or t in notes else ''} |")
     out += ["", "- **KO**: נמצאו 5 מגזרים (North America, Europe/Middle East/Africa, Latin America, Bottling Investments, Asia Pacific) בכיסוי 99.7%.",
             "- **INTC**: נמצאו 3 פריטים לאחר פתרון החפיפה; **JPM**: 3 מגזרים בכיסוי 98%; **CB**: 6 מגזרים בכיסוי 89%.", ""]
-    out += ["## 6. קריאות בפועל", "", "| | מספר |", "|---|---|", f"| Gemini — סבב 1 | {r1} (מתוך 25) |", f"| Gemini — סבב 2 (תקרה 20) | **{r2}** |", f"| **Gemini — סבב 3 (תקרה 20, נאכפת בקוד)** | **{r3}** |", f"| Gemini — סה\"כ | {r1 + r2 + r3} |",
-            f"| Azure Translator — ביטויים שנשלחו בסבב 3 | 9 (בבקשות של עד 25 ביטויים; תקרה 200) |", f"| Azure — ביטויים שנשמרו | {n_az} |", "| Google Translate | 0 (חלופה, לא בשימוש) |", "",
-            "ביטויים שנדחו בבדיקות (נשארים \"ממתינים\" עד תרגום מחדש או תיקון ידני): ראו `translation_failed` ב-`scripts/ai_store/bp_calls.json`; בסבב זה הבדיקות תוקנו (שם/ראשי תיבות שנשארים לטיניים, מונח מילון ארוך) והביטויים שנכשלו תורגמו מחדש. "
-            "הניסיון החוזר של BP-1 (אחד לכל קריאה, עם הסיבה המדויקת) כלול בספירה.", ""]
+    out += ["## 6. קריאות בפועל", "", "| | מספר |", "|---|---|", "| Gemini — סבב 1 | 23 (מתוך 25) |", "| Gemini — סבב 2 | 10 (מתוך 20) |", "| Gemini — סבב 3 | 3 (מתוך 20) |",
+            "| **Gemini — סבב 4 (זה)** | **0** |", f"| Gemini — סה\"כ | {g_total} |", "| Azure Translator — סבב 4 | 0 |", f"| Azure — שורות `azure` בטבלה | {n_az} |", "| Google Translate | 0 (חלופה, לא בשימוש) |", ""]
     out += ["## 7. מבנה ומסד", "",
             "- מיגרציה 19 (`supabase/migrations/20261026190019_companies_industry_override.sql`): `companies.industry_override` + `industry_override_reason` (rollback נוסה). מיגרציה 17 (סבב 1) ומיגרציה 18 (`supabase/migrations/20261026160018_bp_display_name_azure.sql`, rollback ב-`supabase/rollback/`): העמודה `display_name` ב-`company_business_profiles` והערך `azure` ב-`term_translations.source`. "
             "על test: md5 של `companies`, `extraction_items`, `ai_assessments`, `financial_facts`, `score_runs` זהה לפני ואחרי (5 מתוך 5); ה-rollback נוסה בבלוק שבוטל והחזיר את המצב.",
