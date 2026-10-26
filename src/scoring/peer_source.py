@@ -75,7 +75,8 @@ def record_of(j: dict, engine: str) -> dict:
     metrics, label = key_metrics(j, engine)
     return {"ticker": j["ticker"], "name": j.get("name") or j["ticker"], "engine": engine, "profile": profile_of(j, engine),
             "industry": (j.get("profile_router") or {}).get("classification", {}).get("industry") or (j.get("profile_router") or {}).get("industry"),
-            "buffett": q("buffett_quality"), "graham": q("graham_quality"), "metrics": metrics, "fiscal_year": label}
+            "buffett": q("buffett_quality"), "graham": q("graham_quality"), "metrics": metrics, "fiscal_year": label,
+            "asset_type": (j.get("asset_type") or (j.get("inputs") or {}).get("asset_type")) if engine == "realestate" else None}
 
 
 def load_records(golden_dir, industry_overrides: Optional[dict] = None) -> list:

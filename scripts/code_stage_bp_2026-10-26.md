@@ -7,8 +7,9 @@
 - **מקור הרשימה (הבאג):** קבצי תוצאות הציון שעל הדיסק (`scripts/output_k6c/results`, שמקורם ב-54 חברות ה-golden), דרך `peer_source.load_records`. הרשימה לא נבדקה מול `companies` של ה-DB, ולכן בייצור (7 חברות בלבד) הופיעו חברות שאינן בו.
 - **תיקון:** המועמדים נבחרים רק מ-`companies` של אותו DB (שורות US), באותו פרופיל וענף (כולל `industry_override`), ורק אם יש להם נתון גודל ב-`financial_facts` של אותו DB (סך נכסים לבנקים ולמבטחים, הכנסות לשאר, שנה אחרונה); לחברה עצמה חייב להיות נתון כזה. אין מועמדים — המשפט לא נכתב. בדיקות יחידה: חברה שאינה ב-companies, חברה בלי עובדות, חברה בלי נתון גודל, override, בלי מועמדים.
 - **חברה חדשה נטענת:** בסוף כתיבת תוצאת ציון (`exec_score`) מוכנסת לתור משימת רינדור (`ai_background`, skill `render`) לכל חברה באותו פרופיל וענף שכבר יש לה פרופיל עסקי. היא לא צורכת תקציב מודל, לא מתרגמת, ונרשמת פעם אחת בלבד. בדוק ביחידה.
-- **`render --all` בייצור:** אין משפט "חברות דומות" ב-JPM, CB, MSFT, KO, INTC, AMT. **O: "Similar companies in ValueCompass: American Tower"** — O ו-AMT שתיהן `Property REITs and income real estate` ושתיהן בייצור, ולכן זה מה שהכלל נותן (ציפית שגם ב-O לא יהיה משפט; זה לא באג אלא תוצאה של הכלל — אם תרצה שלא יופיע, החלטה אחרת, למשל מינימום מועמדים). ריצה נוספת בייצור — 0 שינויים בכל 7.
-- **`render --all` ב-test:** ב-test יש 64 חברות עם נתוני גודל (כולל ה-golden שנטענו), ולכן שם המשפט נשאר ב-JPM, CB, MSFT, O. ריצה נוספת — 0 שינויים בכל 7. הערה: בריצות הרינדור המקבילות היו שגיאות רשת חולפות (`WinError 10054`, `getaddrinfo`); כל החברות רונדרו אחר כך ברצף בהצלחה.
+- **נדל"ן — אותו סוג נכס (תוספת):** ב-INCOME_REAL_ESTATE מועמד נבחר רק אם יש לו אותו `asset_type` של מנוע הנדל"ן (למשל `net lease`, `communication towers`, `retail (malls)`; ערך מדויק, מהקלט של המנוע ברשומת התוצאה). חברה בלי סוג נכס, או מועמד בלי סוג — לא נבחרים. בדיקות יחידה: אותו סוג נבחר, סוג אחר לא (AMT מגדלים לעומת O שכירות נטו), חברה בלי סוג, מועמד בלי סוג, מועמד שאינו ב-`companies`, והרשומה של מנוע הנדל"ן נושאת את הסוג.
+- **`render --all` בייצור (אחרי התוספת):** **אין משפט "חברות דומות" באף אחת מ-7 החברות — גם לא ב-O** (O היא `net lease`, AMT `communication towers`). רינדור חוזר של O — 0 שינויים.
+- **`render --all` ב-test:** ב-test יש 64 חברות עם נתוני גודל (כולל ה-golden שנטענו), ולכן שם המשפט נשאר ב-JPM, CB, MSFT; ב-O הוא נעלם גם שם, כי אין ב-test חברת net lease נוספת. ריצה נוספת — 0 שינויים בכל 7. הערה: בריצות הרינדור המקבילות היו שגיאות רשת חולפות (`WinError 10054`, `getaddrinfo`); כל החברות רונדרו אחר כך ברצף בהצלחה.
 
 ## 0. ייצור (אושר על ידך בצ'אט)
 
@@ -303,13 +304,13 @@
 
 > Realty Income acquires, owns, and actively manages freestanding commercial properties. Its main property types are Retail (75% of revenue) and Industrial (15%). It sells mainly to tenants, earning its revenue from rental income. It operates in the United States and Europe. Revenue in FY2025: $5.7 billion.
 >
-> It competes with property REITs and income real estate companies. Similar companies in ValueCompass: Simon Property, Public Storage, Prologis. A clear competitive advantage: scale.
+> It competes with property REITs and income real estate companies. A clear competitive advantage: scale.
 
 **הטקסט בעברית** — מצב: `stored` / `approved`. להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.
 
 > חברת Realty Income רוכשת, מחזיקה ומנהלת באופן פעיל נכסים מסחריים עצמאיים. סוגי הנכסים העיקריים: נכסי מסחר קמעונאי (75% מההכנסות) ונכסים תעשייתיים (15%). לקוחותיה הם בעיקר שוכרים, והכנסותיה מהכנסות שכירות. פועלת בארצות הברית ובאירופה. הכנסות ב-FY2025: 5.7 מיליארד $.
 >
-> מתחרה בחברות נדל"ן מניב וקרנות ריט. חברות דומות ב-ValueCompass: Simon Property, Public Storage, Prologis. יתרון תחרותי ברור: יתרון לגודל.
+> מתחרה בחברות נדל"ן מניב וקרנות ריט. יתרון תחרותי ברור: יתרון לגודל.
 
 **ביטויים שתורגמו (אנגלית → עברית):** אין.
 

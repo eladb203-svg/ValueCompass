@@ -276,3 +276,29 @@ def test_loading_a_company_queues_a_render_only_task_for_the_companies_of_its_gr
     assert runner.enqueue_peer_renders(new) == ["ACM", "P1"] and len([t for t in runner.queue.list() if t["job_type"] == "ai_background"]) == 2        # queued once
     rep = runner.run(max_tasks=5)                                            # no model budget at all: the render-only tasks still run
     assert len(rep.done) == 2 and rep.attempts == 0 and not rep.failed
+
+
+# ---------------------------------------------------------------- real estate: the same asset type
+def test_real_estate_candidates_need_the_same_asset_type(world):
+    from src.bp.pipeline import group_tickers
+    for sym in ("O", "AMT", "SPG", "NNN", "NOTYPE", "OUTSIDE"):
+        if sym != "OUTSIDE":
+            world.client.table("companies").insert({"symbol": sym, "exchange": "US", "company_name": sym, "country": "US"}).execute()
+    reit = lambda t, at: {"ticker": t, "profile": "INCOME_REAL_ESTATE", "industry": "Property REITs and income real estate", "asset_type": at}   # noqa: E731
+    recs = [reit("O", "net lease"), reit("AMT", "communication towers"), reit("SPG", "retail (malls)"), reit("NNN", "net lease"), reit("NOTYPE", None), reit("OUTSIDE", "net lease")]
+    c = world.client
+    assert group_tickers(c, recs[0], recs) == ["NNN"]                                   # O: only the other net-lease company that is in this database
+    assert group_tickers(c, recs[1], recs) == []                                        # AMT (towers): nobody of the same type -> no sentence
+    assert group_tickers(c, reit("O", None), recs) == []                                # the company has no asset type: nothing is matched
+    assert "NOTYPE" not in group_tickers(c, recs[0], recs)                              # a candidate without a type is not chosen
+    other = dict(recs[2], profile="STANDARD", industry="Software")
+    assert group_tickers(c, dict(other, ticker="X"), [dict(other, ticker="Y")]) == []   # the asset-type rule is for real estate only; Y is not a company here either
+
+
+def test_records_of_the_real_estate_engine_carry_the_asset_type():
+    from src.scoring import peer_source as PS
+    import json, glob
+    j = json.load(open(glob.glob(str(Path(__file__).resolve().parents[1] / "tests" / "golden" / "2026-10-20" / "realestate" / "O.json"))[0], encoding="utf-8"))
+    assert PS.record_of(j, "realestate")["asset_type"] == "net lease"
+    g = json.load(open(glob.glob(str(Path(__file__).resolve().parents[1] / "tests" / "golden" / "2026-10-20" / "general" / "ADBE.json"))[0], encoding="utf-8"))
+    assert PS.record_of(g, "general")["asset_type"] is None

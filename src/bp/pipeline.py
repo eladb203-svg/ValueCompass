@@ -83,9 +83,13 @@ def protected_names(profile: dict, company_name: str) -> list:
 
 
 def group_tickers(client, rec: dict, records: list) -> list:
-    """Tickers of the companies of THIS database (companies table, US exchange rows) that have the profile and the industry of ``rec`` (industry overrides included), the company itself excluded."""
+    """Tickers of the companies of THIS database (companies table, US exchange rows) that have the profile and the industry of ``rec`` (industry overrides included), the company itself excluded; for real
+    estate also the same asset type."""
     in_db = {c["symbol"] for c in client.table("companies").select("symbol,exchange").execute().data if c.get("exchange") == "US"}
-    return sorted(r["ticker"] for r in records if r["ticker"] in in_db and r["ticker"] != rec["ticker"] and r["profile"] == rec["profile"] and r.get("industry") and r.get("industry") == rec.get("industry"))
+    out = [r for r in records if r["ticker"] in in_db and r["ticker"] != rec["ticker"] and r["profile"] == rec["profile"] and r.get("industry") and r.get("industry") == rec.get("industry")]
+    if rec["profile"] == "INCOME_REAL_ESTATE":                 # real estate: also the same asset type (the real-estate engine's own asset_type); a company or a candidate without one is not matched
+        out = [r for r in out if rec.get("asset_type") and r.get("asset_type") == rec["asset_type"]]
+    return sorted(r["ticker"] for r in out)
 
 
 class BackgroundBuilder:
