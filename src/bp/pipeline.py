@@ -344,7 +344,7 @@ class BackgroundBuilder:
         for lang in ("en", "he"):
             text, info = R.render(inp, lang)
             awaiting = lang == "he" and bool(info["missing"])
-            human = lang == "he" and not awaiting and not info["unreviewed"]
+            human = not awaiting and not info["unreviewed"]                      # every translated phrase in the text is approved (a text without translated phrases has nothing left to review)
             row = {"ticker": co["symbol"], "fiscal_year": ctx["fy"], "kind": "background", "language": lang, "text": text or None, "model": "code-template", "prompt_version": PROMPT_VERSION,
                    "run_id": "", "accession": profile["accession"], "state": "awaiting_translation" if awaiting else "stored",
                    "approval_status": "pending_review" if (awaiting or not text) else "approved", "edited_by": "ai", "human_reviewed": human, "quotes": [],

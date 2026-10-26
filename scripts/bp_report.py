@@ -72,9 +72,22 @@ def write_report(path: Path, tickers: list) -> str:
     n_az = sum(1 for r in terms_rows if r["source"] == "azure")
     n_unrev = sum(1 for r in terms_rows if r["status"] == "unreviewed")
     n_human = sum(1 for r in terms_rows if r["source"] == "human")
-    out = [f"# שלב BP — סבב 4 (תיקוני תרגום, ריבית בבנק, אזורים מעורבים — לפני ייצור) — {date.today().isoformat()}", "",
+    out = [f"# שלב BP — סבב 5: העלאה לייצור (אחרי סבבי התיקונים 1–4) — {date.today().isoformat()}", "",
            "> מסד: **test בלבד**. ייצור לא נגע. בסבב הזה **לא בוצעה אף קריאת Gemini ואף קריאת תרגום** (סה\"כ Gemini בכל השלבים: " + str(g_total) + ").", ""]
-    out += ["## 1. סיכום", "",
+    out += ["## 0. ייצור (אושר על ידך בצ'אט)", "",
+            "**תוצאה:** מיגרציות 17, 18, 19 הוחלו בייצור (`zwpftrjryxyymrxsprqh`), אוצר המילים והתרגומים נטענו, 7 הפרופילים הועתקו מ-test, הטקסטים רונדרו בייצור, וטקסטי D1/T1 הישנים (17) סומנו `superseded`. **0 קריאות Gemini ו-0 קריאות תרגום בייצור.** "
+            "יש **אי-התאמה אחת** מול test (MSFT) — ראו להלן.", "",
+            "| שלב | תוצאה |", "|---|---|",
+            "| תיקונים ב-test לפני הייצור | `CPUs` → \"מעבדים\" (כלל חדש: ראשי תיבות רבים כלליים כמו CPUs/GPUs מתורגמים; AWS נשאר לטיני); `terms approve` לפעילות המרכזית של INTC ו-AMT; נמחקו 18 שורות `term_translations` שלא בשימוש והשלב יצר; נשארו 55 שורות, כולן `approved`; `render --all` ואז ריצה שנייה — 0 שינויים |",
+            "| (א) fingerprint | 23 הטבלאות הקיימות — מבנה עמודות, אילוצים, אינדקסים, מדיניות RLS ומצב RLS — **זהים בייצור ובtest** פרט לשינויים של 17–19 (העמודות והאילוצים החדשים ב-`ai_texts`/`companies` והטבלאות החדשות הוצאו מהשוואה). אי-התאמה — אין |",
+            "| (ב) מיגרציות | 17 → 18 → 19 לפי הסדר. md5 של `companies`, `ai_assessments`, `extraction_items`, `financial_facts`, `score_runs` ושל עמודות `ai_texts` הישנות **זהה לפני ואחרי** (6 מתוך 6; ב-`companies` בלי שתי העמודות החדשות, שהן NULL). **rollback נוסה בייצור** בבלוק שבוטל (מחיקת העמודות/הטבלאות של 19, 18, 17 לפי הסדר ההפוך): md5 של `companies` ושל `ai_texts` חזר בדיוק למקור, ושלוש הטבלאות נעלמו; אחרי הביטול המיגרציות נשארו מוחלות |",
+            "| RLS בייצור כ-`authenticated` | 7 פרופילים, 64 שורות אוצר מילים (כולן פעילות), 55 תרגומים, 14 טקסטי רקע חדשים גלויים; **0** שורות `pending_review` / `superseded` / `failed` גלויות; 0 טקסטי D1/T1 ישנים גלויים; הכנסה ועדכון נדחו |",
+            "| (ג) טעינה | `business_vocab`: 64 שורות; `term_translations`: 55 שורות `approved` בלבד (0 `unreviewed` ב-test, ולכן לא הועתק דבר שלא אושר) |",
+            "| (ד) 7 החברות | הפרופילים הועתקו מ-test (KO, MSFT, INTC, JPM, CB, O, AMT; אותם `accession`), טקסטים רונדרו בייצור, 17 טקסטי D1/T1 הישנים `superseded` (לא נמחקו) |",
+            "| (ה) אימות | 6 מתוך 7 חברות: טקסט אנגלי ועברי **זהים ל-test**, `human_reviewed=true`, `approved`; רינדור שני = 0 שינויים בכל 7; `v_company_status`: 7 חברות `complete`, `background_status=approved`, `background_human_reviewed=true` |", "",
+            "**אי-ההתאמה (MSFT):** משפט \"חברות דומות\" שונה — בייצור: Oracle, Uber Technologies, Salesforce; ב-test: Oracle, Salesforce, Adobe. הסיבה: UBER קיימת בייצור **רק** כתוצאת golden בקובץ ואינה שורה ב-`companies`, ולכן `industry_override` (שהוא עמודה בשורת החברה) לא קיים בייצור והיא עדיין מסווגת Software. "
+            "לא יצרתי שורת חברה ל-UBER בייצור (זה היה מוסיף חברה בלי נתונים מחוץ לסט הפיתוח). התיקון יתקיים מעצמו כשתיטען UBER לייצור עם ה-override, או שאוכל להוסיף שורה ריקה עם ה-override אם תאשר. שאר הטקסט של MSFT זהה.", ""]
+    out += ["## 1. סיכום סבב 4 (קודם)", "",
             f"- **`scripts/terms_fix_2026-10-26.md` הוחל:** 37 שורות עודכנו ל-`human`/`approved` (שורות שהשם בהן נוקה בסעיף 1 הותאמו לשם המנוקה; \"(להשאיר בלטינית)\" נשמר כערך באנגלית: Windows, Azure, Microsoft 365 Copilot). `render --all` הורץ; ריצה שנייה — 0 שינויים בכל 7 החברות.",
             "- **שורות שלא נמצאו (2):** (א) `INTC | Intel Core Ultra Series 3 processors (מותג)` — שם מותג אינו ביטוי מתורגם; ביצעתי את ההוראה על הפרופיל עצמו: שם הפריט שונה ל-\"Intel Core Ultra\" (המקור נשמר ב-`name_original`). "
             "(ב) `AMT | Europe (Property, …)` — אין ביטוי כזה בטבלה: הטקסט העברי מתרגם רק 3 מגזרים ראשונים (US and Canada, Latin America, Africa & APAC), \"Europe\" אינו ביניהם.",

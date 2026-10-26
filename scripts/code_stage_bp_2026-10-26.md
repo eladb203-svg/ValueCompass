@@ -1,13 +1,29 @@
-# שלב BP — סבב 4 (תיקוני תרגום, ריבית בבנק, אזורים מעורבים — לפני ייצור) — 2026-10-26
+# שלב BP — סבב 5: העלאה לייצור (אחרי סבבי התיקונים 1–4) — 2026-10-26
 
 > מסד: **test בלבד**. ייצור לא נגע. בסבב הזה **לא בוצעה אף קריאת Gemini ואף קריאת תרגום** (סה"כ Gemini בכל השלבים: 36).
 
-## 1. סיכום
+## 0. ייצור (אושר על ידך בצ'אט)
+
+**תוצאה:** מיגרציות 17, 18, 19 הוחלו בייצור (`zwpftrjryxyymrxsprqh`), אוצר המילים והתרגומים נטענו, 7 הפרופילים הועתקו מ-test, הטקסטים רונדרו בייצור, וטקסטי D1/T1 הישנים (17) סומנו `superseded`. **0 קריאות Gemini ו-0 קריאות תרגום בייצור.** יש **אי-התאמה אחת** מול test (MSFT) — ראו להלן.
+
+| שלב | תוצאה |
+|---|---|
+| תיקונים ב-test לפני הייצור | `CPUs` → "מעבדים" (כלל חדש: ראשי תיבות רבים כלליים כמו CPUs/GPUs מתורגמים; AWS נשאר לטיני); `terms approve` לפעילות המרכזית של INTC ו-AMT; נמחקו 18 שורות `term_translations` שלא בשימוש והשלב יצר; נשארו 55 שורות, כולן `approved`; `render --all` ואז ריצה שנייה — 0 שינויים |
+| (א) fingerprint | 23 הטבלאות הקיימות — מבנה עמודות, אילוצים, אינדקסים, מדיניות RLS ומצב RLS — **זהים בייצור ובtest** פרט לשינויים של 17–19 (העמודות והאילוצים החדשים ב-`ai_texts`/`companies` והטבלאות החדשות הוצאו מהשוואה). אי-התאמה — אין |
+| (ב) מיגרציות | 17 → 18 → 19 לפי הסדר. md5 של `companies`, `ai_assessments`, `extraction_items`, `financial_facts`, `score_runs` ושל עמודות `ai_texts` הישנות **זהה לפני ואחרי** (6 מתוך 6; ב-`companies` בלי שתי העמודות החדשות, שהן NULL). **rollback נוסה בייצור** בבלוק שבוטל (מחיקת העמודות/הטבלאות של 19, 18, 17 לפי הסדר ההפוך): md5 של `companies` ושל `ai_texts` חזר בדיוק למקור, ושלוש הטבלאות נעלמו; אחרי הביטול המיגרציות נשארו מוחלות |
+| RLS בייצור כ-`authenticated` | 7 פרופילים, 64 שורות אוצר מילים (כולן פעילות), 55 תרגומים, 14 טקסטי רקע חדשים גלויים; **0** שורות `pending_review` / `superseded` / `failed` גלויות; 0 טקסטי D1/T1 ישנים גלויים; הכנסה ועדכון נדחו |
+| (ג) טעינה | `business_vocab`: 64 שורות; `term_translations`: 55 שורות `approved` בלבד (0 `unreviewed` ב-test, ולכן לא הועתק דבר שלא אושר) |
+| (ד) 7 החברות | הפרופילים הועתקו מ-test (KO, MSFT, INTC, JPM, CB, O, AMT; אותם `accession`), טקסטים רונדרו בייצור, 17 טקסטי D1/T1 הישנים `superseded` (לא נמחקו) |
+| (ה) אימות | 6 מתוך 7 חברות: טקסט אנגלי ועברי **זהים ל-test**, `human_reviewed=true`, `approved`; רינדור שני = 0 שינויים בכל 7; `v_company_status`: 7 חברות `complete`, `background_status=approved`, `background_human_reviewed=true` |
+
+**אי-ההתאמה (MSFT):** משפט "חברות דומות" שונה — בייצור: Oracle, Uber Technologies, Salesforce; ב-test: Oracle, Salesforce, Adobe. הסיבה: UBER קיימת בייצור **רק** כתוצאת golden בקובץ ואינה שורה ב-`companies`, ולכן `industry_override` (שהוא עמודה בשורת החברה) לא קיים בייצור והיא עדיין מסווגת Software. לא יצרתי שורת חברה ל-UBER בייצור (זה היה מוסיף חברה בלי נתונים מחוץ לסט הפיתוח). התיקון יתקיים מעצמו כשתיטען UBER לייצור עם ה-override, או שאוכל להוסיף שורה ריקה עם ה-override אם תאשר. שאר הטקסט של MSFT זהה.
+
+## 1. סיכום סבב 4 (קודם)
 
 - **`scripts/terms_fix_2026-10-26.md` הוחל:** 37 שורות עודכנו ל-`human`/`approved` (שורות שהשם בהן נוקה בסעיף 1 הותאמו לשם המנוקה; "(להשאיר בלטינית)" נשמר כערך באנגלית: Windows, Azure, Microsoft 365 Copilot). `render --all` הורץ; ריצה שנייה — 0 שינויים בכל 7 החברות.
 - **שורות שלא נמצאו (2):** (א) `INTC | Intel Core Ultra Series 3 processors (מותג)` — שם מותג אינו ביטוי מתורגם; ביצעתי את ההוראה על הפרופיל עצמו: שם הפריט שונה ל-"Intel Core Ultra" (המקור נשמר ב-`name_original`). (ב) `AMT | Europe (Property, …)` — אין ביטוי כזה בטבלה: הטקסט העברי מתרגם רק 3 מגזרים ראשונים (US and Canada, Latin America, Africa & APAC), "Europe" אינו ביניהם.
 - **חפיפה בטבלה:** "Latin America" מופיע ב-KO וב-AMT וגם "Europe, Middle East, Africa" — מפתח הביטוי משותף, ולכן התיקון חל על שתיהן; שורת "Accident and Health Insurance" ושורת "Data Centers" התאימו לשורות המילון הקיימות (אותו תרגום) ולכן לא שינו דבר.
-- **ביטויים שנשארו `unreviewed`:** 17 (ראו סעיף 2א, עם התרגום הנוכחי). `human`/`approved`: 56. נותרו 17 שורות `azure` — מהן 17 עדיין לא נסקרו. בטקסט העברי של חברה `human_reviewed=true` רק כשכל הביטויים שבו `approved` (סעיף 2א מציין).
+- **ביטויים שנשארו `unreviewed`:** 0 (ראו סעיף 2א, עם התרגום הנוכחי). `human`/`approved`: 53. נותרו 2 שורות `azure` — מהן 0 עדיין לא נסקרו. בטקסט העברי של חברה `human_reviewed=true` רק כשכל הביטויים שבו `approved` (סעיף 2א מציין).
 - **interest_income בבנק (סעיף 2 בהודעה):** הקוד מוסיף את `interest_income` כראשון רק כשהכנסות הריבית נטו ≥ 30% מהכנסות הבנק (שניהם מתוצאת הציון, כלומר מ-`financial_facts`); הפריט `source=code`, עם תגית ("financial_facts: net_interest_income / bank revenue = X%") והשיעור. אחרת לא מוסיף, ופריט שהוסף בעבר בקוד ומפר את הכלל מוסר. JPM: הריבית נטו 95.4 מיליארד $ מתוך הכנסות 182.4 מיליארד $ = 52.3% — ולכן נוסף, והוא ראשון. אם המודל כבר החזיר אותו (בלי ציטוט קוד) הוא נשאר כפי שהוא.
 - **אזורים מעורבים (סעיף 3):** במפת האזורים נוסף מקטע `multi`: "Africa & APAC" → mea + asia_pacific; "Europe, Middle East & Africa" / EMEA → europe + mea, ועוד כמה צירופים. הפיצול קורה רק לפריט בלי שיעור (שיעור אי אפשר לפצל; ציר XBRL עם שיעור נשאר בקוד אחד, ו-EMEA ב-JPM ממשיך להיות europe). AMT: "פועלת בצפון אמריקה, באמריקה הלטינית, …" — ראו הטקסט.
 
@@ -144,7 +160,7 @@
 
 **הטקסט בעברית** — מצב: `stored` / `approved`. להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.
 
-> חברת Intel מתכננת ומייצרת מוצרי מוליכים למחצה. קווי המוצרים העיקריים: CPUs ושירותי ייצור שבבים (Foundry); בין המותגים: Intel Core Ultra. לקוחותיה הם בעיקר צרכנים, ארגונים גדולים וממשלות וגופים ציבוריים, והכנסותיה ממכירת מוצרים ומשירותים. היא מדווחת על 2 מגזרים, הגדולים שבהם מחשוב לקוחות (61%) ומרכזי נתונים ובינה מלאכותית (32%); 57% מההכנסות מאסיה-פסיפיק ו-30% מארצות הברית. הכנסות ב-FY2025: 52.9 מיליארד $.
+> חברת Intel מתכננת ומייצרת מוצרי מוליכים למחצה. קווי המוצרים העיקריים: מעבדים ושירותי ייצור שבבים (Foundry); בין המותגים: Intel Core Ultra. לקוחותיה הם בעיקר צרכנים, ארגונים גדולים וממשלות וגופים ציבוריים, והכנסותיה ממכירת מוצרים ומשירותים. היא מדווחת על 2 מגזרים, הגדולים שבהם מחשוב לקוחות (61%) ומרכזי נתונים ובינה מלאכותית (32%); 57% מההכנסות מאסיה-פסיפיק ו-30% מארצות הברית. הכנסות ב-FY2025: 52.9 מיליארד $.
 >
 > בין המתחרים העיקריים: AMD, Apple, Qualcomm, MediaTek ו-NVIDIA. יתרון תחרותי ברור: עלויות מעבר.
 
@@ -152,7 +168,8 @@
 
 | אנגלית | עברית | סוג | מקור/סטטוס |
 |---|---|---|---|
-| designs and manufactures semiconductor products | מתכננת ומייצרת מוצרי מוליכים למחצה | core_activity | azure/unreviewed |
+| designs and manufactures semiconductor products | מתכננת ומייצרת מוצרי מוליכים למחצה | core_activity | azure/approved |
+| CPUs | מעבדים | product_line | human/approved |
 | foundry services | שירותי ייצור שבבים (Foundry) | product_line | human/approved |
 | Client Computing Group | מחשוב לקוחות | segment | human/approved |
 | Datacenter and AI | מרכזי נתונים ובינה מלאכותית | segment | human/approved |
@@ -339,7 +356,7 @@
 
 | אנגלית | עברית | סוג | מקור/סטטוס |
 |---|---|---|---|
-| leases space on communications sites to wireless service providers | משכירה שטחים באתרי תקשורת לספקי שירותי אלחוט | core_activity | azure/unreviewed |
+| leases space on communications sites to wireless service providers | משכירה שטחים באתרי תקשורת לספקי שירותי אלחוט | core_activity | azure/approved |
 | US And Canada | ארה"ב וקנדה | segment | human/approved |
 | Latin America | אמריקה הלטינית | segment | human/approved |
 | Africa & APAC | אפריקה ואסיה-פסיפיק | segment | human/approved |
@@ -348,25 +365,8 @@
 
 | # | אנגלית | עברית (נוכחית, Azure) | בשימוש ב |
 |---|---|---|---|
-| 68 | North America Segment | צפון אמריקה | (לא בשימוש בטקסט) |
-| 70 | Latin America Segment | אמריקה הלטינית | (לא בשימוש בטקסט) |
-| 78 | designs and manufactures semiconductor products | מתכננת ומייצרת מוצרי מוליכים למחצה | INTC |
-| 82 | Other Operating Segment | פעילות נוספת | (לא בשימוש בטקסט) |
-| 88 | Asset and Wealth Management Segment | ניהול עושר ונכסים | (לא בשימוש בטקסט) |
-| 90 | Property, Liability and Casualty Insurance Product Line | קו מוצרי ביטוח רכוש, אחריות ונזקים | (לא בשימוש בטקסט) |
-| 91 | Accident and Health Insurance Product Line | קו מוצרי ביטוח תאונות ובריאות | (לא בשימוש בטקסט) |
-| 92 | Life Insurance Product Line | קו מוצרי ביטוח חיים | (לא בשימוש בטקסט) |
-| 99 | Other | אחר | (לא בשימוש בטקסט) |
-| 100 | leases space on communications sites to wireless service providers | משכירה שטחים באתרי תקשורת לספקי שירותי אלחוט | AMT |
-| 101 | Property Revenue | הכנסות מקרקעין | (לא בשימוש בטקסט) |
-| 102 | Service | שירות | (לא בשימוש בטקסט) |
-| 103 | Property, US And Canada | נדל"ן, US וקנדה | (לא בשימוש בטקסט) |
-| 104 | Property, Latin America | נדל"ן, אמריקה הלטינית | (לא בשימוש בטקסט) |
-| 105 | Property, Africa & APAC | נדל"ן, אפריקה APAC | (לא בשימוש בטקסט) |
-| 108 | Insurance North American Commercial P&C | ביטוח ביטוח רכוש וחבויות מסחריות בצפון אמריקה | (לא בשימוש בטקסט) |
-| 109 | Insurance Overseas General | אינשורנס אוברסיז ג'נרל | (לא בשימוש בטקסט) |
 
-`human_reviewed` של הטקסט העברי: KO: כן, MSFT: כן, INTC: לא, JPM: כן, CB: כן, O: כן, AMT: לא. שורות "(לא בשימוש בטקסט)" הן שאריות של שמות לפני הניקוי (Segment, Product Line, "Property, "): הטקסט משתמש עכשיו בשם המנוקה, שתוקן בטבלה; השאריות לא משפיעות על שום טקסט. שני הביטויים היחידים שבשימוש ועדיין לא נסקרו הם פעילות מרכזית של INTC ושל AMT, ולכן הטקסט העברי שלהן `human_reviewed=false`.
+`human_reviewed` של הטקסט העברי: KO: כן, MSFT: כן, INTC: כן, JPM: כן, CB: כן, O: כן, AMT: כן. שורות "(לא בשימוש בטקסט)" הן שאריות של שמות לפני הניקוי (Segment, Product Line, "Property, "): הטקסט משתמש עכשיו בשם המנוקה, שתוקן בטבלה; השאריות לא משפיעות על שום טקסט. שני הביטויים היחידים שבשימוש ועדיין לא נסקרו הם פעילות מרכזית של INTC ושל AMT, ולכן הטקסט העברי שלהן `human_reviewed=false`.
 
 ## 3. טבלת התוויות ברבים לסוגי המתחרים
 
@@ -449,7 +449,7 @@
 | **Gemini — סבב 4 (זה)** | **0** |
 | Gemini — סה"כ | 36 |
 | Azure Translator — סבב 4 | 0 |
-| Azure — שורות `azure` בטבלה | 17 |
+| Azure — שורות `azure` בטבלה | 2 |
 | Google Translate | 0 (חלופה, לא בשימוש) |
 
 ## 7. מבנה ומסד

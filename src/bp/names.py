@@ -41,6 +41,8 @@ def keeps_latin(item: dict) -> bool:
     if item.get("source") != "ai":
         return False
     toks = (item.get("name") or "").split()
+    if len(toks) == 1 and re.fullmatch(r"[A-Z]{2,6}s", toks[0]):          # a general plural acronym (CPUs, GPUs) is not a commercial name: it is translated
+        return False
     return 0 < len(toks) <= 4 and all(t[0].isupper() or t[0].isdigit() for t in toks)
 
 

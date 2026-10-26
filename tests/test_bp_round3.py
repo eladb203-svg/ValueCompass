@@ -209,3 +209,12 @@ def test_the_terms_table_with_company_column_notes_and_keep_latin(world, tmp_pat
     m = b.terms.map()
     assert m["north america"]["he"] == "צפון אמריקה" and m["windows"]["he"] == "Windows" and m["life"]["he"] == "ביטוח חיים" and m["retail"]["he"] == "נכסי מסחר קמעונאי"
     assert m["europe, middle east, africa"]["he"] == "אירופה, המזרח התיכון ואפריקה" and all(v["status"] == "approved" and v["source"] == "human" for v in m.values())
+
+
+def test_general_plural_acronyms_are_translated_and_every_text_without_unreviewed_phrases_is_human_reviewed(world):
+    assert not keeps_latin({"name": "CPUs", "source": "ai"}) and not keeps_latin({"name": "GPUs", "source": "ai"}) and keeps_latin({"name": "AWS", "source": "ai"})
+    b, texts = world.build(gem=FakeGemini(bp_answer()))
+    b.run("ACM")
+    for lang in ("en", "he"):
+        row = texts.get("ACM", 2025, "background", "bp", "", lang)
+        assert row["human_reviewed"] is (lang == "en")            # no translator key: Hebrew waits (not reviewed); English has no translated phrase to review
