@@ -1,6 +1,6 @@
 """The work queue runner (K6c, K6 spec 2.8 and section 3): picks tasks from ``work_queue`` and runs them, one at a time.
 
-Order: priority (1 a user asked, 2 a new annual report, 3 backfill), then inside one company: the data job, the first score (without AI), C1, B extraction, A questions, BP background (BP-1 -> profile -> phrase translation -> rendering), the score
+Order: priority (1 a user asked, 2 data completion, 3 a new annual report, 4 wide loading; K6 spec 2.8), then inside one company: the data job, the first score (without AI), C1, B extraction, A questions, BP background (BP-1 -> profile -> phrase translation -> rendering), the score
 with the AI answers (``final``), D2. A task waits for the earlier open tasks of its company. A model call is made only through ``self.gemini`` (a ``CappedGemini``): every request attempt
 counts against the run's budget and the shared daily counter (cap 450); when the budget is spent the task that needed a call becomes ``deferred_quota`` until the next reset
 (midnight Pacific = 10:00 Israel) and no further AI task starts. Data tasks (import, score, D2) need no budget and keep running. A stored answer is never asked again (R18).
@@ -200,6 +200,10 @@ class QueueRunner:
         if res.router_needs:
             # provisional profile: the router needs the extraction of the engine first; the score waits until the profile is confirmed (a `repair` job re-routes from the cache)
             profile = {"bank": "BANK", "insurance": "INSURANCE", "realestate": "INCOME_REAL_ESTATE"}[res.router_needs]
+            ran = [t for t in self.queue.list(company_id) if t["job_type"] == "ai_extract" and t["state"] == "done" and (t.get("payload") or {}).get("purpose") == "router"
+                   and (t["payload"] or {}).get("engine") == res.router_needs]
+            if ran:                                   # K6d-1: the extraction ran and the router still needs it - asking again would repeat the same model call for ever (found with DLR)
+                raise RuntimeError(f"the router still needs the {res.router_needs} extraction after it ran ({len(ran)} time(s)): the loop is stopped, a person must look at it")
             self.enqueue(task["company_id"], "ai_extract", None, None, 1, {"blocks": BLOCKS_OF[profile], "purpose": "router", "engine": res.router_needs, "priority_reason": "router"})
             return {"status": res.status, "rows": res.rows_written, "years": res.years, "provisional_profile": res.profile, "extraction_requested": res.router_needs}
         self.enqueue(task["company_id"], "score", None, "first", task["priority"])
@@ -235,6 +239,7 @@ class QueueRunner:
             return {"status": out.status, "detail": out.detail}
         if out.status != "scored":
             raise RuntimeError(f"scoring failed: {out.detail}")
+        out.result = self.priced_result(cid, ticker, out)
         run_id, w = self.scores.write_result(cid, out.result)
         self.enqueue_peer_renders(co)
         if stage == "first":
@@ -245,6 +250,18 @@ class QueueRunner:
             return {"run_id": run_id, "write": w, "ai_pending": out.ai_pending, "planned": planned}
         self.companies.set_processing_state(cid, "complete" if out.ai_pending == 0 else "scored_partial")
         return {"run_id": run_id, "write": w, "ai_pending": out.ai_pending}
+
+    def priced_result(self, company_id: int, ticker: str, out) -> dict:
+        """The result priced at the latest stored price (``market_snapshot``): the engines read the price file of the earlier stages, which is not refreshed (K6d-1). A stale price (E1) gives no price
+        score. The result file that D2 and the peer groups read is rewritten with the same prices."""
+        snap = self.client.table("market_snapshot").select("current_price,market_date,is_stale").eq("company_id", company_id).limit(1).execute().data
+        if not snap or snap[0].get("current_price") is None:
+            return out.result
+        from src.pipeline.reprice import reprice_result
+        res = reprice_result(out.result, float(snap[0]["current_price"]), snap[0].get("market_date"), bool(snap[0].get("is_stale")))
+        path = self.results_dir / out.engine / f"{ticker}.json"
+        path.write_text(json.dumps(res, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
+        return res
 
     def enqueue_peer_renders(self, co: dict) -> list:
         """A company of this database was scored: the companies of the same profile and industry that already have a business profile get their background rendered again (the 'similar companies'
@@ -282,6 +299,22 @@ class QueueRunner:
         if not self.has_background(t, fy):
             planned.append(self.enqueue(cid, "ai_background", fy, None, priority)[0]["id"])
         return planned
+
+    def plan_completion(self, co: dict, priority: int = 2) -> list:
+        """The weekly audit (K6d-1): the tasks a loaded company still needs - the first score when it has none, otherwise the AI answers, extraction items and background text that are missing
+        (``plan_ai``; a stored answer or text is not asked again). Priority 2 (data completion). Nothing is planned without the company's result file."""
+        cid = co["id"]
+        if co.get("processing_state") in ("unsupported", "resolved", "failed") or not co.get("profile"):
+            return []
+        if not self.scores.latest_run(cid):
+            return [self.enqueue(cid, "score", None, "first", priority)[0]["id"]]
+        res = self.load_result(co["symbol"])
+        if res is None:
+            return []
+
+        class _Out:                                          # plan_ai reads only .result
+            result = res
+        return self.plan_ai(co, _Out, priority)
 
     def missing_assessments(self, ticker: str, res: dict, fy: int) -> list:
         S._paths()
@@ -331,12 +364,8 @@ class QueueRunner:
         run_label = f"run:{run['id']}"
         g = P.peer_group(rec, records)
         pc = P.peer_percentiles(rec, g, records)
-        prev = None
-        try:
-            prev, _ = PS.load_json(S.GOLDEN_DIR, t)
-        except KeyError:
-            pass
-        inputs = D2.build_d2_inputs(res, rec, run_label, pc, prev, S.GOLDEN_DIR.name if prev else None)
+        inputs = D2.build_d2_inputs(res, rec, run_label, pc)
+        inputs["changes"] = (run or {}).get("changes")           # K6d-1: the "what changed" line is computed when the run is written and kept in the run (the previous run is deleted)
         if inputs.get("ai_pending"):
             return {"state": "skipped_ai_pending", "ai_pending": inputs["ai_pending"]}
         row = T.generate_analysis_template(t, int(rec["fiscal_year"][2:]), inputs, self.texts)

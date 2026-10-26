@@ -10,6 +10,13 @@
     vc.py score <ticker>             queue and run the first score
     vc.py ai-queue --budget N [--max-tasks M] [--tickers T ...]   run the queue; N = most model request attempts of this run (the shared daily cap of 450 applies too)
     vc.py queue status [ticker]
+  Scheduler (K6d-1; times in config/schedule.yaml; no operating-system scheduler)
+    vc.py scheduler [--config FILE]       run the scheduler in this window (one instance only; Ctrl+C stops it in order)
+    vc.py scheduler --ensure              start it in the background if it is not running (does nothing when it is); the K7 app icon runs this
+    vc.py scheduler --stop                orderly stop: a job in the middle finishes, the lock is released
+    vc.py scheduler --status              per job: last run and result, next run, jobs missed while the PC was off
+    vc.py scheduler --once <job>          run one job now: close_prices intraday_prices new_reports ai_queue audit yields fx cleanup
+    vc.py cleanup [--apply]               the retention cleanup (K6 spec 3.3): prints what would be deleted (default); --apply deletes it
   Background (business profile: XBRL + BP-1 -> closed vocabulary -> template; replaces D1 / T1)
     vc.py profile show <ticker>           the stored profile: field, value, source (xbrl / ai / code), quote or tag, status
     vc.py render <ticker> | --all         render the English and Hebrew texts again from the stored profiles and phrase translations (no model call, no translation call)
@@ -31,25 +38,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.db import db_target, get_supabase_client  # noqa: E402
+from src.db import db_target  # noqa: E402
 from src.pipeline import audit as A  # noqa: E402
-from src.pipeline.runner import JOBS, Pipeline  # noqa: E402
-from src.pipeline.sec_source import PipelineSec  # noqa: E402
-
-
-def make_pipeline(dry_run: bool, offline: bool = False) -> Pipeline:
-    sec = PipelineSec(max_age_hours=float("inf") if offline else 20.0)
-    return Pipeline(sec, dry_run=dry_run)
-
-
-def make_runner(budget: int = 0):
-    from src.pipeline.queue_runner import QueueRunner
-    client = get_supabase_client()
-    gemini = None
-    if budget > 0:
-        from src.ai.client import GeminiClient, RateLimiter
-        gemini = GeminiClient(limiter=RateLimiter(rpm=12, rpd=450))
-    return QueueRunner(client, gemini=gemini, budget=budget, pipeline_factory=lambda: make_pipeline(False))
+from src.pipeline.factory import make_pipeline, make_runner  # noqa: E402
+from src.pipeline.runner import JOBS  # noqa: E402
 
 
 def print_result(r) -> None:
@@ -238,9 +230,52 @@ def background_command(runner, a) -> int:
     return 2
 
 
+def scheduler_command(a) -> int:
+    from src.db import get_supabase_client
+    from src.sched import service
+    from src.sched.jobs import JobRunner
+    from src.sched.schedule import JOB_NAMES, Config
+    cfg = Config.load(Path(a.config) if a.config else None)
+    if a.command == "cleanup":
+        jr = JobRunner(get_supabase_client(), cfg)
+        out = jr.run("cleanup", apply=True) if a.apply else jr.cleanup(apply=False)          # the plan alone reads only: nothing is written, not even a log row
+        print(Path(out.detail["plan_file"]).read_text(encoding="utf-8") if out.detail.get("plan_file") else "")
+        print(f"cleanup: {out.status}  apply={out.detail.get('apply')}  deleted={out.detail.get('deleted', 0)}" + (f"  ERROR {out.error}" if out.error else ""))
+        return 1 if out.status == "failed" else 0
+    if a.ensure:
+        started, msg = service.ensure(Path(a.config) if a.config else None)
+        print(msg)
+        return 0
+    if a.stop:
+        ok, msg = service.stop()
+        print(msg)
+        return 0 if ok or "not running" in msg else 1
+    if a.status:
+        try:
+            jobs = JobRunner(get_supabase_client(), cfg)
+            jobs.last_rows("fx", 1)                                 # one read: is the database reachable?
+        except Exception as e:   # noqa: BLE001 - the schedule can be shown without the database
+            print(f"(database not reachable: {type(e).__name__}; showing the schedule only)")
+            jobs = None
+        print("\n".join(service.status(cfg, jobs)))
+        return 0
+    if a.once:
+        if a.once not in JOB_NAMES:
+            print(f"unknown job {a.once!r}; one of: {', '.join(JOB_NAMES)}")
+            return 2
+        if service.is_running():
+            print("note: the scheduler is running; this run is separate from it")
+        opts = {"apply": True} if (a.once == "cleanup" and a.apply) else {}
+        out = JobRunner(get_supabase_client(), cfg).run(a.once, **opts)
+        print(json.dumps({"job": a.once, "status": out.status, "inserted": out.inserted, "updated": out.updated, "deleted": out.deleted, "error": out.error, "warnings": out.warnings[:10],
+                          "skipped": out.skipped, "detail": out.detail}, indent=1, ensure_ascii=False, default=str))
+        return 1 if out.status == "failed" else 0
+    return service.serve(cfg, get_supabase_client, log=lambda m: print(m, flush=True))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=("load", "audit", "status", "score", "ai-queue", "queue", "texts", "glossary", "profile", "render", "terms"))
+    ap.add_argument("command", choices=("load", "audit", "status", "score", "ai-queue", "queue", "texts", "glossary", "profile", "render", "terms", "scheduler", "cleanup"))
     ap.add_argument("arg", nargs="?", help="ticker, or the sub-command of queue / texts / glossary")
     ap.add_argument("arg2", nargs="?", help="id of a text / number of a proposal / ticker for queue status")
     ap.add_argument("--job", choices=JOBS, default="initial_import")
@@ -253,8 +288,16 @@ def main(argv=None) -> int:
     ap.add_argument("--all", action="store_true", help="render: every company that has a profile")
     ap.add_argument("--he", help="terms edit: the corrected Hebrew phrase")
     ap.add_argument("--en")
+    ap.add_argument("--config", help="scheduler: the schedule file (default config/schedule.yaml)")
+    ap.add_argument("--ensure", action="store_true", help="scheduler: start in the background if not running")
+    ap.add_argument("--stop", action="store_true", help="scheduler: orderly stop")
+    ap.add_argument("--status", action="store_true", help="scheduler: last/next run of every job")
+    ap.add_argument("--once", help="scheduler: run this job now")
+    ap.add_argument("--apply", action="store_true", help="cleanup / scheduler --once cleanup: really delete (default: only list)")
     a = ap.parse_args(argv)
-    print(f"[database target: {db_target()}]")
+    print(f"[database target: {db_target()}]", flush=True)
+    if a.command in ("scheduler", "cleanup"):
+        return scheduler_command(a)
     if a.command == "audit":
         resolved, plans = make_pipeline(True).audit(a.arg)
         print(A.render(resolved, plans))
@@ -274,7 +317,9 @@ def main(argv=None) -> int:
             return 1 if res.status == "failed" else 0
         runner = make_runner(a.budget)
         row = runner.companies.get_by_symbol(a.arg.upper(), "US")
-        print("after load:", runner.after_load(res, row["id"], 1 if before is None or not before.get("processing_state") else 3))
+        from src.repositories.work_queue_repository import JOB_PRIORITY, PRIORITY
+        prio = PRIORITY["user"] if before is None or not before.get("processing_state") else JOB_PRIORITY.get(a.job, PRIORITY["completion"])        # a new company = a user's request (1)
+        print("after load:", runner.after_load(res, row["id"], prio))
         print_report(runner.run(a.max_tasks))
         return 0
     if a.command == "score":

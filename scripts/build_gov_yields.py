@@ -21,7 +21,7 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "scripts" / "gov_yields.csv"
 VERSION = "v1"
-YEARS = range(2016, 2026)
+YEARS = range(2016, date.today().year)               # the completed years (the scheduler runs this script when a year has ended)
 UA = {"User-Agent": "Mozilla/5.0 (valuecompass research; eladb203@gmail.com)"}
 SRC = {
     "USD": ("DGS10", "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10",

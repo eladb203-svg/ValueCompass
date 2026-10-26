@@ -1,0 +1,71 @@
+# ValueCompass scheduler (K6 spec 3.1, K6d-1): one file for the times, the frequencies and the budget. Times are Israel time (Asia/Jerusalem) unless a job says it follows New York.
+# Changing a value takes effect the next time the scheduler starts (`vc.py scheduler --stop`, then `--ensure`).
+
+timezone: Asia/Jerusalem
+
+# For the future alerts (K7). Not used and nothing is sent in K6d-1.
+ADMIN_EMAIL: eladb203@gmail.com
+
+# Days the exchanges are closed that no rule predicts (a day of national mourning, ...): "YYYY-MM-DD".
+extra_closed: []
+
+# Test only: true = the price jobs also run outside the trading hours of New York (a weekend, the night).
+ignore_market_hours: false
+
+jobs:
+  # All stocks, once per trading day: `minutes_after_close` after the NYSE / NASDAQ close (13:00 New York time on a half day). One batch request.
+  # Note: the close is 23:00 Israel time most of the year, so this run is at 23:30, outside the 10:00-23:00 window of the intraday job (decision: 30 minutes after the close).
+  close_prices:
+    enabled: true
+    minutes_after_close: 30
+
+  # The "hot" stocks only (held in a portfolio or on a watchlist, and the price is at most `hot_ratio` x the buy price of Buffett or Graham): every `every_minutes` (30-60)
+  # while the exchange is open and only between `from` and `to` Israel time. No hot stock = no request.
+  intraday_prices:
+    enabled: true
+    every_minutes: 30
+    from: "10:00"
+    to: "23:00"
+    hot_ratio: 1.10
+
+  # One request: the daily form index of the SEC for the previous trading day(s). 10-K, 10-K/A and 10-KT of our CIKs are queued (new_report / amendment, priority 3).
+  new_reports:
+    enabled: true
+    at: "06:00"
+    first_run_days: 5          # the first run ever reads this many trading days back; after that it continues from the last day it read
+
+  # The AI queue and the data tasks that wait in it: every `every_minutes` from `from` until the end of the day. `budget` = most model request attempts of one run (the shared daily cap of
+  # 450 per Google project and 12 per minute apply too). Order: user request, data completion, new annual report, wide loading.
+  ai_queue:
+    enabled: true
+    from: "10:00"
+    every_minutes: 30
+    budget: 450
+    rpm: 12
+
+  # Every company against the SEC list: missing years -> backfill, missing items / AI answers -> the AI tasks (priority 2).
+  audit:
+    enabled: true
+    weekday: sun
+    at: "03:00"
+
+  # Government yields (E4): the monthly average of the US 10-year (FRED GS10), the annual rows when a year has ended.
+  yields:
+    enabled: true
+    day: 3
+    at: "07:00"
+
+  # Exchange rates (ECB reference rates): ILS, EUR, GBP, JPY against USD. Stored only.
+  fx:
+    enabled: true
+    at: "07:30"
+
+  # Retention (K6 spec 3.3). `apply: false` = only the list of what would be deleted is written to the log. Deleting needs `apply: true` (the first run on production needs Elad's approval).
+  cleanup:
+    enabled: true
+    weekday: sun
+    at: "04:00"
+    apply: false
+
+# A job missed while the PC was off runs once when the scheduler starts, in this order. The intraday job is never caught up (an old price is worth nothing).
+catch_up_order: [close_prices, new_reports, audit, yields, fx, cleanup, ai_queue]

@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 
 AUTO_ID = {"companies": "id", "fact_tags": "id", "extraction_items": "id", "company_listings": "id", "data_update_log": "id", "work_queue": "id", "ai_texts": "id", "score_runs": "id", "score_details": "id",
-           "valuations": "id", "ai_assessments": "id", "company_business_profiles": "id", "business_vocab": "id", "term_translations": "id"}
+           "valuations": "id", "ai_assessments": "id", "company_business_profiles": "id", "business_vocab": "id", "term_translations": "id", "portfolio_holdings": "id", "user_watchlist": "id"}
 UNIQUE = {"companies": [("symbol", "exchange"), ("cik",)], "fact_tags": [("tag",)], "extraction_items": [("company_id", "item_key", "period", "document_ref")],
           "financial_facts": [("company_id", "fiscal_year", "item_id")], "filing_periods": [("company_id", "fiscal_year")], "company_listings": [("symbol", "exchange")],
           "company_profile_history": [("company_id", "fiscal_year")], "market_snapshot": [("company_id",)],
@@ -36,6 +36,10 @@ class Query:
 
     def lte(self, col, val):
         self._eq.append((col, ("lte", val)))
+        return self
+
+    def lt(self, col, val):
+        self._eq.append((col, ("lt", val)))
         return self
 
     def order(self, col, desc=False):
@@ -76,6 +80,8 @@ class Query:
                 return r.get(c) in v[1]
             if isinstance(v, tuple) and len(v) == 2 and v[0] == "neq":
                 return r.get(c) != v[1]
+            if isinstance(v, tuple) and len(v) == 2 and v[0] == "lt":
+                return r.get(c) is not None and r.get(c) < v[1]
             if isinstance(v, tuple) and len(v) == 2 and v[0] == "lte":
                 return r.get(c) is not None and r.get(c) <= v[1]
             return r.get(c) == v
@@ -118,6 +124,10 @@ class Query:
         if self._op == "delete":
             gone = [r for r in self.rows if self._match(r)]
             self.rows[:] = [r for r in self.rows if not self._match(r)]
+            if self.name == "score_runs":                                # on delete cascade
+                ids = {r["id"] for r in gone}
+                for child in ("score_details", "valuations"):
+                    self.db.tables[child][:] = [r for r in self.db.tables.get(child, []) if r.get("run_id") not in ids]
             return Result(copy.deepcopy(gone))
         if self._op == "update":
             hit = [r for r in self.rows if self._match(r)]

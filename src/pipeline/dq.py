@@ -17,7 +17,7 @@ from src.etl.facts import Fact
 
 SHARE_KEYS = ("shares_diluted_weighted", "shares_basic_weighted", "shares_period_end")
 BALANCE_TOLERANCE = 0.01
-PRICE_STALE_DAYS = 5
+PRICE_STALE_DAYS = 3                    # trading days (E1)
 POWERS = (1e3, 1e6, 1e-3, 1e-6)
 COVERAGE_KEYS = {"general": ("revenue", "net_income", "cfo", "equity", "total_assets"), "bank": ("net_income", "equity", "total_assets", "loans", "deposits"),
                  "insurance": ("revenue", "net_income", "equity", "total_assets"), "realestate": ("net_income", "equity", "total_assets")}
@@ -156,14 +156,16 @@ def check_year_coverage(facts: list, results: list, engine: str = "general") -> 
 
 
 def price_freshness(last_price_at: Optional[datetime], now: Optional[datetime] = None, max_days: int = PRICE_STALE_DAYS) -> tuple:
-    """E1: a price older than ``max_days`` is stale. -> (is_stale, detail)."""
+    """E1: a price that was not updated for more than ``max_days`` trading days (NYSE calendar, New York dates) is stale. -> (is_stale, detail).
+    The same rule runs in the database (migration 20, ``flag_stale_prices``)."""
+    from src.sched.nyse import NY, Calendar
     now = now or datetime.now(timezone.utc)
     if last_price_at is None:
         return True, "no price time"
     if last_price_at.tzinfo is None:
         last_price_at = last_price_at.replace(tzinfo=timezone.utc)
-    age = (now - last_price_at).days
-    return age > max_days, f"price is {age} day(s) old"
+    age = Calendar().trading_days_between(last_price_at.astimezone(NY).date(), now.astimezone(NY).date())
+    return age > max_days, f"price is {age} trading day(s) old"
 
 
 def reconciliation_inputs(facts: list) -> dict:

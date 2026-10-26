@@ -1,8 +1,8 @@
 """The work queue (K6c, table ``work_queue``): one queue for data jobs and AI tasks. Only the runner (service role) uses it.
 
-A task is *open* while it is ``queued``, ``running`` or ``deferred_quota``; the same open task is queued once (``enqueue`` returns the existing one). ``next_task`` picks by priority (1 a user asked,
-2 a new annual report, 3 backfill), then the order of the jobs inside a company (``JOB_ORDER``), then age. A task that ran out of budget is ``deferred_quota`` with the next reset as its time;
-nothing is lost. A failed attempt goes back to ``queued`` with a delay until ``MAX_ATTEMPTS`` is reached.
+A task is *open* while it is ``queued``, ``running`` or ``deferred_quota``; the same open task is queued once (``enqueue`` returns the existing one). ``next_task`` picks by priority (K6 spec 2.8, decided
+2026-10-26: 1 a user asked, 2 data completion, 3 a new annual report, 4 wide loading), then the order of the jobs inside a company (``JOB_ORDER``), then age. A task that ran out of budget is
+``deferred_quota`` with the next reset as its time; nothing is lost. A failed attempt goes back to ``queued`` with a delay until ``MAX_ATTEMPTS`` is reached.
 """
 from __future__ import annotations
 
@@ -10,6 +10,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from src.db import get_supabase_client
+
+PRIORITY = {"user": 1, "completion": 2, "new_report": 3, "bulk": 4}
+JOB_PRIORITY = {"initial_import": PRIORITY["completion"], "backfill": PRIORITY["completion"], "repair": PRIORITY["completion"], "new_report": PRIORITY["new_report"],
+                "amendment": PRIORITY["new_report"]}
 
 OPEN = ("queued", "running", "deferred_quota")
 RUNNABLE = ("queued", "deferred_quota")

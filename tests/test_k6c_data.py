@@ -43,7 +43,10 @@ def test_a_golden_result_written_and_read_back_equals_the_golden_and_a_second_wr
     assert s.write_result(cid, g) == (run_id, "unchanged") and len(c.tables["score_runs"]) == 1 and len(c.tables["score_details"]) == n
     changed = json.loads(json.dumps(g))
     changed["buffett_quality"]["score"] = round(changed["buffett_quality"]["score"] + 1, 6)
-    assert s.write_result(cid, changed)[1] == "inserted" and len(c.tables["score_runs"]) == 2                  # a different result is a new run (history)
+    new_id, st = s.write_result(cid, changed)
+    assert st == "inserted" and new_id != run_id and [r["id"] for r in c.tables["score_runs"]] == [new_id]       # a different quality is a new run; one run per company (K6d-1): the previous is gone
+    assert "changes_error" not in c.tables["score_runs"][0]["flags"]            # the change line was computed without an error (its content: tests/test_k6d1_scores.py)
+    assert {d["run_id"] for d in c.tables["score_details"]} == {new_id} and {v["run_id"] for v in c.tables["valuations"]} == {new_id}
 
 
 def test_the_summary_the_valuations_and_the_statuses_are_filled():

@@ -3,16 +3,27 @@
 ``write_result`` takes the result dict of an engine run (the structure the runners save as <ticker>.json: ``buffett_quality`` / ``graham_quality`` with ``criteria`` and ``items``,
 ``buffett_price`` / ``graham_price`` with ``price_score`` and ``buy_price``) and writes one run. The same result is not written twice: a fingerprint of the content is kept in the run's
 ``flags`` and an unchanged result returns the existing run. ``read_latest`` rebuilds a comparable view from the tables (used by the identity test against the golden files).
+
+One run per company (K6d-1, K6 spec 3.3): "unchanged" means the quality, the fair values and the buy prices are the same (``core_fingerprint``) - the price is not part of it, a price update
+changes the price score in place (``src/pipeline/reprice.py``). When a new run is written, the "what changed" line against the previous run is computed and kept in the new run
+(``score_runs.changes``), and then the previous run is deleted together with its ``score_details`` and ``valuations``.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import math
+import threading
 from datetime import date, datetime, timezone
 from typing import Optional
 
 from src.db import get_supabase_client
+
+# One writer at a time on the score tables of this process: a new run (and the deletion of the previous one) and an in-place price update never interleave (the scheduler runs the price jobs
+# and the queue in different threads).
+SCORE_WRITE = threading.RLock()
+# Of a price block only these keys decide whether a result is "the same": the rest (the price, the price score, the reverse DCF, ...) follows the daily price and must not make a new run.
+PRICE_CORE_KEYS = ("model", "method", "profile", "state", "reason", "fair_value", "value", "buy_price", "flags")
 
 QUALITY = (("buffett", "buffett_quality"), ("graham", "graham_quality"))
 PRICE = (("buffett", "buffett_price"), ("graham", "graham_price"))
@@ -42,6 +53,17 @@ def price_model(result: dict, key: str):
 
 def fingerprint(result: dict) -> str:
     keep = {k: result.get(k) for k in ("profile", "buffett_quality", "graham_quality", "buffett_price", "graham_price", "price", "flags", "pricing_file")}
+    return hashlib.sha256(json.dumps(clean(keep), sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:24]
+
+
+def core_fingerprint(result: dict) -> str:
+    """The fingerprint that decides whether a result needs a new run: the quality part, the fair values, the buy prices and the flags - not the price."""
+    def core(p):
+        return {k: p.get(k) for k in PRICE_CORE_KEYS if k in p} if isinstance(p, dict) else p
+    pf = result.get("pricing_file") if isinstance(result.get("pricing_file"), dict) else {}
+    keep = {"profile": result.get("profile"), "buffett_quality": result.get("buffett_quality"), "graham_quality": result.get("graham_quality"), "flags": result.get("flags"),
+            "buffett_price": core(result.get("buffett_price")), "graham_price": core(result.get("graham_price")),
+            "pricing_file": {k: core(pf.get(k)) for k in ("buffett_price", "graham_price") if k in pf}, "annual_average_price": (result.get("price") or {}).get("annual_average")}
     return hashlib.sha256(json.dumps(clean(keep), sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:24]
 
 
@@ -115,17 +137,24 @@ class ScoreRepository:
         return r[0] if r else None
 
     def write_result(self, company_id: int, result: dict, rulebook_version: Optional[str] = None, peer_group: Optional[dict] = None, force: bool = False) -> tuple:
-        """-> (run_id, "inserted" | "unchanged"). An unchanged result (same fingerprint as the latest run) writes nothing."""
-        fp = fingerprint(result)
+        """-> (run_id, "inserted" | "unchanged"). A result whose quality, fair values and buy prices equal those of the latest run (``core_fingerprint``; the price does not count) writes nothing.
+        A new run gets the "what changed" line against the previous run, and the previous run is deleted (one run per company)."""
+        with SCORE_WRITE:
+            return self._write_result(company_id, result, rulebook_version, peer_group, force)
+
+    def _write_result(self, company_id: int, result: dict, rulebook_version: Optional[str], peer_group: Optional[dict], force: bool) -> tuple:
+        fp, core = fingerprint(result), core_fingerprint(result)
         last = self.latest_run(company_id)
-        if last and not force and (last.get("flags") or {}).get("fingerprint") == fp:
+        if last and not force and (last.get("flags") or {}).get("core_fingerprint") == core:
             return last["id"], "unchanged"
+        prev_view = self.read_latest(company_id) if last else None             # read before the summary is overwritten
         profile = self.profile_of(result)
         pr = result.get("price") or {}
+        rulebook = rulebook_version or str(result.get("scoring_model_version") or "rulebook-2026-10-21")
         run = self.client.table("score_runs").insert({
-            "company_id": company_id, "profile": profile, "rulebook_version": rulebook_version or str(result.get("scoring_model_version") or "rulebook-2026-10-21"),
+            "company_id": company_id, "profile": profile, "rulebook_version": rulebook,
             "calculation_version": CALCULATION_VERSION, "price": _num(pr.get("current")), "price_date": clean(pr.get("current_date") or pr.get("date")),
-            "flags": clean({"fingerprint": fp, "engine_flags": result.get("flags") or []}), "peer_group": clean(peer_group)}).execute().data[0]
+            "flags": clean({"fingerprint": fp, "core_fingerprint": core, "engine_flags": result.get("flags") or []}), "peer_group": clean(peer_group)}).execute().data[0]
         run_id = run["id"]
         bq, gq = result.get("buffett_quality") or {}, result.get("graham_quality") or {}
         bp, gp = price_model(result, "buffett_price"), price_model(result, "graham_price")
@@ -169,7 +198,28 @@ class ScoreRepository:
                          "buy_price_state": self.buy_state(p), "details": clean(p)})
         if vals:
             self.client.table("valuations").insert(vals).execute()
+        if last:
+            self._retire_previous(company_id, run_id, last, prev_view, result, rulebook)
         return run_id, "inserted"
+
+    def _retire_previous(self, company_id: int, run_id: int, last: dict, prev_view: Optional[dict], result: dict, rulebook: str) -> None:
+        """The new run is complete: its "what changed" line is computed from the previous run and stored, then every other run of the company is deleted (details and valuations go with it)."""
+        from src.pipeline.changes import change_line
+        fields: dict = {}
+        try:
+            prev_fy = ((prev_view or {}).get("summary") or {}).get("as_of_fiscal_year")
+            changes = change_line(prev_view, prev_fy, result, rulebook, str(last.get("run_at") or "")[:10]) if prev_view else None
+            if changes is not None:
+                fields["changes"] = clean(changes)
+        except Exception as e:   # noqa: BLE001 - a missing change line never blocks the score; the reason is kept in the run
+            fields["flags"] = {**(self.latest_run_flags(run_id)), "changes_error": f"{type(e).__name__}: {e}"[:200]}
+        if fields:
+            self.client.table("score_runs").update(fields).eq("id", run_id).execute()
+        self.client.table("score_runs").delete().eq("company_id", company_id).neq("id", run_id).execute()
+
+    def latest_run_flags(self, run_id: int) -> dict:
+        r = self.client.table("score_runs").select("flags").eq("id", run_id).limit(1).execute().data
+        return (r[0]["flags"] if r else {}) or {}
 
     # ------------------------------------------------------------ read
     def read_latest(self, company_id: int) -> Optional[dict]:
@@ -190,7 +240,7 @@ class ScoreRepository:
             if r["criterion_key"] == "total":
                 ev = r["evidence"] or {}
                 m.update({"score": r["criterion_score"], "range_min": r["range_min"], "range_max": r["range_max"], "coverage": r["coverage"], "status": ev.get("status"),
-                          "observed_points": ev.get("observed_points"), "exact": ev.get("exact") or {}})
+                          "observed_points": ev.get("observed_points"), "exact": ev.get("exact") or {}, "pending_criteria": ev.get("pending_criteria") or []})
             elif r["detail_level"] == "criterion":
                 ev = r["evidence"] or {}
                 m["criteria"].setdefault(r["criterion_key"], {"items": {}}).update({"observed_points": r["criterion_score"], "range_min": r["range_min"], "range_max": r["range_max"],
