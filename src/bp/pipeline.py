@@ -15,7 +15,7 @@ from src.scoring import peer_source as PS
 from . import bp1, render as R, xbrl_axes as X
 from .similar import pick_similar, size_of
 from .stores import PROFILE_FIELDS, ProfileStore, TermStore
-from .translate import GoogleTranslate, NoKey, phrase_key, translate_phrase
+from .translate import NoKey, make_translator, phrase_key, translate_many
 from .vocab import Vocab
 
 PROMPT_VERSION = "bp"            # ai_texts.prompt_version of the rendered background (template_version changes in place)
@@ -77,6 +77,7 @@ def protected_names(profile: dict, company_name: str) -> list:
     names = [i["name"] for i in (profile.get("competitors") or {}).get("items") or []]
     names += [i["name"] for i in (profile.get("products_services") or {}).get("items") or [] if i.get("kind") == "brand"]
     names += [t for t in re.findall(r"[A-Za-z][A-Za-z&'\-]+", company_name) if len(t) > 2]
+    names += [i["value"] for i in (profile.get("display_name") or {}).get("items") or []]
     return names
 
 
@@ -86,7 +87,7 @@ class BackgroundBuilder:
         from src.pipeline import scoring as S
         from src.repositories.company_repository import CompanyRepository
         self.client, self.ai_store, self.texts, self.gemini = client, ai_store, texts, gemini
-        self.translator = translator if translator is not None else GoogleTranslate()
+        self.translator = translator if translator is not None else make_translator()
         self.results_dir = Path(results_dir) if results_dir else S.RESULTS_DIR
         self.sec, self._ensure = sec, ensure_filing
         self.profiles, self.terms = ProfileStore(client), TermStore(client)
@@ -173,7 +174,7 @@ class BackgroundBuilder:
         self.log["profiles_built"] += 1
         return saved
 
-    def refresh_failed(self, ticker: str, seed_base: int = 0) -> dict:
+    def refresh_failed(self, ticker: str, seed_base: int = 0, fields: Optional[list] = None) -> dict:
         """One new BP-1 call for a stored profile whose AI fields failed, or no longer pass the current checks (the stored core_activity is checked again, no call); the first attempt already carries the
         exact reasons. Only the fields that failed are replaced, and only by a result that passes. Nothing happens (no call) when no field needs it."""
         if self.gemini is None:
@@ -192,13 +193,18 @@ class BackgroundBuilder:
             r = bp1.check_core({"value": ca[0]["value"], "quote": ca[0]["quote"]}, bp1.normalize(bp1.sent_text(sections)), sections)
             if r["status"] == "failed":
                 failing["core_activity"] = r["reasons"]
-        if err or not failing:
+        ask = list(dict.fromkeys(list(failing) + [f for f in (fields or []) if f in bp1.FIELDS]))       # ``fields``: asked again on purpose (a new version of the prompt), whether or not they failed
+        if err or not ask:
             return {"refreshed": [], "kept_failed": [], "attempts": 0}
-        out = bp1.run(self.gemini, self.vocab, filing.accession, sections, af.get("bp1_fields") or list(bp1.ALWAYS), C.display_name(co["company_name"]), seed_base,
-                      note0=bp1.retry_note({f: {"reasons": r} for f, r in failing.items()}))
-        refreshed = [f for f in failing if out["fields"][f]["status"] != "failed"]
+        out = bp1.run(self.gemini, self.vocab, filing.accession, sections, ask, C.display_name(co["company_name"]), seed_base,
+                      note0=bp1.retry_note({f: {"reasons": r} for f, r in failing.items()}) if failing else "")
+        failing = {f: failing.get(f, []) for f in ask}
+        refreshed = [f for f in ask if out["fields"][f]["status"] != "failed"]
         for f in refreshed:
             p[f] = out["fields"][f]
+        if (p["competitors"] or {}).get("items") and (p["competitor_types"] or {}).get("items") and "competitors" in refreshed:       # never both
+            p["competitor_types"] = {"status": "not_found", "source": "ai", "items": [], "reasons": [], "note": "dropped: the report names competitors"}
+        p["skill_version"] = bp1.SKILL_VERSION
         af.setdefault("refreshes", []).append({"fields": list(failing), "refreshed": refreshed, "attempts": out["attempts"]})
         p["axes_found"] = af
         saved = self.profiles.put({k: v for k, v in p.items() if k not in ("created_at",)})
@@ -218,16 +224,17 @@ class BackgroundBuilder:
         from src.ai.checks import parse_json
         answers = [x for x in (parse_json(r) for r in raws) if x]
         adopted, still = [], []
-        xb = self.xbrl_fields(filing, co.get("cik"))                       # the XBRL fields are read again (names, shares): no model, no change of which source a field has
+        xb = self.xbrl_fields(filing, co.get("cik"))                       # the XBRL fields are read again (names, shares, newly found axes): no model; XBRL replaces the text where it is usable
         for f, new in xb["fields"].items():
-            if (p[f] or {}).get("source") == "xbrl" and xb["usable"].get(f) and new != p[f]:
+            if xb["usable"].get(f) and (new.get("items") != (p[f] or {}).get("items")):
                 p[f] = new
                 adopted.append(f)
         for f in PROFILE_FIELDS:
             fld = p[f] or {}
-            if fld.get("source") != "ai" or f not in (af.get("bp1_fields") or []):
+            asked = set(af.get("bp1_fields") or []) | {x for r in af.get("refreshes") or [] for x in r.get("fields") or []}
+            if f not in asked or fld.get("source") == "xbrl":
                 continue
-            bad = fld.get("status") == "failed"
+            bad = fld.get("status") in ("failed", None) or not fld
             if not bad and f == "core_activity" and fld.get("items"):
                 bad = bp1.check_core({"value": fld["items"][0]["value"], "quote": fld["items"][0]["quote"]}, bp1.normalize(bp1.sent_text(sections)), sections)["status"] == "failed"
             if not bad:
@@ -259,17 +266,17 @@ class BackgroundBuilder:
             self.log["translation_skipped_no_key"] += len(todo)
             return res
         names = protected_names(profile, company_name)
-        for en, _kind, whole in todo:
-            try:
-                out = translate_phrase(en, self.translator, names, whole_sentence=whole)
-            except NoKey:
-                res["pending"].append(en)
-                continue
-            except Exception as e:   # noqa: BLE001 - a failed phrase stays awaiting translation
-                res["failed"].append({"en": en, "reasons": [f"{type(e).__name__}: {e}"[:160]]})
-                continue
+        try:
+            outs = translate_many([(en, names, whole) for en, _kind, whole in todo], self.translator)
+        except NoKey:
+            res["pending"] = [p[0] for p in todo]
+            return res
+        except Exception as e:   # noqa: BLE001 - the phrases stay awaiting translation
+            res["failed"] = [{"en": p[0], "reasons": [f"{type(e).__name__}: {e}"[:160]]} for p in todo]
+            outs = []
+        for (en, _kind, _whole), out in zip(todo, outs):
             if out["he"]:
-                self.terms.put(en, out["he"], "google", "unreviewed")
+                self.terms.put(en, out["he"], self.translator.name, "unreviewed")
                 res["translated"].append({"en": en, "he": out["he"]})
             else:
                 res["failed"].append({"en": en, "reasons": out["reasons"], "raw": out.get("raw")})
@@ -294,7 +301,8 @@ class BackgroundBuilder:
         co, rec = ctx["co"], ctx["rec"]
         level, src = moat_of(self.ai_store, co["symbol"], ctx["fy"])
         names = (profile.get("competitors") or {}).get("items") or []
-        return R.RenderInput(name=pretty_name(co["company_name"]), profile=profile, vocab=self.vocab, revenue=(rec.get("metrics") or {}).get("revenue"), fiscal_year=ctx["fy"],
+        dn = [] if (profile.get("display_name") or {}).get("status") == "failed" else ((profile.get("display_name") or {}).get("items") or [])
+        return R.RenderInput(name=dn[0]["value"] if dn else pretty_name(co["company_name"]), property_type=rec.get("profile") == "INCOME_REAL_ESTATE", profile=profile, vocab=self.vocab, revenue=(rec.get("metrics") or {}).get("revenue"), fiscal_year=ctx["fy"],
                              moat_level=level, moat_source=src, similar=[] if names else self.similar_names(ctx), translations=translations)
 
     def render_store(self, ctx: dict, profile: dict) -> dict:

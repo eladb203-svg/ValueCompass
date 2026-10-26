@@ -23,6 +23,7 @@ from .vocab import region_of
 
 REVENUE_CHAIN = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet", "SalesRevenueGoodsNet",
                  "SalesRevenueServicesNet", "RevenuesNetOfInterestExpense"]
+_REVENUE_LIKE = re.compile(r"^(?!.*(?:Cost|Expense|Deferred|Unearned|Receivable|Liabilit|Tax|Percent|Remaining|Intersegment|Reinsurance|Ceded|Assumed|Direct)).*(?:Revenue|PremiumsEarned|InterestAndDividendIncomeOperating)", re.I)
 AXES = {"segments": "StatementBusinessSegmentsAxis", "products_services": "ProductOrServiceAxis", "regions": "StatementGeographicalAxis"}
 MAX_PRODUCTS = 5
 _AGGREGATE_NAME = re.compile(r"total|consolidat|eliminat|reconcil|intersegment|corporateandother|corporateother|otherandeliminat|^operatingsegments|^segmentsmember|^reportablesegment|"
@@ -65,22 +66,23 @@ def parse_labels(xml_text: Optional[str]) -> dict:
         if tag == "loc":
             locs[el.get(XL + "label")] = (el.get(XL + "href") or "").split("#")[-1]
         elif tag == "label":
-            labs[el.get(XL + "label")] = (el.get(XL + "role") or "", "".join(el.itertext()).strip())
+            labs.setdefault(el.get(XL + "label"), []).append((el.get(XL + "role") or "", "".join(el.itertext()).strip()))
         elif tag == "labelArc":
             arcs.append((el.get(XL + "from"), el.get(XL + "to")))
     rank = {"http://www.xbrl.org/2003/role/label": 0, "http://www.xbrl.org/2003/role/terseLabel": 1, "http://www.xbrl.org/2003/role/verboseLabel": 2}
     best: dict = {}
     for frm, to in arcs:
-        frag, lab = locs.get(frm), labs.get(to)
-        if not frag or not lab or not lab[1]:
-            continue
-        r = rank.get(lab[0], 9)
-        if frag not in best or r < best[frag][0]:
-            best[frag] = (r, lab[1])
+        frag = locs.get(frm)
+        for role, text in labs.get(to) or []:                 # one label id can carry several resources (standard, terse, verbose ...)
+            r = rank.get(role)
+            if not frag or not text or r is None or len(text) > 90:   # only the standard / terse / verbose labels; a definition is not a name
+                continue
+            if frag not in best or r < best[frag][0]:
+                best[frag] = (r, text)
     return {k: re.sub(r"\s*\[Member\]\s*$", "", v[1]).strip() for k, v in best.items()}
 
 
-_GENERIC_PREFIX = re.compile(r"^product(?:s)? and services?,\s*", re.I)
+_GENERIC_PREFIX = re.compile(r"^(?:product(?:s)? and services?,\s*|segments?\s+(?=[A-Za-z]))", re.I)
 
 
 def member_name(member: str, labels: dict) -> str:
@@ -121,6 +123,24 @@ def drop_aggregates(members: dict) -> tuple:
     return kept, dropped
 
 
+PARTITION_TOLERANCE = 0.005
+MAX_PARTITION_MEMBERS = 16
+
+
+def best_partition(kept: dict, total: float) -> Optional[dict]:
+    """When the members add up to clearly more than the total (nested or overlapping members), the largest set of members that add up to the total (within 0.5%); None when there is none."""
+    items = sorted(kept.items(), key=lambda kv: -kv[1])[:MAX_PARTITION_MEMBERS]
+    n, best = len(items), None
+    for mask in range(1, 1 << n):
+        picked = [items[i] for i in range(n) if mask >> i & 1]
+        if len(picked) < 2:
+            continue
+        d = abs(sum(v for _, v in picked) - total) / total
+        if d <= PARTITION_TOLERANCE and (best is None or (len(picked), -d) > (len(best[0]), -best[1])):
+            best = (picked, d)
+    return dict(best[0]) if best else None
+
+
 # ---------------------------------------------------------------- extraction
 def _annual(c: dict) -> bool:
     return (not c["instant"]) and 340 <= (c["end"] - c["start"]).days <= 380
@@ -131,12 +151,13 @@ def extract_axes(raw: str, labels_xml: Optional[str] = None) -> dict:
     Each axis: {"found": bool, "concept": str, "items": [{"member", "name", "value", "share"}], "dropped": [(member, reason)], "coverage": float, "flags": [...]}."""
     ctx = parse_contexts(raw)
     labels = parse_labels(labels_xml)
-    total: dict = {}                 # (concept, end) -> value, undimensioned
-    dim: dict = {}                   # (axis key, concept, end) -> {member: value}
+    total: dict = {}                 # (concept, end) -> value, undimensioned (the revenue chain only)
+    dim: dict = {}                   # (axis key, concept, end) -> {member: value}, for every revenue-like concept
     for attrs, text in _NF.findall(raw):
         full = _attr(attrs, "name") or ""
         concept = local(full)
-        if concept not in REVENUE_CHAIN:
+        in_chain = concept in REVENUE_CHAIN
+        if not in_chain and not _REVENUE_LIKE.search(concept):
             continue
         unit = (_attr(attrs, "unitRef") or "").lower()
         if "usd" not in unit or "share" in unit:
@@ -148,12 +169,19 @@ def extract_axes(raw: str, labels_xml: Optional[str] = None) -> dict:
         if v is None:
             continue
         if not c["dims"]:
-            total.setdefault((concept, c["end"]), v)
-        elif len(c["dims"]) == 1:
-            axis, member = c["dims"][0]
-            for key, axname in AXES.items():
-                if local(axis) == axname:
-                    dim.setdefault((key, concept, c["end"]), {}).setdefault(member, v)
+            if in_chain:
+                total.setdefault((concept, c["end"]), v)
+            continue
+        axis_dims = [(a, m) for a, m in c["dims"] if local(a) in AXES.values()]
+        rest = [(a, m) for a, m in c["dims"] if local(a) not in AXES.values()]
+        if len(axis_dims) != 1:
+            continue
+        axis, member = axis_dims[0]
+        key = next(k for k, n in AXES.items() if n == local(axis))
+        # a segment value is often reported with ConsolidationItemsAxis = OperatingSegmentsMember; any other extra dimension makes the context a different cut of the data
+        if rest and not (key == "segments" and len(rest) == 1 and local(rest[0][0]) == "ConsolidationItemsAxis" and local(rest[0][1]) == "OperatingSegmentsMember"):
+            continue
+        dim.setdefault((key, concept, c["end"]), {}).setdefault(member, v)
     out = {"end": None, "total_revenue": None, "total_tag": None, "axes": {}, "labels_found": len(labels)}
     ends = sorted({e for (_c, e) in total}, reverse=True)
     if not ends:
@@ -163,15 +191,27 @@ def extract_axes(raw: str, labels_xml: Optional[str] = None) -> dict:
     tconcept = next(c for c in REVENUE_CHAIN if (c, end) in total)
     out.update(end=end, total_revenue=total[(tconcept, end)], total_tag=tconcept)
     for key in AXES:
-        cands = [(c, dim[(key, c, end)]) for c in REVENUE_CHAIN if (key, c, end) in dim]
+        tot = out["total_revenue"]
+        cands = []
+        for (k, c, e), members in dim.items():
+            if k != key or e != end:
+                continue
+            kept, dropped = drop_aggregates(members)
+            if len(kept) < (1 if key != "segments" else 1) or not kept:
+                continue
+            cov = sum(kept.values()) / tot if tot else 0
+            if tot and cov > 1.02 and key == "segments":
+                part = best_partition(kept, tot)
+                if part:
+                    dropped = dropped + [(m, "not_in_partition") for m in kept if m not in part]
+                    kept, cov = part, sum(part.values()) / tot
+            cands.append((c, kept, dropped, cov, len(members)))
         if not cands:
             out["axes"][key] = {"found": False, "concept": None, "items": [], "dropped": [], "coverage": None, "flags": ["axis_not_in_filing"]}
             continue
-        concept, members = max(cands, key=lambda cm: (len(cm[1]), -REVENUE_CHAIN.index(cm[0])))
-        kept, dropped = drop_aggregates(members)
-        tot = out["total_revenue"]
+        # the concept whose members add up closest to the total revenue (ties: more members kept, then the revenue chain order)
+        concept, kept, dropped, cov, _n = min(cands, key=lambda x: (round(abs(x[3] - 1.0), 3), -len(x[1]), -x[4], REVENUE_CHAIN.index(x[0]) if x[0] in REVENUE_CHAIN else 99))
         items = [{"member": m, "name": member_name(m, labels), "value": v, "share": (v / tot if tot else None)} for m, v in sorted(kept.items(), key=lambda kv: -kv[1])]
-        cov = sum(kept.values()) / tot if tot else None
         flags = []
         if cov is not None and cov > 1.02:
             flags.append("members_overlap")

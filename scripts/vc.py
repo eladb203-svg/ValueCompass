@@ -168,7 +168,7 @@ def background_command(runner, a) -> int:
                 print('usage: vc.py terms edit <id> --he "..."')
                 return 2
             from src.bp.translate import check_translation, auto_names
-            reasons = [r for r in check_translation(row["en"], a.he.strip(), [n for n in auto_names(row["en"]) if n], []) if not r.startswith("length")]
+            reasons = [r for r in check_translation(row["en"], a.he.strip(), [n for n in auto_names(row["en"]) if n], []) if not r.startswith(("length", "no_hebrew"))]      # a person may keep a name in Latin letters
             if reasons:
                 print("REJECTED by the checks (nothing stored):", "; ".join(reasons))
                 return 1

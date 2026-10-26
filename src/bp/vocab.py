@@ -35,7 +35,7 @@ class Vocab:
         for f in ("customer_types", "revenue_models", "regions"):
             rows += [{"field": f, "code": c, "label_en": v["en"], "label_he": v["he"], "active": True} for c, v in y[f].items()]
         ct = y["competitor_types"]
-        rows += [{"field": "competitor_types", "code": v["code"], "label_en": v["en"], "label_he": v["he"], "active": False} for v in ct["industry"].values()]   # proposals
+        rows += [{"field": "competitor_types", "code": v["code"], "label_en": v["en"], "label_he": v["he"], "active": True} for v in ct["industry"].values()]   # approved by the owner 2026-10-26
         rows += [{"field": "competitor_types", "code": c, "label_en": v["en"], "label_he": v["he"], "active": True} for c, v in {**ct["scope"], **ct["generic"]}.items()]
         return rows
 

@@ -6,9 +6,9 @@ from typing import Optional
 
 from src.ai.db_stores import select_all
 
-from .translate import glossary_pairs, phrase_key
+from .translate import ABBREVIATIONS, glossary_pairs, phrase_key
 
-PROFILE_FIELDS = ("core_activity", "segments", "products_services", "customer_types", "revenue_models", "regions", "competitors", "competitor_types")
+PROFILE_FIELDS = ("display_name", "core_activity", "segments", "products_services", "customer_types", "revenue_models", "regions", "competitors", "competitor_types")
 
 
 def _now() -> str:
@@ -46,6 +46,20 @@ class VocabStore:
     def rows(self) -> list:
         return select_all(self.client, "business_vocab")
 
+    def sync(self, rows: list) -> dict:
+        """Make the table equal to the rows (the vocab.yaml the owner approved): missing rows are inserted, a row whose labels or `active` differ is updated. Used once per owner decision."""
+        have = {(r["field"], r["code"]): r for r in self.rows()}
+        ins = [r for r in rows if (r["field"], r["code"]) not in have]
+        upd = 0
+        for r in rows:
+            o = have.get((r["field"], r["code"]))
+            if o and any(o[k] != r[k] for k in ("label_en", "label_he", "active")):
+                self.client.table("business_vocab").update({k: r[k] for k in ("label_en", "label_he", "active")}).eq("id", o["id"]).execute()
+                upd += 1
+        for i in range(0, len(ins), 100):
+            self.client.table("business_vocab").insert(ins[i:i + 100]).execute()
+        return {"inserted": len(ins), "updated": upd}
+
     def seed(self, rows: list) -> dict:
         """Insert the rows that are not there yet; a row that exists is never changed (the owner's edits and approvals stay). -> {"inserted", "existing"}."""
         have = {(r["field"], r["code"]) for r in self.rows()}
@@ -67,7 +81,7 @@ class TermStore:
         return {phrase_key(r["en"]): {"he": r["he"], "status": r["status"], "id": r["id"], "source": r["source"]} for r in self.rows()}
 
     def put(self, en: str, he: str, source: str, status: str = "unreviewed") -> dict:
-        row = {"en": en.strip(), "he": he, "source": source, "status": status}
+        row = {"en": en.strip(), "he": he, "source": source, "status": status}   # source: azure / google / model / human
         if status == "approved":
             row["reviewed_at"] = _now()
         for r in self.rows():                                            # unique on the exact English text; compare normalised
@@ -78,10 +92,13 @@ class TermStore:
     def seed_glossary(self) -> dict:
         """The T1 glossary becomes approved / human translations (a term that is already there is left as it is)."""
         have = {phrase_key(r["en"]) for r in self.rows()}
-        new = [{"en": en, "he": he, "source": "human", "status": "approved", "reviewed_at": _now()} for en, he in glossary_pairs() if phrase_key(en) not in have]
+        pairs = list(glossary_pairs())
+        he_of = {phrase_key(en): he for en, he in pairs}
+        pairs += [(ab, he_of[phrase_key(full)]) for ab, full in ABBREVIATIONS.items() if phrase_key(full) in he_of]      # P&C, A&H: the abbreviation has the translation of its expansion
+        new = [{"en": en, "he": he, "source": "human", "status": "approved", "reviewed_at": _now()} for en, he in pairs if phrase_key(en) not in have]
         if new:
             self.client.table("term_translations").insert(new).execute()
-        return {"inserted": len(new), "existing": len(glossary_pairs()) - len(new)}
+        return {"inserted": len(new), "existing": len(pairs) - len(new)}
 
     def get_by_id(self, tid: int) -> Optional[dict]:
         r = self.client.table("term_translations").select("*").eq("id", tid).limit(1).execute().data

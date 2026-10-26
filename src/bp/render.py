@@ -35,6 +35,7 @@ class RenderInput:
     moat_source: Optional[str] = None
     similar: list = field(default_factory=list)      # display names, already chosen (3.2.3)
     translations: dict = field(default_factory=dict)  # phrase_key(en) -> {"he": str, "status": "approved" | "unreviewed"}
+    property_type: bool = False                       # INCOME_REAL_ESTATE: the "product lines" are property types
 
 
 # ---------------------------------------------------------------- formatting
@@ -102,11 +103,22 @@ class _Ctx:
 
 
 # ---------------------------------------------------------------- paragraph 1
+_OTHER_NAME = re.compile(r"^(?:all\s+)?other\b", re.I)
+
+
 def _items(inp: RenderInput, f: str) -> list:
     fld = inp.profile.get(f) or {}
     if fld.get("status") == "failed":                  # a field that failed its checks is not written (its partial items are kept in the profile only)
         return []
-    return list(fld.get("items") or [])
+    items = list(fld.get("items") or [])
+    if f in ("segments", "products_services"):          # an item named Other / Other Countries is not shown
+        items = [i for i in items if not _OTHER_NAME.match((i.get("name") or "").strip())]
+    return items
+
+
+def share_of(it: dict) -> Optional[float]:
+    """A share is shown only when it is a share of revenue read from XBRL; a share from the text (it can be of premiums, sites ...) is not."""
+    return it.get("share") if it.get("source") == "xbrl" else None
 
 
 def s_activity(c: _Ctx) -> Optional[str]:
@@ -125,7 +137,7 @@ def _line_part(c: _Ctx, f_items: list) -> Optional[str]:
         nm = c.phrase(it["name"])
         if nm is None:
             return None
-        names.append((nm, pct(it.get("share"))))
+        names.append((nm, pct(share_of(it))))
     if not names:
         return None
     parts = []
@@ -134,9 +146,12 @@ def _line_part(c: _Ctx, f_items: list) -> Optional[str]:
             parts.append(f"{nm} ({sh} of revenue)" if (k == 0 and c.lang == "en") else (f"{nm} ({sh} מההכנסות)" if k == 0 else f"{nm} ({sh})"))
         else:
             parts.append(nm)
+    many = len(parts) > 1
     if c.lang == "en":
-        return ("Its main product lines are " if len(parts) > 1 else "Its main product line is ") + join_en(parts)
-    return ("קווי המוצרים העיקריים: " if len(parts) > 1 else "קו המוצרים העיקרי: ") + join_he(parts)
+        lead = ("Its main property types are " if many else "Its main property type is ") if c.i.property_type else ("Its main product lines are " if many else "Its main product line is ")
+        return lead + join_en(parts)
+    lead = ("סוגי הנכסים העיקריים: " if many else "סוג הנכס העיקרי: ") if c.i.property_type else ("קווי המוצרים העיקריים: " if many else "קו המוצרים העיקרי: ")
+    return lead + join_he(parts)
 
 
 def s_products(c: _Ctx) -> Optional[str]:
@@ -181,7 +196,7 @@ def s_customers_revenue(c: _Ctx) -> Optional[str]:
 
 
 def regions_clause(c: _Ctx) -> Optional[str]:
-    its = [i for i in _items(c.i, "regions") if i.get("share") is not None and i.get("code") != "other"]
+    its = [i for i in _items(c.i, "regions") if share_of(i) is not None and i.get("code") != "other"]
     its.sort(key=lambda i: -i["share"])
     if not its:
         return None
@@ -208,16 +223,16 @@ def s_segments_regions(c: _Ctx) -> Optional[str]:
     reg = regions_clause(c)
     head = None
     if len(segs) >= 2:
-        segs = sorted(segs, key=lambda i: (i.get("share") is None, -(i.get("share") or 0)))       # largest first when the shares are known (stable otherwise)
+        segs = sorted(segs, key=lambda i: (share_of(i) is None, -(share_of(i) or 0)))       # largest first when the shares are known (stable otherwise)
         shown = segs[:MAX_SEGMENTS]
-        known = all(i.get("share") is not None for i in shown)                                    # "the largest" only when every named segment has its share
+        known = all(share_of(i) is not None for i in shown)                                    # "the largest" only when every named segment has its share
         top = []
         for it in shown:
             nm = c.phrase(it["name"])
             if nm is None:
                 top = None
                 break
-            sh = pct(it.get("share"))
+            sh = pct(share_of(it))
             top.append(f"{nm} ({sh})" if sh else nm)
         if top:
             if c.lang == "en":
@@ -231,6 +246,23 @@ def s_segments_regions(c: _Ctx) -> Optional[str]:
     if reg:
         return (reg[0].upper() + reg[1:] if c.lang == "en" else reg) + "."
     return None
+
+
+def s_operates(c: _Ctx) -> Optional[str]:
+    """Regions without revenue shares (from the text, or without XBRL): "It operates in A, B and C." Not written when the revenue-share sentence already names the regions."""
+    if regions_clause(c):
+        return None
+    codes = []
+    for i in _items(c.i, "regions"):
+        code = i.get("code")
+        if code and code not in ("other", "outside_us") and code not in codes:
+            codes.append(code)
+    if not codes:
+        return None
+    labs = [c.i.vocab.label("regions", k, c.lang) for k in codes[:5]]
+    if c.lang == "en":
+        return f"It operates in {join_en(labs)}."
+    return f"פועלת {join_he([('ב' + l[1:]) if l.startswith('ה') else 'ב' + l for l in labs])}."
 
 
 def s_revenue(c: _Ctx) -> Optional[str]:
@@ -291,7 +323,7 @@ def s_moat(c: _Ctx) -> Optional[str]:
 def render(inp: RenderInput, lang: str, preview: bool = False) -> tuple:
     """-> (text, info). info: {"missing": [English phrases without Hebrew], "used": [English phrases whose Hebrew is in the text], "unreviewed": [...], "sentences": n}."""
     c = _Ctx(inp, lang, preview)
-    p1 = [s for s in (s_activity(c), s_products(c), s_customers_revenue(c), s_segments_regions(c), s_revenue(c)) if s]
+    p1 = [s for s in (s_activity(c), s_products(c), s_customers_revenue(c), s_segments_regions(c), s_operates(c), s_revenue(c)) if s]
     p2 = [s for s in (*s_competition(c), s_moat(c)) if s]
     text = "\n\n".join(" ".join(p) for p in (p1, p2) if p)
     # a Hebrew sentence that was left out because a phrase had no translation makes the text incomplete

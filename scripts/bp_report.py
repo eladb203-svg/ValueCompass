@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CALL_LOG = ROOT / "scripts" / "ai_store" / "bp_calls.json"
-FIELD_HE = {"core_activity": "פעילות מרכזית", "segments": "מגזרים", "products_services": "מוצרים ושירותים", "customer_types": "סוגי לקוחות", "revenue_models": "מודלי הכנסות",
+FIELD_HE = {"display_name": "שם תצוגה", "core_activity": "פעילות מרכזית", "segments": "מגזרים", "products_services": "מוצרים ושירותים", "customer_types": "סוגי לקוחות", "revenue_models": "מודלי הכנסות",
             "regions": "אזורים", "competitors": "מתחרים (בשם)", "competitor_types": "סוגי מתחרים"}
 ORDER = list(FIELD_HE)
 STATUS_HE = {"ok": "תקין", "other": "other (מסומן)", "not_found": "לא נמצא", "failed": "נכשל"}
@@ -23,7 +23,7 @@ def pct(s):
 
 
 def item_value(f: str, it: dict, vocab) -> str:
-    if f == "core_activity":
+    if f in ("core_activity", "display_name"):
         return it["value"]
     if f in ("customer_types", "revenue_models"):
         lab = vocab.label(f, it["code"], "he") if it["code"] in vocab.labels[f] else it["code"]
@@ -66,40 +66,52 @@ def write_report(path: Path, tickers: list) -> str:
     b, _ = make_builder(0, False)
     vocab = b.vocab
     calls = json.loads(CALL_LOG.read_text(encoding="utf-8")) if CALL_LOG.exists() else {}
-    first = calls.get("gemini_attempts", 0)
-    refresh = sum(r.get("gemini_attempts", 0) for r in calls.get("refresh_runs", []))
-    out = [f"# שלב BP — רקע מפרופיל עסקי (XBRL + BP-1), אוצר מילים סגור, תרגום ביטויים, רינדור מתבנית — {date.today().isoformat()}", "",
-           "> מסד: **test בלבד**. ייצור לא נגע. החליף את D1/T1 בתור. מסמך מקור: `docs/ai/ValueCompass_AI_Skills_Other_2026-10-26_10-30.md` (3.1–3.2).", ""]
-    # ------------------------------------------------------------------ summary
+    r1 = calls.get("gemini_attempts", 0) + sum(r.get("gemini_attempts", 0) for r in calls.get("refresh_runs", []))
+    r2 = sum(r.get("gemini_attempts", 0) for r in calls.get("rounds", []) if r.get("round") == 2)
+    az = sum(r.get("translated_phrases", 0) for r in calls.get("rounds", []) if r.get("round") == 2)
+    terms_rows = b.terms.rows()
+    n_az = sum(1 for r in terms_rows if r["source"] == "azure")
+    out = [f"# שלב BP — סבב 2 (תיקונים): רקע מפרופיל עסקי, תרגום ב-Azure, רינדור מתבנית — {date.today().isoformat()}", "",
+           "> מסד: **test בלבד**. ייצור לא נגע. מסמך מקור: `docs/ai/ValueCompass_AI_Skills_Other_2026-10-26_10-30.md` (3.1–3.2) + התיקונים שבהודעה שלך. מבנה הדוח כמו בסבב 1.", ""]
     out += ["## 1. סיכום", "",
-            f"- **קריאות Gemini בפועל: {first + refresh}** מתוך תקרה של 25 לשלב ({first} בריצה הראשונה על 7 החברות, {refresh} בריצות תיקון); מודל flash-lite בלבד, תהליך אחד, המונה המשותף.",
-            "- **קריאות Google Translate בפועל: 0.** **חסר `GOOGLE_TRANSLATE_API_KEY` ב-`.env`** (יש שם רק משתני Azure: `TRANSLATION_PROVIDER`, `AZURE_TRANSLATOR_*`). לפי ההנחיה לא השתמשתי במודל במקום, ולא ב-Azure. "
-            "הטקסט האנגלי נוצר ואושר; **הטקסט העברי של כל 7 החברות מסומן \"ממתין לתרגום\"** (`state=awaiting_translation`, `approval_status=pending_review`, לא מוצג למשתמשים) — "
-            "בכל חברה יש לפחות ביטוי אחד בלי תרגום (פעילות מרכזית, שמות קווי מוצרים או שמות מגזרים). מה שמתורגם מהמילון הקיים (17 מונחי `t1_glossary.yaml`, נטענו כ-`approved`/`human`) נמצא, אבל לא מספיק.",
-            "- **איך משלימים:** להוסיף את המפתח ל-`.env` ולהריץ `python scripts/vc.py ai-queue` (או `bp_stage.py recheck`); הביטויים יתורגמו (עד 200), יסומנו `unreviewed`, והטקסטים העבריים ירונדרו מחדש. "
-            "`human_reviewed` יהיה `true` רק אחרי `terms approve`/`terms edit` לכל הביטויים שבטקסט.",
-            "- ריצה שנייה לא מבקשת שוב מ-BP-1 (אותו `accession`) ורינדור שני נותן 0 שינויים — ראו סעיף 8.", ""]
+            f"- **קריאות Gemini בפועל בסבב הזה: {r2}** מתוך תקרה של 20 (סבב 1: {r1} מתוך 25; סה\"כ {r1 + r2}). מודל flash-lite בלבד, תהליך אחד, המונה המשותף. BP-1 נשאל שוב **רק על השדות שהפרומפט שלהם השתנה**: "
+            "`display_name`, `customer_types`, `revenue_models`, `competitors`, `competitor_types` (קריאה אחת לחברה; ל-KO נוספו 2 ניסיונות ל-`display_name`). המגזרים, האזורים והמוצרים מ-XBRL נקראו מחדש בלי מודל.",
+            f"- **תרגום: Azure Translator** (`TRANSLATION_PROVIDER=azure`, מפתח ואזור מ-`.env`, לא מודפסים; Google נשאר כחלופה בקוד). {az} ביטויים נשלחו בבקשות מרוכזות (עד 25 בבקשה), {n_az} נשמרו ב-`term_translations` כ-`azure`/`unreviewed`; "
+            "22 מונחי מילון (17 המקוריים + accident and health, P&C, A&H ושתי הצורות property and casualty insurance / accident and health insurance) `approved`/`human`.",
+            "- **הטקסטים העבריים של כל 7 החברות** מאושרים (`approval_status=approved`) עם `human_reviewed=false` — המשתמש יראה \"תרגום אוטומטי\" עד שתאשר את הביטויים (`vc.py terms review` / `approve` / `edit`).",
+            "- ריצה חוזרת: `render --all` נותן 0 שינויים, ו-BP-1 לא נשאל שוב על אותו `accession` — ראו סעיף 8.", ""]
+    out += ["### מה בוצע מההודעה שלך (לפי הסעיפים)", "",
+            "1. **Azure:** מומש (v3, `from=en&to=he`, כמה ביטויים בבקשה, `textType=html` כדי שסימני ההגנה על שמות ומונחים יישמרו). מיגרציה 18 על test הוסיפה `azure` לערכי `source`.",
+            "2. **מגזרי XBRL:** נבדקים כל מושגי ההכנסות (`Revenues`, `RevenueFromContract…`, `RevenuesNetOfInterestExpense`, `PremiumsEarnedNet`, `RevenueForReportableSegments`, `SalesRevenueNet` ועוד — כל מושג ששמו כולל Revenue/Premiums), נבחר המושג שסכום הממברים שלו הקרוב ביותר לסך ההכנסות, וגם הקשרים עם `ConsolidationItemsAxis=OperatingSegmentsMember` מתקבלים. "
+            "כשהממברים חופפים (סכום > 102%) נבחרת הקבוצה הגדולה ביותר שסכומה הוא סך ההכנסות (בגבול 0.5%) — **רק לציר המגזרים**. פירוט לכל חברה בסעיף 5.",
+            "3. **`display_name`:** שדה חדש ב-BP-1 (גרסת סקיל 2) עם ציטוט; הקוד מסיר סיומת משפטית (Inc./Corp./Co./Company…) ו-\"The\" מתחילת השם בתנאי שהשם הקצר עדיין בציטוט; כשל → נופלים לשם מה-EDGAR המנוקה. נשמר בעמודה `display_name` (מיגרציה 18) ומשמש בתבנית.",
+            "4. **BP-1:** (א) `revenue_models` רק כשהטקסט מתאר ממה ההכנסות, הראשי ראשון; (ב) נשלחות **כל** פסקאות התחרות של Item 1 (גם של כל מגזר), עד 12,000 תווים; (ג) `customer_types` כולל לקוחות עסקיים/מוסדיים/ממשלתיים כשמוזכרים.",
+            "5. **רשימות:** נוסף `revenue_models.investment_income` (הכנסות מהשקעות); `U.S. & Canada` → `north_america`; 22 התוויות ברבים אושרו ו-`active=true`, עם שני התיקונים (ברוקרי ביטוח ונותני שירותי ביטוח; חברות בנייה ויזמות נדל\"ן).",
+            "6. **מילון:** `accident and health` → \"ביטוח תאונות ובריאות\" נוסף; `P&C` ו-`A&H` מורחבים (property and casualty / accident and health) לפני התרגום, ונשמרו גם כערכים ישירים `approved`/`human`.",
+            "7. **תבנית:** (א) שיעור מוצג רק כשהוא שיעור מההכנסות מ-XBRL — אחרת שם בלי שיעור (וניסוח \"ביניהם\" במקום \"הגדולים שבהם\"); (ב) פריט בשם Other / Other Countries / Other Operating Segment לא מוצג ולא נספר; "
+            "(ג) INCOME_REAL_ESTATE: \"Its main property types are…\" / \"סוגי הנכסים העיקריים\"; (ד) אזורים בלי שיעורי XBRL: \"It operates in …\" / \"פועלת ב…\".",
+            "8. **סיווג UBER:** ראו להלן.", ""]
+    out += ["### UBER — סיווג הענף (דיווח בלבד, לא שיניתי)", "",
+            "UBER מסווגת **Software** (פרופיל `TECH_ASSET_LIGHT`) ולכן מופיעה כ\"חברה דומה\" ל-MSFT. הנימוק בראוטר: ה-SIC שלה, 7389, הוא קוד כללי (\"multi\") שלא מכריע, ולכן הוחלט לפי **ענף הספק** (`Software - Application` → Software, tier = provider). "
+            "ההגדרה של \"Internet platforms and advertising\" כוללת שווקים שמחברים קונים ומוכרים — Uber (נסיעות ומשלוחים) קרובה אליה יותר מאשר לתוכנה. שינוי כזה הוא החלטת ענף (ישפיע על קבוצת העמיתים ועל התוויות), לכן אני מחכה להחלטתך; "
+            "אם תאשר, התיקון הוא override ענף ל-UBER בראוטר והרצה מחדש של הציון בלבד.", ""]
     out += ["### החלטות ושינויים שאני מבקש שתבדוק", "",
-            "1. **ספק התרגום:** המסמך (3.2.5) כותב Azure; ההנחיה שלך כותבת Google. פעלתי לפי ההנחיה (Google Cloud Translation v2, מפתח בכותרת הבקשה, לא מודפס). אם תרצה לעדכן את המסמך — לא נגעתי בו.",
-            "2. **שמות מגזרים מתורגמים:** ההנחיה מפרטת רק `core_activity` ושמות קווי מוצרים; המסמך (3.2.4–3.2.5) מוסיף שמות מגזרים. עשיתי לפי המסמך (\"הם הקובעים\") — עד 3 מגזרים, ורק כשיש 2 מגזרים או יותר.",
-            "3. **בדיקת \"70% ממילות התוכן בציטוט\" ב-`core_activity`:** המסמך לא מגדיר התאמת מילים. הגדרתי השוואה לפי גזע + משפחת מילים (designs ~ designer, manages ~ management); בלי זה ביטוי תקין כמו \"designs and manufactures semiconductor products\" נפסל. "
-            "הוספתי גם בדיקה שהמילה הראשונה היא פועל בגוף שלישי יחיד (\"manufactures\", לא \"designer\" / \"develop\") — כי הרינדור הוא \"חברת X {פעילות}\" והתרגום תלוי בזה. זה לא כתוב במסמך.",
-            "4. **ציר XBRL שלא משמש:** ציר נחשב \"לא שמיש\" כשהממברים מכסים פחות מ-60% מההכנסות או חופפים (סכום > 102%) — אז BP-1 משלים (`source=ai`). קרה ב-MSFT (ציר מוצרים חופף).",
-            "5. **ממברים מצטברים:** ממבר נפסל אם שמו מצטבר (`Total`, `Corporate and other`, `Eliminations` וכו') או אם הוא שווה לסכום של 2–8 ממברים אחרים (סטייה עד 0.1%, לפחות מיליון).",
-            "6. **שיוך אזורים:** \"Other Countries\" אינו \"מחוץ לארה\"ב\" (באינטל זה מופיע לצד סינגפור וטאיוואן) — מסומן `other` עם הטקסט המקורי. רק Non-US / International / Rest of world / Foreign → `outside_us`.",
-            "7. **שדה שנכשל לא נכתב בטקסט** (גם אם נשארו בו פריטים חלקיים בפרופיל). `segments` של KO נכשל (ציטוט של EMEA לא נמצא בטקסט) ולכן אין משפט מגזרים ב-KO.",
-            "8. **ניסוח אזורים בעברית:** \"מחוץ לארה\"ב\" לא מקבל \"מ\" נוספת (\"60% מההכנסות מחוץ לארה\"ב ו-40% מארצות הברית\").",
-            "9. **`human_reviewed` באנגלית** נשאר `false` (אין שם ביטויים לסקירה, ואף אחד לא קרא אותו); בעברית `true` רק כשכל הביטויים שבטקסט `approved`.",
-            "10. **הכנסות** נלקחות מאותם מספרים שהציון משתמש בהם (ה-result שנבנה מ-`financial_facts`), לא משאילתה נפרדת לטבלה; החפיר מ-A7 (`B3.2-Q5`) ב-`ai_assessments`.",
-            "11. **ריצות הרקע (D1/T1) הקודמות:** סומנו `superseded` (לא נמחקו). התור: `ai_background` מריץ עכשיו BP-1 → פרופיל → תרגום → רינדור; קוד D1/T1 נשאר מסומן deprecated.",
-            "12. **מקור הדוחות:** הדוחות הם ה-10-K האחרון שב-cache המקומי (MSFT: FY2026, שנה פיסקלית שנגמרת ב-30.6.2026). תוויות החברה (`label linkbase`) נשלפו מ-SEC לכל חברה שיש לה קובץ כזה; ל-MSFT אין קובץ כזה ושמות הממברים נגזרים משמם.", ""]
+            "1. **איכות התרגום האוטומטי — כל הביטויים `unreviewed`, ויש שגיאות שאני מבקש שתתקן עם `terms edit`:** \"Windows\" תורגם \"חלונות\" (שם מוצר שהוא מילה רגילה); \"Concentrate operations\" → \"פעולות ריכוז\" (המילון מכיר \"concentrates\" ברבים בלבד); "
+            "ב-JPM \"עוסקת בנקאות השקעות … וניהול ניהול נכסים\" (ה-\"ב\" נבלעת ו\"ניהול\" כפול סביב מונח המילון); שמות מגזרי CB (\"Insurance Overseas General\" → \"אינשורנס אוברסיז ג'נרל\", \"Life\" → \"חייו\"). "
+            "הגנה אוטומטית יש לשמות עם אות גדולה באמצע / ראשי תיבות ולמונחי המילון (כסימון מילון של Azure, כדי שהמונח יישמר בתוך הדקדוק); המילה Segment בתחילת/סוף שם מגזר לא מתורגמת. מותר להשאיר שם בלטינית: `terms edit <id> --he \"Windows\"`.",
+            "2. **\"הכנסות מהשקעות\"** מקבל \"מ\" פעמיים בעברית (\"מהכנסות מהשקעות\") — תקין אך כבד; מוכן לשנות את התווית אם תרצה.",
+            "3. **שיעורים שמוצגים:** רק שיעורי XBRL מההכנסות. שיעורי מגזרים מהטקסט (למשל אחוזי NPE ב-CB) לא מוצגים; אם מגזר מופיע בלי שיעור, המשפט אומר \"ביניהם\" ולא \"הגדולים שבהם\".",
+            "4. **שמות מגזרי XBRL** באנגלית באים מה-label של החברה; אם אין (MSFT: אין קובץ `_lab.xml` בפילינג) הם נגזרים משם הממבר (\"More Personal Computing\"). שם כמו \"Segment Insurance North American Commercial P&C\" (CB) הוא ה-label של החברה עצמה.",
+            "5. **בדיקת 70% מילות תוכן / פועל בגוף שלישי / ממברים מצטברים / סף 60% כיסוי**: כמו בסבב 1 (מאושרות 2 ו-3 לפי הודעתך; 4–6 בעינן).",
+            "6. **שיוך `Other Countries`** (אינטל) ל-`other`, לא ל-`outside_us` — כמו בסבב 1.", ""]
     # ------------------------------------------------------------------ per company
     out += ["## 2. 7 חברות סט הפיתוח", ""]
     others, axes_rows, used_types = [], [], {}
-    per_company_calls = {t: v.get("gemini_attempts", 0) for t, v in (calls.get("per_company") or {}).items()}
+    profs = {}
     for t in tickers:
         ctx = b.load(t)
         p = b.profiles.latest(ctx["co"]["id"])
+        profs[t] = p
         out += [f"### {t} — {ctx['co']['company_name']}  (FY{ctx['fy']}, accession `{p['accession']}`, פרופיל #{p['id']}, מודל `{p['model']}`, גרסת סקיל {p['skill_version']})", ""]
         out += [profile_table(p, vocab), ""]
         for f in ORDER:
@@ -122,17 +134,17 @@ def write_report(path: Path, tickers: list) -> str:
                 + (" — **ממתין לתרגום** (לא מוצג למשתמשים)" if txt_he.get("state") == "awaiting_translation" else "") + ". להלן תצוגה מקדימה: מקומות שבהם ביטוי עדיין לא מתורגם מסומנים `[ממתין: ...]`; "
                 "מה ששמור בפועל במסד הוא הגרסה בלי המשפטים האלה.", "", *[f"> {ln}" if ln else ">" for ln in he_prev.split("\n")], ""]
         need = phrases_needed(p)
-        out += ["**ביטויים שתורגמו (אנגלית → עברית):** " + ("אין — לא בוצעה אף קריאה ל-Google (חסר מפתח)." if not any(phrase_key(e) in tr and tr[phrase_key(e)]["source"] == "google" for e, _k, _w in need) else ""), ""]
+        out += ["**ביטויים שתורגמו (אנגלית → עברית):** " + ("אין." if not any(phrase_key(e) in tr and tr[phrase_key(e)]["source"] in ("azure", "google") for e, _k, _w in need) else ""), ""]
         rows = [f"| {e} | {tr[phrase_key(e)]['he'] if phrase_key(e) in tr else '*ממתין לתרגום*'} | {kind} | {tr[phrase_key(e)]['source'] + '/' + tr[phrase_key(e)]['status'] if phrase_key(e) in tr else ''} |" for e, kind, _w in need]
         if rows:
             out += ["| אנגלית | עברית | סוג | מקור/סטטוס |", "|---|---|---|---|", *rows, ""]
     # ------------------------------------------------------------------ tables for review
-    out += ["## 3. טבלת התוויות ברבים לסוגי המתחרים — לסקירה שלך", "",
-            "כל הענפים של ValueCompass (21 ענפים; \"Other\" לא נכלל — יש קוד `other` כללי). **`active=false` עד שתאשר.** אנא תקן את העברית בעמודה \"הצעה\" ואת המין (ז/נ — קובע התאמה של \"ארציים/ארציות\").", "",
-            "| קוד | ענף (מהראוטר) | אנגלית ברבים | הצעה בעברית | מין | בשימוש ב |", "|---|---|---|---|---|---|"]
+    out += ["## 3. טבלת התוויות ברבים לסוגי המתחרים", "",
+            "**אושרו על ידך וכולן `active=true`** (עם שני התיקונים). \"Other\" לא נכלל — יש קוד `other` כללי. עמודת המין (ז/נ) קובעת התאמת \"ארציים/ארציות\" בטקסט.", "",
+            "| קוד | ענף (מהראוטר) | אנגלית ברבים | עברית (מאושרת) | מין | בשימוש ב |", "|---|---|---|---|---|---|"]
     for name, v in _yaml("vocab.yaml")["competitor_types"]["industry"].items():
         out.append(f"| `{v['code']}` | {name} | {v['en']} | {v['he']} | {'נ' if v['gender'] == 'f' else 'ז'} | {', '.join(sorted(used_types.get(v['code'], []))) or ''} |")
-    out += ["", "תחומי הפעולה (scope) והסוגים הכלליים נטענו `active=true` כפי שכתבת: " + ", ".join(f"`{c}`" for c in ("local", "regional", "national", "international", "private_companies", "private_label", "startups", "government_entities", "other")) + ".", ""]
+    out += ["", "נוספו ל-`revenue_models`: `investment_income` (הכנסות מהשקעות). מיפוי אזורים: `U.S. & Canada` → `north_america`.", ""]
     out += ["## 4. ערכי `other` שנמצאו", ""]
     if others:
         out += ["| חברה | שדה | ערך | הטקסט המקורי |", "|---|---|---|---|", *[f"| {t} | {FIELD_HE[f]} | {cell(v, 80)} | {cell(o, 100)} |" for t, f, v, o in others], "",
@@ -145,20 +157,38 @@ def write_report(path: Path, tickers: list) -> str:
         a = (af.get("axes") or {}).get(k) or {}
         if not a.get("found"):
             return "חסר → BP-1"
-        return f"נמצא ({a['n_items']} פריטים, כיסוי {a['coverage'] * 100:.0f}%" + (f", {a['n_dropped']} מצטברים הוסרו" if a.get("n_dropped") else "") + (f", {'/'.join(a['flags'])}" if a.get("flags") else "") + ")"
+        return f"נמצא ({a['n_items']} פריטים, כיסוי {a['coverage'] * 100:.0f}%" + (f", {a['n_dropped']} הוסרו" if a.get("n_dropped") else "") + (f", {'/'.join(a['flags'])}" if a.get("flags") else "") + ")"
     for t, af in axes_rows:
         tot = af.get("total_revenue")
         out.append(f"| {t} | {tot / 1e9:.1f} מיליארד $ | {af.get('labels_found')} | {ax(af, 'segments')} | {ax(af, 'products_services')} | {ax(af, 'regions')} |")
-    out += ["", "\"חסר → BP-1\" = הציר לא קיים ב-10-K; \"נמצא\" עם דגל `members_overlap` / `low_coverage` = לא שמיש, BP-1 השלים (`source=ai`).", ""]
-    # ------------------------------------------------------------------ calls
-    out += ["## 6. קריאות בפועל", "", "| | מספר |", "|---|---|", f"| Gemini — ריצה ראשונה (7 חברות) | {first} |", f"| Gemini — תיקון שדות שנכשלו (`refresh`) | {refresh} |",
-            f"| **Gemini — סה\"כ (תקרה 25, נאכפת בקוד)** | **{first + refresh}** |", "| Google Translate | 0 (אין מפתח) |", "", "לפי חברה (ריצה ראשונה): " + ", ".join(f"{t}={n}" for t, n in per_company_calls.items()) + ".", "",
-            "ניסיונות החוזרים (retry) הקבועים בסקיל: אחד לכל קריאה, עם הסיבה המדויקת. `refresh` הוא ניסיון חוזר נוסף שמבקש רק את מה שנכשל, עם הסיבה כבר בניסיון הראשון.", ""]
+    out += ["", "\"חסר → BP-1\" = הציר לא קיים ב-10-K (BP-1 מילא, `source=ai`); דגל `members_overlap` / `low_coverage` = הציר נמצא אך לא שמיש.", ""]
+    out += ["### מגזרים מ-XBRL — מה נמצא ב-KO, INTC, JPM, CB (ובשאר)", "",
+            "| חברה | מושג שנבחר (סכום הממברים הקרוב ביותר לסך ההכנסות) | כיסוי | מגזרים (שיעור מההכנסות) | ממברים שהוסרו | הערה |", "|---|---|---|---|---|---|"]
+    notes = {"KO": "לפני התיקון: הציר לא נמצא כלל. הערכים מדווחים בהקשר OperatingSegmentsMember.",
+             "INTC": "הממברים חופפים (יש גם ממבר-על); נבחרה הקבוצה הגדולה ביותר שסכומה הוא סך ההכנסות — Intel Foundry לא נכנס אליה.",
+             "JPM": "ההפרש מ-100% הוא הכנסות שאינן משויכות לשלושת המגזרים.",
+             "CB": "כיסוי 89% — ההפרש הוא הכנסות שאינן במושג שנבחר."}
+    for t in ["KO", "INTC", "JPM", "CB"] + [x for x in tickers if x not in ("KO", "INTC", "JPM", "CB")]:
+        pr = profs.get(t)
+        if not pr:
+            continue
+        sg = pr["segments"] or {}
+        a = ((pr["axes_found"] or {}).get("axes") or {}).get("segments") or {}
+        its = sg.get("items") or []
+        shown = "; ".join(f"{i['name']} ({pct(i.get('share'))})" if i.get("share") is not None else i["name"] for i in its) if its else "—"
+        out.append(f"| {t} | {cell((its[0].get('tag') or '').split('|')[-1].replace('us-gaap:', '') if its and its[0].get('tag') else ('(מהטקסט, source=' + str(sg.get('source')) + ')'), 60)} | "
+                   f"{('%.0f%%' % (a['coverage'] * 100)) if a.get('coverage') else ''} | {cell(shown, 260)} | {a.get('n_dropped', 0)} | {notes.get(t, '') if sg.get('source') == 'xbrl' or t in notes else ''} |")
+    out += ["", "- **KO**: נמצאו 5 מגזרים (North America, Europe/Middle East/Africa, Latin America, Bottling Investments, Asia Pacific) בכיסוי 99.7%.",
+            "- **INTC**: נמצאו 3 פריטים לאחר פתרון החפיפה; **JPM**: 3 מגזרים בכיסוי 98%; **CB**: 6 מגזרים בכיסוי 89%.", ""]
+    out += ["## 6. קריאות בפועל", "", "| | מספר |", "|---|---|", f"| Gemini — סבב 1 | {r1} (מתוך 25) |", f"| **Gemini — סבב 2 (תקרה 20, נאכפת בקוד)** | **{r2}** |", f"| Gemini — סה\"כ | {r1 + r2} |",
+            f"| Azure Translator — ביטויים שנשלחו | {az} (בבקשות של עד 25 ביטויים; תקרה 200) |", f"| Azure — ביטויים שנשמרו | {n_az} |", "| Google Translate | 0 (חלופה, לא בשימוש) |", "",
+            "ביטויים שנדחו בבדיקות (נשארים \"ממתינים\" עד תרגום מחדש או תיקון ידני): ראו `translation_failed` ב-`scripts/ai_store/bp_calls.json`; בסבב זה הבדיקות תוקנו (שם/ראשי תיבות שנשארים לטיניים, מונח מילון ארוך) והביטויים שנכשלו תורגמו מחדש. "
+            "הניסיון החוזר של BP-1 (אחד לכל קריאה, עם הסיבה המדויקת) כלול בספירה.", ""]
     out += ["## 7. מבנה ומסד", "",
-            "- מיגרציה 17 (`supabase/migrations/20261026103017_business_profile.sql`, rollback ב-`supabase/rollback/`): `company_business_profiles`, `business_vocab`, `term_translations`; ל-`ai_texts` נוספו `template_version`, `profile_id` והסטטוס `superseded`.",
-            "- בדיקות על test: md5 של `companies`, `extraction_items`, `ai_assessments`, `financial_facts`, `score_runs` זהה לפני ואחרי (5 מתוך 5); גם עמודות ה-`ai_texts` הישנות; rollback נוסה בבלוק שבוטל והחזיר את המצב המקורי (md5 של `ai_texts` זהה, שלוש הטבלאות נעלמו).",
-            "- RLS: משתמש מחובר קורא פרופילים, אוצר מילים פעיל (`active`) ותרגומים; אין לו כתיבה. טקסטים: רק `approved` (כמו קודם) — הטקסט העברי הממתין לתרגום והטקסטים `superseded` לא מוצגים.",
-            "- נטען: 62 שורות `business_vocab`, 17 מונחי מילון → `term_translations` (`approved`/`human`).", ""]
+            "- מיגרציה 17 (סבב 1) ומיגרציה 18 (`supabase/migrations/20261026160018_bp_display_name_azure.sql`, rollback ב-`supabase/rollback/`): העמודה `display_name` ב-`company_business_profiles` והערך `azure` ב-`term_translations.source`. "
+            "על test: md5 של `companies`, `extraction_items`, `ai_assessments`, `financial_facts`, `score_runs` זהה לפני ואחרי (5 מתוך 5); ה-rollback נוסה בבלוק שבוטל והחזיר את המצב.",
+            "- RLS ללא שינוי: משתמש מחובר קורא פרופילים, אוצר מילים פעיל ותרגומים; אין לו כתיבה; טקסטים — רק `approved`.",
+            f"- `business_vocab`: {len(b.vocab.labels['customer_types']) + len(b.vocab.labels['revenue_models']) + len(b.vocab.labels['regions']) + len(b.vocab.labels['competitor_types'])} קודים; `sync-vocab` עדכן 22 תוויות/דגלי `active` והוסיף `investment_income`.", ""]
     ver = ROOT / "scripts" / "ai_store" / "bp_verification.md"
     out += ["## 8. בדיקות ואידמפוטנטיות", "", ver.read_text(encoding="utf-8") if ver.exists() else "(לא הורצו)", ""]
     Path(path).write_text("\n".join(out), encoding="utf-8")

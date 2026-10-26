@@ -22,15 +22,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from src.db import db_target, get_supabase_client  # noqa: E402
 
 DEV = ["KO", "MSFT", "INTC", "JPM", "CB", "O", "AMT"]
-STAGE_CAP = 25
-USED_BEFORE_REFRESH = 12         # the first run of the stage used 12 of the 25 attempts (see scripts/ai_store/bp_calls.json); the cap of the stage is for all runs together
+STAGE_CAP = 20            # follow-up round (2026-10-26 evening): at most 20 model attempts for the whole round
+USED_BEFORE_REFRESH = 0         # the first run of the stage used 12 of the 25 attempts (see scripts/ai_store/bp_calls.json); the cap of the stage is for all runs together
 CALL_LOG = ROOT / "scripts" / "ai_store" / "bp_calls.json"
 
 
 def make_builder(cap: int, with_model: bool):
     from src.ai.db_stores import DbAiItemStore, DbAssessmentStore, DbTextStore
     from src.bp.pipeline import BackgroundBuilder
-    from src.bp.translate import GoogleTranslate
+    from src.bp.translate import make_translator
     from src.pipeline import scoring as S
     from src.pipeline.queue_runner import CappedGemini
     from src.pipeline.sec_source import PipelineSec
@@ -42,7 +42,7 @@ def make_builder(cap: int, with_model: bool):
     S.seed_results(S.RESULTS_DIR)
     from src.pipeline.queue_runner import QueueRunner
     runner = QueueRunner(client, gemini=None, budget=0, pipeline_factory=None)
-    b = BackgroundBuilder(client, DbAssessmentStore(client), DbTextStore(client), gemini=gem, translator=GoogleTranslate(), results_dir=S.RESULTS_DIR, sec=PipelineSec(),
+    b = BackgroundBuilder(client, DbAssessmentStore(client), DbTextStore(client), gemini=gem, translator=make_translator(), results_dir=S.RESULTS_DIR, sec=PipelineSec(),
                           ensure_filing=runner.ensure_filing)
     return b, gem
 
@@ -53,6 +53,41 @@ def cmd_seed() -> None:
     b, _ = make_builder(0, False)
     print("vocab:", VocabStore(b.client).seed(Vocab.seed_rows()))
     print("glossary -> term_translations:", TermStore(b.client).seed_glossary())
+
+
+def cmd_sync_vocab() -> None:
+    """Apply the owner-approved vocab.yaml (labels, active flags, new codes) to business_vocab, and add the glossary rows (P&C, A&H, accident and health)."""
+    from src.bp.stores import TermStore, VocabStore
+    from src.bp.vocab import Vocab
+    b, _ = make_builder(0, False)
+    print("vocab:", VocabStore(b.client).sync(Vocab.seed_rows()))
+    print("glossary:", TermStore(b.client).seed_glossary())
+
+
+ROUND2_FIELDS = ["display_name", "customer_types", "revenue_models", "competitors", "competitor_types"]      # the fields whose prompt changed in BP-1 v2
+
+
+def cmd_round2(tickers: list, cap: int, seed_base: int) -> None:
+    """Follow-up round: per company the XBRL fields are read again (no model), BP-1 v2 is asked again ONLY for the fields whose prompt changed, then phrases are translated and the texts rendered."""
+    b, gem = make_builder(cap, True)
+    done = {}
+    for t in tickers:
+        before = gem.attempts
+        try:
+            r = {"xbrl_recheck": b.recheck_stored(t)}
+            r["refresh"] = b.refresh_failed(t, seed_base, ROUND2_FIELDS)
+            r["recheck_raw"] = b.recheck_stored(t)
+            r["run"] = b.run(t)
+        except Exception as e:   # noqa: BLE001
+            r = {"error": f"{type(e).__name__}: {e}"}
+        r["gemini_attempts"] = gem.attempts - before
+        done[t] = r
+        print(t, json.dumps(r, ensure_ascii=False, default=str)[:900])
+    print(f"Gemini request attempts this round: {gem.attempts} (cap {cap}); translation ({b.translator.name}) phrases: {b.translator.calls}; key present: {b.translator.available}")
+    prev = json.loads(CALL_LOG.read_text(encoding="utf-8")) if CALL_LOG.exists() else {}
+    prev.setdefault("rounds", []).append({"round": 2, "gemini_attempts": gem.attempts, "cap": cap, "provider": b.translator.name, "translated_phrases": b.translator.calls, "per_company": done,
+                                          "log": b.log})
+    CALL_LOG.write_text(json.dumps(prev, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
 
 
 def cmd_dry(tickers: list) -> None:
@@ -84,25 +119,25 @@ def cmd_run(tickers: list, cap: int, force: bool = False, seed_base: int = 0) ->
         except Exception as e:   # noqa: BLE001
             results[t] = {"error": f"{type(e).__name__}: {e}", "gemini_attempts": gem.attempts - before}
         print(t, json.dumps(results[t], ensure_ascii=False, default=str))
-    summary = {"gemini_attempts": gem.attempts, "cap": cap, "google_phrases": b.translator.calls, "google_key_present": b.translator.available, "per_company": results, "log": b.log}
+    summary = {"gemini_attempts": gem.attempts, "cap": cap, "translation_provider": b.translator.name, "translated_phrases": b.translator.calls, "translation_key_present": b.translator.available, "per_company": results, "log": b.log}
     CALL_LOG.parent.mkdir(parents=True, exist_ok=True)
     CALL_LOG.write_text(json.dumps(summary, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
-    print(f"Gemini request attempts this run: {gem.attempts} (cap {cap}); Google Translate phrases: {b.translator.calls}; key present: {b.translator.available}")
+    print(f"Gemini request attempts this run: {gem.attempts} (cap {cap}); translation ({b.translator.name}) phrases: {b.translator.calls}; key present: {b.translator.available}")
 
 
-def cmd_refresh(tickers: list, cap: int, seed_base: int) -> None:
+def cmd_refresh(tickers: list, cap: int, seed_base: int, fields: list) -> None:
     """One more BP-1 call for a profile whose fields failed or no longer pass the current checks; then the phrases and the texts are done again."""
     b, gem = make_builder(cap, True)
     for t in tickers:
         before = gem.attempts
         try:
-            r = b.refresh_failed(t, seed_base)
+            r = b.refresh_failed(t, seed_base, fields)
             r.update(b.run(t))
         except Exception as e:   # noqa: BLE001
             r = {"error": f"{type(e).__name__}: {e}"}
         r["gemini_attempts"] = gem.attempts - before
         print(t, json.dumps(r, ensure_ascii=False, default=str))
-    print(f"Gemini request attempts this run: {gem.attempts} (cap {cap}); Google Translate phrases: {b.translator.calls}")
+    print(f"Gemini request attempts this run: {gem.attempts} (cap {cap}); translation ({b.translator.name}) phrases: {b.translator.calls}")
     prev = json.loads(CALL_LOG.read_text(encoding="utf-8")) if CALL_LOG.exists() else {}
     prev.setdefault("refresh_runs", []).append({"gemini_attempts": gem.attempts, "cap": cap, "tickers": tickers})
     CALL_LOG.write_text(json.dumps(prev, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
@@ -110,10 +145,11 @@ def cmd_refresh(tickers: list, cap: int, seed_base: int) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=("seed", "dry", "run", "refresh", "recheck", "report"))
+    ap.add_argument("command", choices=("seed", "sync-vocab", "dry", "run", "refresh", "recheck", "round2", "report"))
     ap.add_argument("tickers", nargs="*")
     ap.add_argument("--cap", type=int, default=STAGE_CAP)
     ap.add_argument("--force", action="store_true", help="run: ask BP-1 again for a profile that exists (an operator decision; the automatic run never does)")
+    ap.add_argument("--fields", nargs="*", help="refresh: fields to ask again on purpose (a new prompt version)")
     ap.add_argument("--seed-base", type=int, default=0, help="run: seed offset of the BP-1 calls (a forced run of the same text uses other seeds)")
     a = ap.parse_args(argv)
     if db_target() != "test":
@@ -121,18 +157,26 @@ def main(argv=None) -> int:
         return 2
     print(f"[database target: {db_target()}]")
     tickers = [t.upper() for t in a.tickers] or DEV
-    if a.command == "seed":
+    if a.command == "sync-vocab":
+        cmd_sync_vocab()
+    elif a.command == "seed":
         cmd_seed()
     elif a.command == "dry":
         cmd_dry(tickers)
+    elif a.command == "round2":
+        cmd_round2(tickers, min(a.cap, STAGE_CAP), a.seed_base)
     elif a.command == "recheck":
         b, _ = make_builder(0, False)
         for t in tickers:
             r = b.recheck_stored(t)
             r.update(b.run(t))
             print(t, json.dumps(r, ensure_ascii=False, default=str))
+        if b.translator.calls:
+            prev = json.loads(CALL_LOG.read_text(encoding="utf-8")) if CALL_LOG.exists() else {}
+            prev.setdefault("rounds", []).append({"round": 2, "note": "recheck", "gemini_attempts": 0, "translated_phrases": b.translator.calls, "provider": b.translator.name})
+            CALL_LOG.write_text(json.dumps(prev, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     elif a.command == "refresh":
-        cmd_refresh(tickers, min(a.cap, STAGE_CAP - USED_BEFORE_REFRESH), a.seed_base)
+        cmd_refresh(tickers, min(a.cap, STAGE_CAP - USED_BEFORE_REFRESH), a.seed_base, a.fields or [])
     elif a.command == "run":
         cmd_run(tickers, min(a.cap, STAGE_CAP), a.force, a.seed_base)
     else:

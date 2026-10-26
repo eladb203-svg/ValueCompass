@@ -15,36 +15,27 @@ from src.ai.sections import split_sections
 
 from .vocab import Vocab, region_of
 
-SKILL_ID, SKILL_VERSION = "BP-1", "1"
+SKILL_ID, SKILL_VERSION = "BP-1", "2"
 OPENING_CHARS = 8000
-COMPETITION_CAP = 6000
+COMPETITION_CAP = 12000
 PRODUCTS_CAP = 4000
 MAX_CORE_WORDS = 12
 CONTENT_WORD_SHARE = 0.70
 MAX_COMPETITORS, MAX_TYPES = 5, 4
-FIELDS = ("core_activity", "customer_types", "revenue_models", "competitors", "competitor_types", "segments", "products_services", "regions")
-ALWAYS = ("core_activity", "customer_types", "revenue_models", "competitors", "competitor_types")
+FIELDS = ("display_name", "core_activity", "customer_types", "revenue_models", "competitors", "competitor_types", "segments", "products_services", "regions")
+ALWAYS = ("display_name", "core_activity", "customer_types", "revenue_models", "competitors", "competitor_types")
 PRAISE = ("leading", "largest", "world-class", "world class", "premier", "best-in-class", "foremost", "renowned", "number one", "world's", "greatest", "unrivaled", "unparalleled")
 _STOP = {"and", "the", "for", "its", "with", "that", "from", "into", "other", "such", "various", "related", "their", "which", "also", "has", "have", "are", "services", "service", "products", "product"}
 
-TEMPLATE = """SYSTEM
+HEAD = """SYSTEM
 You assist ValueCompass. From the annual-report TEXT below, fill the JSON under OUTPUT.
 Use ONLY the TEXT. For every item give an exact, contiguous quote from the TEXT that supports it.
 Use ONLY the codes listed for closed fields. If nothing fits, use "other" with the original words.
 If the TEXT does not say, return null or []. Do not guess. Return ONLY the JSON object.
 
 FIELDS
-core_activity: what the company does — a verb phrase of at most 12 words, third person,
-  built from the words of your quote (e.g., "manufactures and sells beverage concentrates and
-  finished beverages"). No praise words (leading, largest, world-class, premier), no numbers.
-customer_types: 1–3 codes from {customer_types}.
-revenue_models: 1–3 codes from {revenue_models}, the main one first.
-competitors: up to 5 companies the report names as competitors. A competitor offers similar
-  products or services to the same customers — not a supplier, customer, distributor or broker.
-competitor_types: ONLY if the report names no competitor — up to 4 items, each
-  {{"industry": code from {industries} or a generic code from {generic_types}, "scope": one of
-   {scopes} or null}}.
-{extra_fields}
+"""
+TAIL = """
 TEXT (filing {accession}, sections: {section_list}):
 <<<
 {text}
@@ -53,11 +44,36 @@ TEXT (filing {accession}, sections: {section_list}):
 OUTPUT
 {output}
 """
-EXTRA = {
-    "segments": 'segments: the reportable segments exactly as the report names them — {"name": "<as reported>", "share_pct": <percent of total revenue if the TEXT states it, else null>, "quote": "..."}.',
-    "products_services": 'products_services: up to 5 main product lines, services or brands — {"name": "<as reported>", "kind": "product_line" | "service" | "brand", "share_pct": <percent if stated, else null>, "quote": "..."}.',
-    "regions": 'regions: revenue by geographic area as the report names it — {"name": "<as reported>", "share_pct": <percent of total revenue if the TEXT states it, else null>, "quote": "..."}.',
+# the text of each field of the skill (v2 of 2026-10-26: display_name added; revenue_models only from a description of the revenue; customer_types include business and institutional customers)
+FIELD_TEXT = {
+    "display_name": """display_name: the short name the company uses for itself in the report (for example "Coca-Cola", "Intel", "Chubb"), without a legal suffix such as Inc., Corp., Co., Ltd. or plc. The quote must show the
+  company using that name.""",
+    "core_activity": """core_activity: what the company does — a verb phrase of at most 12 words, third person,
+  built from the words of your quote (e.g., "manufactures and sells beverage concentrates and
+  finished beverages"). No praise words (leading, largest, world-class, premier), no numbers.""",
+    "customer_types": """customer_types: 1–3 codes from {customer_types}. Include business, institutional and government customers when the TEXT mentions them.""",
+    "revenue_models": """revenue_models: 1–3 codes from {revenue_models}, the main one first. Use this field ONLY when the TEXT describes where the revenue comes from; if it does not, return [].""",
+    "competitors": """competitors: up to 5 companies the report names as competitors (read every competition paragraph, including those of each segment). A competitor offers similar
+  products or services to the same customers — not a supplier, customer, distributor or broker.""",
+    "competitor_types": """competitor_types: ONLY if the report names no competitor — up to 4 items, each
+  {{"industry": code from {industries} or a generic code from {generic_types}, "scope": one of
+   {scopes} or null}}.""",
+    "segments": """segments: the reportable segments exactly as the report names them — {{"name": "<as reported>", "share_pct": <percent of total revenue if the TEXT states it, else null>, "quote": "..."}}.""",
+    "products_services": """products_services: up to 5 main product lines, services or brands — {{"name": "<as reported>", "kind": "product_line" | "service" | "brand", "share_pct": <percent if stated, else null>, "quote": "..."}}.""",
+    "regions": """regions: revenue by geographic area as the report names it — {{"name": "<as reported>", "share_pct": <percent of total revenue if the TEXT states it, else null>, "quote": "..."}}.""",
 }
+SHAPES = {
+    "display_name": {"value": "...", "quote": "..."},
+    "core_activity": {"value": "...", "quote": "..."},
+    "customer_types": [{"code": "...", "other_text": None, "quote": "..."}],
+    "revenue_models": [{"code": "...", "other_text": None, "quote": "..."}],
+    "competitors": [{"name": "...", "quote": "..."}],
+    "competitor_types": [{"industry": "...", "scope": None, "quote": "..."}],
+    "segments": [{"name": "...", "share_pct": None, "quote": "..."}],
+    "products_services": [{"name": "...", "kind": "product_line", "share_pct": None, "quote": "..."}],
+    "regions": [{"name": "...", "share_pct": None, "quote": "..."}],
+}
+ORDER = ("display_name", "core_activity", "customer_types", "revenue_models", "competitors", "competitor_types", "segments", "products_services", "regions")
 
 
 # ---------------------------------------------------------------- the text sent
@@ -66,19 +82,23 @@ def _paragraphs(t: str) -> list:
 
 
 def select_text(filing_text: str, need_products: bool) -> tuple:
-    """-> ([(section id, text)], error or None). Item 1 opening (8,000 characters); the Competition section, always (the sub-section, else the paragraphs of Item 1 that contain "compet");
-    the paragraphs about products and brands only when XBRL has no product axis."""
+    """-> ([(section id, text)], error or None). Item 1 opening (8,000 characters); ALL the competition paragraphs of Item 1 (the Competition sub-section and every other paragraph that contains
+    "compet", e.g. one per segment), always; the paragraphs about products and brands only when XBRL has no product axis."""
     secs = split_sections(filing_text)
     item1 = secs["TXT-001"].text
     if not item1:
         return [], "business_section_not_found"
     out = [("TXT-001", item1[:OPENING_CHARS])]
     opening = normalize(item1[:OPENING_CHARS])
-    comp = secs["TXT-003"].text
-    if not comp:
-        paras = [p for p in _paragraphs(item1) if re.search(r"compet", p, re.I)]
-        comp = "\n".join(paras)[:COMPETITION_CAP] if paras else None
-    if comp and normalize(comp) not in opening:
+    parts, seen = [], set()
+    for chunk in ([secs["TXT-003"].text] if secs["TXT-003"].text else []) + [p for p in _paragraphs(item1) if re.search(r"compet", p, re.I)]:
+        for p in _paragraphs(chunk):
+            k = normalize(p)
+            if k not in seen and k not in opening:
+                seen.add(k)
+                parts.append(p)
+    comp = "\n".join(parts)
+    if comp:
         out.append(("TXT-003", comp[:COMPETITION_CAP]))
     if need_products:
         prod = [p for p in _paragraphs(item1[OPENING_CHARS:]) if re.search(r"\b(brands?|product lines?|products? (?:include|are)|offerings?)\b", p, re.I)]
@@ -97,27 +117,17 @@ def fields_wanted(have_segments: bool, have_products: bool, have_regions: bool) 
 
 
 def output_shape(fields: list) -> str:
-    shape = {"skill_id": SKILL_ID, "version": int(SKILL_VERSION),
-             "core_activity": {"value": "...", "quote": "..."},
-             "customer_types": [{"code": "...", "other_text": None, "quote": "..."}],
-             "revenue_models": [{"code": "...", "other_text": None, "quote": "..."}],
-             "competitors": [{"name": "...", "quote": "..."}],
-             "competitor_types": [{"industry": "...", "scope": None, "quote": "..."}]}
-    if "segments" in fields:
-        shape["segments"] = [{"name": "...", "share_pct": None, "quote": "..."}]
-    if "products_services" in fields:
-        shape["products_services"] = [{"name": "...", "kind": "product_line", "share_pct": None, "quote": "..."}]
-    if "regions" in fields:
-        shape["regions"] = [{"name": "...", "share_pct": None, "quote": "..."}]
+    shape = {"skill_id": SKILL_ID, "version": int(SKILL_VERSION)}
+    shape.update({f: SHAPES[f] for f in ORDER if f in fields})
     return json.dumps(shape, ensure_ascii=False)
 
 
 def build_prompt(vocab: Vocab, accession: str, sections: list, fields: list, note: str = "") -> str:
     cc = vocab.competitor_codes()
-    extra = "\n".join(EXTRA[f] for f in ("segments", "products_services", "regions") if f in fields)
-    p = TEMPLATE.format(customer_types=", ".join(vocab.codes("customer_types")), revenue_models=", ".join(vocab.codes("revenue_models")), industries=", ".join(cc["industry"]),
-                        generic_types=", ".join(cc["generic"]), scopes="/".join(cc["scope"]), extra_fields=extra + ("\n" if extra else ""), accession=accession,
-                        section_list=", ".join(s for s, _ in sections), text=sent_text(sections), output=output_shape(fields))
+    body = "\n".join(FIELD_TEXT[f] for f in ORDER if f in fields)
+    body = body.format(customer_types=", ".join(vocab.codes("customer_types")), revenue_models=", ".join(vocab.codes("revenue_models")), industries=", ".join(cc["industry"]),
+                       generic_types=", ".join(cc["generic"]), scopes="/".join(cc["scope"]))
+    p = HEAD + body + "\n" + TAIL.format(accession=accession, section_list=", ".join(s for s, _ in sections), text=sent_text(sections), output=output_shape(fields))
     return p + (f"\nNOTE: {note}\n" if note else "")
 
 
@@ -207,6 +217,32 @@ def check_core(v, text_norm, sections) -> dict:
             share = sum(1 for w in cw if any(same_word(stem(w), x) for x in qs)) / len(cw)
             if share < CONTENT_WORD_SHARE:
                 reasons.append(f"core_activity: only {share:.0%} of the content words are in the quote (need {CONTENT_WORD_SHARE:.0%})")
+    if reasons:
+        return {"status": "failed", "source": "ai", "items": [], "reasons": reasons}
+    return {"status": "ok", "source": "ai", "reasons": [], "items": [{"value": value, "quote": q["text"], "section": q["section"], "source": "ai", "status": "ok"}]}
+
+
+_LEGAL_SUFFIX = re.compile(r"[\s,]+(?:inc|corp|corporation|co|company|ltd|limited|plc|llc|lp|n\.?v|s\.?a|ag|se|incorporated)\.?$", re.I)
+
+
+def check_display(v, text_norm, sections) -> dict:
+    """display_name: the short name the report itself uses; no legal suffix; it must be in its quote."""
+    if v in (None, "", {}) or (isinstance(v, dict) and not v.get("value")):
+        return {"status": "not_found", "source": "ai", "items": [], "reasons": []}
+    if not isinstance(v, dict):
+        return {"status": "failed", "source": "ai", "items": [], "reasons": ["display_name: not_an_object"]}
+    value, reasons = str(v.get("value") or "").strip(), []
+    q = _quote(v.get("quote"), text_norm, sections, reasons, "display_name")
+    if len(value.split()) > 5:
+        reasons.append("display_name: more_than_5_words")
+    if q:                                                    # a legal suffix or a leading "The" is removed by code when the shorter name is still in the quote
+        short = re.sub(r"^the\s+", "", _LEGAL_SUFFIX.sub("", value).strip(" ,"), flags=re.I).strip()
+        if short and short != value and normalize(short).lower() in normalize(q["text"]).lower():
+            value = short
+    if _LEGAL_SUFFIX.search(value):
+        reasons.append("display_name: ends_with_a_legal_suffix (Inc., Corp., Co., Ltd. ...)")
+    if q and normalize(value).lower() not in normalize(q["text"]).lower():
+        reasons.append("display_name: name_not_in_quote")
     if reasons:
         return {"status": "failed", "source": "ai", "items": [], "reasons": reasons}
     return {"status": "ok", "source": "ai", "reasons": [], "items": [{"value": value, "quote": q["text"], "section": q["section"], "source": "ai", "status": "ok"}]}
@@ -357,7 +393,9 @@ def validate(answer: Optional[dict], vocab: Vocab, sections: list, fields: list,
     res = {}
     for f in fields:
         v = answer.get(f)
-        if f == "core_activity":
+        if f == "display_name":
+            res[f] = check_display(v, text_norm, sections)
+        elif f == "core_activity":
             res[f] = check_core(v, text_norm, sections)
         elif f in ("customer_types", "revenue_models"):
             res[f] = check_coded(v, f, vocab, text_norm, sections)

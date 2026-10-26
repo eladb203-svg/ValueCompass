@@ -8,7 +8,7 @@ import pytest
 from fakedb import FakeClient
 from src.bp import bp1, render as R, xbrl_axes as X
 from src.bp.similar import pick_similar, size_of
-from src.bp.translate import GoogleTranslate, NoKey, auto_names, check_translation, protect, restore, translate_phrase
+from src.bp.translate import AzureTranslate, GoogleTranslate, NoKey, auto_names, check_translation, expand_abbreviations, make_translator, protect, restore, translate_many, translate_phrase
 from src.bp.vocab import Vocab, region_of
 
 VOCAB = Vocab.from_rows()
@@ -267,15 +267,16 @@ def test_translation_checks_foreign_script_names_and_length():
     assert "foreign_script" in check_translation("sells beverages", "מוכרת משקאות 饮料", [], [])
     assert any(r.startswith("name_lost") for r in check_translation("sells Coca-Cola drinks", "מוכרת משקאות", ["Coca-Cola"], []))
     assert any(r.startswith("length_out_of_range") for r in check_translation("sells beverages and snacks around the world every day", "מוכרת", [], []))
-    assert "no_hebrew" in check_translation("sells beverages", "sells beverages", [], [])
+    assert "no_hebrew" in check_translation("sells cold beverages", "sells cold beverages", [], [])
+    assert check_translation("Azure", "Azure", [], []) == [] and check_translation("CPUs", "CPUs", [], []) == []          # a short name that stays as it is
 
 
 def fake_post(reply):
     seen = []
 
-    def post(body):
-        seen.append(body)
-        return reply(body["q"]) if callable(reply) else reply
+    def post(chunk):                    # the provider sends a list of texts and expects a list back
+        seen.append(chunk)
+        return [reply(q) if callable(reply) else reply for q in chunk]
     post.seen = seen
     return post
 
@@ -285,7 +286,7 @@ def test_translate_phrase_sends_placeholders_never_the_names_and_strips_the_comp
     g = GoogleTranslate(key="k", post=post)
     out = translate_phrase("sells Fanta beverage concentrates", g, ["Fanta"], whole_sentence=True, gloss=[("concentrates", "תרכיזים")])
     assert out["he"] and out["he"].startswith("מוכרת") and "Fanta" in out["he"] and not out["reasons"]
-    assert "Fanta" not in post.seen[0]["q"] and "ZQ" in post.seen[0]["q"] and post.seen[0]["q"].startswith("The company")
+    assert "Fanta" not in post.seen[0][0] and "ZQ" in post.seen[0][0] and post.seen[0][0].startswith("The company")
     assert g.calls == 1
 
 
@@ -310,7 +311,7 @@ def test_no_key_means_no_call_and_the_cap_is_enforced():
 
 # ================================================================ rendering
 def item(**k):
-    return {"source": "ai", "status": "ok", **k}
+    return {"source": "xbrl" if k.get("share") is not None else "ai", "status": "ok", **k}          # a share exists in the tests only as an XBRL share of revenue unless a test says otherwise
 
 
 def profile(**over):
@@ -562,8 +563,8 @@ def test_vocab_and_glossary_seed_is_idempotent_and_never_overwrites_the_owners_e
     first = vs.seed(Vocab.seed_rows())
     assert first["inserted"] == len(Vocab.seed_rows()) and vs.seed(Vocab.seed_rows())["inserted"] == 0
     industry = [r for r in vs.rows() if r["field"] == "competitor_types" and r["code"] == "banks"][0]
-    assert industry["active"] is False and industry["label_he"] == "בנקים"                  # a proposal until approved
-    assert all(r["active"] for r in vs.rows() if r["field"] != "competitor_types")
+    assert industry["active"] is True and industry["label_he"] == "בנקים"                    # approved by the owner on 2026-10-26
+    assert all(r["active"] for r in vs.rows())
     g = ts.seed_glossary()
     assert g["inserted"] >= 15 and ts.seed_glossary()["inserted"] == 0
     assert all(r["status"] == "approved" and r["source"] == "human" for r in ts.rows())
@@ -577,7 +578,7 @@ def test_vocab_rows_cover_every_closed_list_of_the_skills_document():
     f = {}
     for r in Vocab.seed_rows():
         f.setdefault(r["field"], []).append(r["code"])
-    assert len(f["customer_types"]) == 10 and len(f["revenue_models"]) == 12 and len(f["regions"]) == 9
+    assert len(f["customer_types"]) == 10 and len(f["revenue_models"]) == 13 and len(f["regions"]) == 9
     assert {"local", "regional", "national", "international", "private_companies", "private_label", "startups", "government_entities", "other"} <= set(f["competitor_types"])
     assert len([c for c in f["competitor_types"] if c not in {"local", "regional", "national", "international", "private_companies", "private_label", "startups", "government_entities", "other"}]) == 22
 
