@@ -25,7 +25,7 @@ from src.pipeline import collect as C
 from src.pipeline import dq as D
 from src.pipeline import prices as P
 from src.pipeline import resolve as R
-from src.pipeline.route import ENGINE_OF_PROFILE, route
+from src.pipeline.route import ENGINE_OF_PROFILE, industry_override_of, route
 from src.providers.bank_facts import BANK_FIELDS
 from src.providers.insurance_facts import INS_FIELDS
 from src.providers.realestate_facts import RE_FIELDS
@@ -150,7 +150,8 @@ class Pipeline:
 
         # ROUTE (pre): the profile decides the engine
         previous = company.get("profile") if company else None
-        rr = route(self.sec, res.ticker, previous_profile=previous, industry_fn=self.industry_fn)
+        override = industry_override_of(company)                       # a stored industry override beats the router on every load
+        rr = route(self.sec, res.ticker, previous_profile=previous, industry_fn=self.industry_fn, override=override)
         engine = ENGINE_OF_PROFILE.get(rr.profile)
         if engine is None:
             res.status, res.state = "no_change", "unsupported"
@@ -176,7 +177,7 @@ class Pipeline:
                 continue
             reg = reg_from_rows(eng, decoded) if eng != "general" else None
             final = route(self.sec, res.ticker, f=raw["f"], labels=raw["labels"], ends=raw["ends"], reg=reg, reg_engine=eng if eng != "general" else None,
-                          previous_profile=previous, industry_fn=self.industry_fn)
+                          previous_profile=previous, industry_fn=self.industry_fn, override=override)
             if chosen is None or eng == engine:
                 chosen = (eng, kw, raw, final)                     # fallback: the first-pass engine
             if ENGINE_OF_PROFILE.get(final.profile) == eng:

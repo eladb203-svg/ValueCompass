@@ -578,7 +578,7 @@ def test_vocab_rows_cover_every_closed_list_of_the_skills_document():
     f = {}
     for r in Vocab.seed_rows():
         f.setdefault(r["field"], []).append(r["code"])
-    assert len(f["customer_types"]) == 10 and len(f["revenue_models"]) == 13 and len(f["regions"]) == 9
+    assert len(f["customer_types"]) == 11 and len(f["revenue_models"]) == 13 and len(f["regions"]) == 9
     assert {"local", "regional", "national", "international", "private_companies", "private_label", "startups", "government_entities", "other"} <= set(f["competitor_types"])
     assert len([c for c in f["competitor_types"] if c not in {"local", "regional", "national", "international", "private_companies", "private_label", "startups", "government_entities", "other"}]) == 22
 

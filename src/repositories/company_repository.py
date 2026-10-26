@@ -105,3 +105,9 @@ class CompanyRepository:
         if found:
             return found
         return self.insert({"symbol": symbol, "company_name": name, "exchange": exchange, "country": country, "reporting_currency": reporting_currency, **extra})
+
+    def industry_overrides(self) -> dict:
+        """{symbol: router industry name} of the companies that have an ``industry_override`` (the owner's decision; beats the router)."""
+        from src.bp.vocab import industry_name
+        rows = self.client.table("companies").select("symbol,industry_override").execute().data
+        return {r["symbol"]: industry_name(r["industry_override"]) for r in rows if r.get("industry_override") and industry_name(r["industry_override"])}

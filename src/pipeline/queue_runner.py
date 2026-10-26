@@ -215,7 +215,7 @@ class QueueRunner:
             raise RuntimeError(f"no score result for {ticker}")
         self._meta_context(co, res)
         import run_ai_k5c as K5C
-        rec = next(r for r in PS.load_records(self.results_dir) if r["ticker"] == ticker)
+        rec = next(r for r in PS.load_records(self.results_dir, self.companies.industry_overrides()) if r["ticker"] == ticker)
         facts, _moat, _missing = K5C.d1_inputs(rec, self.ai_store)
         from src.ai import content as C
         en = self.texts.get(ticker, int(rec["fiscal_year"][2:]), "background", str(C.content_cfg()["d1"]["version"]), "", "en") or {}
@@ -304,7 +304,7 @@ class QueueRunner:
         res = self.load_result(t)
         if res is None:
             raise RuntimeError(f"no score result for {t}: score it first")
-        records = PS.load_records(self.results_dir)
+        records = PS.load_records(self.results_dir, self.companies.industry_overrides())
         rec = next(r for r in records if r["ticker"] == t)
         run = self.scores.latest_run(cid)
         run_label = f"run:{run['id']}"
@@ -347,7 +347,7 @@ class QueueRunner:
             raise RuntimeError(f"no score result for {ticker}")
         K5 = self._meta_context(co, res)
         import run_ai_k5c as K5C
-        rec = next(r for r in PS.load_records(self.results_dir) if r["ticker"] == ticker)
+        rec = next(r for r in PS.load_records(self.results_dir, self.companies.industry_overrides()) if r["ticker"] == ticker)
         facts, _moat, _missing = K5C.d1_inputs(rec, self.ai_store)
         m = K5.meta(ticker)
         filing = find_filing(ticker, str(m["end"][-1])[:10])

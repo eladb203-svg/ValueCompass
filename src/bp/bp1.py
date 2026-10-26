@@ -15,7 +15,7 @@ from src.ai.sections import split_sections
 
 from .vocab import Vocab, region_of
 
-SKILL_ID, SKILL_VERSION = "BP-1", "2"
+SKILL_ID, SKILL_VERSION = "BP-1", "3"
 OPENING_CHARS = 8000
 COMPETITION_CAP = 12000
 PRODUCTS_CAP = 4000
@@ -52,7 +52,7 @@ FIELD_TEXT = {
   built from the words of your quote (e.g., "manufactures and sells beverage concentrates and
   finished beverages"). No praise words (leading, largest, world-class, premier), no numbers.""",
     "customer_types": """customer_types: 1–3 codes from {customer_types}. Include business, institutional and government customers when the TEXT mentions them.""",
-    "revenue_models": """revenue_models: 1–3 codes from {revenue_models}, the main one first. Use this field ONLY when the TEXT describes where the revenue comes from; if it does not, return [].""",
+    "revenue_models": """revenue_models: 1–3 codes from {revenue_models}, the main one first, from what the TEXT says the company sells or charges for (a bank earns interest, fees and trading; a manufacturer sells products ...). Quote the text that shows it. Return [] only if the TEXT says nothing about it.""",
     "competitors": """competitors: up to 5 companies the report names as competitors (read every competition paragraph, including those of each segment). A competitor offers similar
   products or services to the same customers — not a supplier, customer, distributor or broker.""",
     "competitor_types": """competitor_types: ONLY if the report names no competitor — up to 4 items, each
@@ -248,6 +248,15 @@ def check_display(v, text_norm, sections) -> dict:
     return {"status": "ok", "source": "ai", "reasons": [], "items": [{"value": value, "quote": q["text"], "section": q["section"], "source": "ai", "status": "ok"}]}
 
 
+_LICENSING_QUOTE = re.compile(r"licens|royalt|franchis", re.I)
+_REVENUE_WORDS = re.compile(r"revenue|fee|income|royalt|earn|generat|receiv|paid|payment", re.I)
+
+
+def licensing_described(quote: str) -> bool:
+    """`licensing` is a revenue model only when the quote itself talks about licensing / royalties as income ("we own or license brands" is not that)."""
+    return bool(_LICENSING_QUOTE.search(quote or "") and _REVENUE_WORDS.search(quote or ""))
+
+
 def check_coded(items, field: str, vocab: Vocab, text_norm, sections, limit: int = 3) -> dict:
     """customer_types / revenue_models: codes in the list; `other` keeps the original text and is flagged."""
     if not items:
@@ -274,6 +283,8 @@ def check_coded(items, field: str, vocab: Vocab, text_norm, sections, limit: int
         q = _quote(it.get("quote"), text_norm, sections, reasons, f"{field}/{code}")
         if q is None or code in seen:
             continue
+        if field == "revenue_models" and code == "licensing" and not licensing_described(q["text"]):
+            continue                                        # no quote that describes licensing income: the item is dropped
         seen.add(code)
         out.append({"code": code, "other_text": other_text, "quote": q["text"], "section": q["section"], "source": "ai", "status": "other" if code == "other" else "ok"})
     if len(items) > limit:

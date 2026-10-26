@@ -15,6 +15,7 @@
     vc.py render <ticker> | --all         render the English and Hebrew texts again from the stored profiles and phrase translations (no model call, no translation call)
     vc.py terms review                    translated phrases that nobody approved yet
     vc.py terms approve <id>              approve a phrase; the texts that use it are rendered again
+    vc.py terms apply-file <file>         corrections from a table (id | english | hebrew); like terms edit for each line
     vc.py terms edit <id> --he "..."      correct a phrase (stored as human / approved); the texts that use it are rendered again
   Texts of the OLD D1 / T1 background (deprecated; those texts are superseded and not shown)
     vc.py texts review | confirm <id> | edit <id> --file <path> | sendback <id>
@@ -119,6 +120,41 @@ def rerender_for_phrase(builder, en: str) -> list:
     return done
 
 
+def apply_terms_file(builder, path: Path) -> int:
+    """`terms apply-file <file>`: corrections from a markdown/text table. A line is `| id | english | hebrew |` or `english | hebrew` or `id | hebrew`; each is applied like `terms edit` (human / approved)
+    and the texts that use the phrase are rendered again. Lines that do not match a phrase are listed and skipped."""
+    import re
+    from src.bp.translate import phrase_key
+    rows = {r["id"]: r for r in builder.terms.rows()}
+    by_en = {phrase_key(r["en"]): r for r in rows.values()}
+    done, skipped = [], []
+    for ln in path.read_text(encoding="utf-8").splitlines():
+        cells = [c.strip().strip("`") for c in ln.strip().strip("|").split("|")]
+        if len(cells) < 2 or set("".join(cells)) <= set("-: "):
+            continue
+        cells = [c for c in cells if c != ""]
+        is_id = bool(re.fullmatch(r"#?\d+", cells[0]))
+        row, he = None, cells[-1]
+        if is_id and int(cells[0].lstrip("#")) in rows:
+            row = rows[int(cells[0].lstrip("#"))]
+        elif is_id and len(cells) >= 3 and phrase_key(cells[1]) in by_en:
+            row = by_en[phrase_key(cells[1])]
+        elif not is_id and phrase_key(cells[0]) in by_en:
+            row = by_en[phrase_key(cells[0])]
+        if row is None or not he:
+            skipped.append(ln.strip())
+            continue
+        builder.terms.edit(row["id"], he)
+        done.append((row["id"], row["en"], he))
+    for _id, en, _he in done:
+        rerender_for_phrase(builder, en)
+    for d in done:
+        print("edited:", d)
+    for sk in skipped:
+        print("skipped (no such phrase):", sk)
+    return 0
+
+
 def background_command(runner, a) -> int:
     builder = runner.background_builder()
     if a.command == "profile":
@@ -155,6 +191,8 @@ def background_command(runner, a) -> int:
             print(f"#{r['id']:<4}[{r['source']}] {r['en']}  ->  {r['he']}")
         print(f"{len(rows)} phrases wait for review")
         return 0
+    if a.arg == "apply-file" and a.arg2:
+        return apply_terms_file(builder, Path(a.arg2))
     if a.arg in ("approve", "edit") and a.arg2:
         tid = int(a.arg2)
         row = builder.terms.get_by_id(tid)

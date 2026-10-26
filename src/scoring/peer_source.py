@@ -78,12 +78,16 @@ def record_of(j: dict, engine: str) -> dict:
             "buffett": q("buffett_quality"), "graham": q("graham_quality"), "metrics": metrics, "fiscal_year": label}
 
 
-def load_records(golden_dir) -> list:
+def load_records(golden_dir, industry_overrides: Optional[dict] = None) -> list:
+    """``industry_overrides`` {ticker: router industry name} (companies.industry_override): the record gets that industry whatever the stored result says."""
     root, out = Path(golden_dir), []
     for eng in ENGINES:
         for p in sorted((root / eng).glob("*.json")):
             j = json.loads(p.read_text(encoding="utf-8"))
-            out.append(record_of(j, eng))
+            rec = record_of(j, eng)
+            if industry_overrides and rec["ticker"] in industry_overrides:
+                rec["industry"] = industry_overrides[rec["ticker"]]
+            out.append(rec)
     return out
 
 

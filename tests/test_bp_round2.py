@@ -103,7 +103,7 @@ def test_display_name_check_and_use_in_the_template():
 
 def test_the_prompt_v2_asks_for_display_name_revenue_description_business_customers_and_every_competition_paragraph():
     p = bp1.build_prompt(VOCAB, "0001-26-1", SECTIONS, list(bp1.ALWAYS))
-    assert bp1.SKILL_VERSION == "2" and "display_name:" in p and "ONLY when the TEXT describes where the revenue comes from" in p
+    assert bp1.SKILL_VERSION == "3" and "display_name:" in p and "what the TEXT says the company sells or charges for" in p
     assert "Include business, institutional and government customers" in p and "every competition paragraph" in p and '"display_name"' in p.rsplit("OUTPUT", 1)[1]
     only = bp1.build_prompt(VOCAB, "0001-26-1", SECTIONS, ["display_name", "revenue_models"])
     assert "customer_types:" not in only and "revenue_models:" in only
@@ -130,7 +130,7 @@ def test_refresh_can_ask_again_for_chosen_fields_only_and_keeps_old_values_when_
     r = b2.refresh_failed("ACM", fields=["customer_types", "revenue_models"])
     p = b2.profiles.by_id(out["profile_id"])
     assert "customer_types" in r["refreshed"] and "revenue_models" in r["kept_failed"] and p["customer_types"]["items"][0]["code"] == "enterprises"
-    assert p["revenue_models"]["items"][0]["code"] == "product_sales" and p["skill_version"] == "2"
+    assert p["revenue_models"]["items"][0]["code"] == "product_sales" and p["skill_version"] == bp1.SKILL_VERSION
 
 
 # ================================================================ template rules

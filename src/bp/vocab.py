@@ -100,3 +100,11 @@ def region_of(name: str) -> str:
         return _REGIONS[n]
     n2 = re.sub(r"^(country|iso) ", "", n)
     return _REGIONS.get(n2, "other")
+
+
+def industry_name(code: str) -> Optional[str]:
+    """A ValueCompass industry code of the vocabulary (internet_platforms_advertising) -> the router's industry name ("Internet platforms and advertising"); None for an unknown code."""
+    for name, c in Vocab.from_rows().industry_codes.items():
+        if c == code:
+            return name
+    return None

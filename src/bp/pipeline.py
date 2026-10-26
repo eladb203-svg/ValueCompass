@@ -14,6 +14,7 @@ from src.scoring import peer_source as PS
 
 from . import bp1, render as R, xbrl_axes as X
 from .similar import pick_similar, size_of
+from .names import display_items
 from .stores import PROFILE_FIELDS, ProfileStore, TermStore
 from .translate import NoKey, make_translator, phrase_key, translate_many
 from .vocab import Vocab
@@ -59,15 +60,15 @@ def moat_of(ai_store, ticker: str, fy: int) -> tuple:
 
 
 def phrases_needed(profile: dict) -> list:
-    """The free phrases the Hebrew text uses: [(english phrase, kind, whole_sentence)] - core_activity, up to 3 product lines, up to 3 segment names (when there are 2 or more segments)."""
+    """The free phrases the Hebrew text uses: [(english phrase, kind, whole_sentence)] - core_activity, up to 3 product lines (not the commercial names that stay Latin), up to 3 segment names (when
+    there are 2 or more segments); names as they are shown (names.py)."""
     out = []
-    ok = lambda f: [] if (profile.get(f) or {}).get("status") == "failed" else ((profile.get(f) or {}).get("items") or [])   # noqa: E731
-    ca = ok("core_activity")
+    ca = [] if (profile.get("core_activity") or {}).get("status") == "failed" else ((profile.get("core_activity") or {}).get("items") or [])
     if ca:
         out.append((ca[0]["value"].strip().rstrip("."), "core_activity", True))
-    prods = [i for i in ok("products_services") if i.get("kind", "product_line") != "brand"][:R.MAX_LINES]
+    prods = [i for i in display_items(profile, "products_services") if i.get("kind", "product_line") != "brand" and not i.get("latin")][:R.MAX_LINES]
     out += [(i["name"], "product_line", False) for i in prods]
-    segs = ok("segments")
+    segs = display_items(profile, "segments")
     if len(segs) >= 2:
         out += [(i["name"], "segment", False) for i in segs[:R.MAX_SEGMENTS]]
     return list(dict.fromkeys(out))
@@ -103,7 +104,7 @@ class BackgroundBuilder:
         co = self.companies.get_by_symbol(ticker, "US")
         if not co:
             raise RuntimeError(f"{ticker} is not in the companies table")
-        records = PS.load_records(self.results_dir)
+        records = PS.load_records(self.results_dir, self.companies.industry_overrides())
         rec = next((r for r in records if r["ticker"] == ticker), None)
         if rec is None:
             raise RuntimeError(f"no score result for {ticker}")
@@ -136,7 +137,7 @@ class BackgroundBuilder:
     def build_profile(self, ctx: dict, force: bool = False, seed_base: int = 0) -> dict:
         co, filing = ctx["co"], ctx["filing"]
         existing = self.profiles.get(co["id"], filing.accession)
-        if existing and not force and existing["skill_version"] == bp1.SKILL_VERSION:
+        if existing and not force:                 # a profile of this annual report is never asked again (a newer skill version changes fields only through `refresh`)
             self.log["profiles_reused"] += 1
             return existing
         if self.gemini is None:
@@ -229,6 +230,12 @@ class BackgroundBuilder:
             if xb["usable"].get(f) and (new.get("items") != (p[f] or {}).get("items")):
                 p[f] = new
                 adopted.append(f)
+        rm = (p["revenue_models"] or {}).get("items") or []                  # revenue models from the text are checked again with the current rules (licensing needs a quote about licensing income)
+        if rm and (p["revenue_models"] or {}).get("source") == "ai" and (p["revenue_models"] or {}).get("status") != "failed":
+            again = bp1.validate({"revenue_models": [{"code": i["code"], "other_text": i.get("other_text"), "quote": i["quote"]} for i in rm]}, self.vocab, sections, ["revenue_models"])["revenue_models"]
+            if again["status"] != "failed" and [i["code"] for i in again["items"]] != [i["code"] for i in rm]:
+                p["revenue_models"] = again if again["items"] else {"status": "not_found", "source": "ai", "items": [], "reasons": ["every item dropped by the licensing rule"]}
+                adopted.append("revenue_models")
         for f in PROFILE_FIELDS:
             fld = p[f] or {}
             asked = set(af.get("bp1_fields") or []) | {x for r in af.get("refreshes") or [] for x in r.get("fields") or []}
@@ -302,7 +309,7 @@ class BackgroundBuilder:
         level, src = moat_of(self.ai_store, co["symbol"], ctx["fy"])
         names = (profile.get("competitors") or {}).get("items") or []
         dn = [] if (profile.get("display_name") or {}).get("status") == "failed" else ((profile.get("display_name") or {}).get("items") or [])
-        return R.RenderInput(name=dn[0]["value"] if dn else pretty_name(co["company_name"]), property_type=rec.get("profile") == "INCOME_REAL_ESTATE", profile=profile, vocab=self.vocab, revenue=(rec.get("metrics") or {}).get("revenue"), fiscal_year=ctx["fy"],
+        return R.RenderInput(name=dn[0]["value"] if dn else pretty_name(co["company_name"]), property_type=rec.get("profile") == "INCOME_REAL_ESTATE", profile_name=rec.get("profile") or "", profile=profile, vocab=self.vocab, revenue=(rec.get("metrics") or {}).get("revenue"), fiscal_year=ctx["fy"],
                              moat_level=level, moat_source=src, similar=[] if names else self.similar_names(ctx), translations=translations)
 
     def render_store(self, ctx: dict, profile: dict) -> dict:

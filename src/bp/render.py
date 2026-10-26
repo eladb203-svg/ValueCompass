@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from .names import display_items
 from .translate import phrase_key
 from .vocab import Vocab
 
@@ -36,6 +37,7 @@ class RenderInput:
     similar: list = field(default_factory=list)      # display names, already chosen (3.2.3)
     translations: dict = field(default_factory=dict)  # phrase_key(en) -> {"he": str, "status": "approved" | "unreviewed"}
     property_type: bool = False                       # INCOME_REAL_ESTATE: the "product lines" are property types
+    profile_name: str = ""                            # BANK: interest income is the first revenue model
 
 
 # ---------------------------------------------------------------- formatting
@@ -103,17 +105,13 @@ class _Ctx:
 
 
 # ---------------------------------------------------------------- paragraph 1
-_OTHER_NAME = re.compile(r"^(?:all\s+)?other\b", re.I)
-
-
 def _items(inp: RenderInput, f: str) -> list:
+    if f in ("segments", "products_services", "regions"):
+        return display_items(inp.profile, f)              # cleaned names, hidden items removed, commercial names marked (names.py)
     fld = inp.profile.get(f) or {}
     if fld.get("status") == "failed":                  # a field that failed its checks is not written (its partial items are kept in the profile only)
         return []
-    items = list(fld.get("items") or [])
-    if f in ("segments", "products_services"):          # an item named Other / Other Countries is not shown
-        items = [i for i in items if not _OTHER_NAME.match((i.get("name") or "").strip())]
-    return items
+    return list(fld.get("items") or [])
 
 
 def share_of(it: dict) -> Optional[float]:
@@ -134,7 +132,7 @@ def s_activity(c: _Ctx) -> Optional[str]:
 def _line_part(c: _Ctx, f_items: list) -> Optional[str]:
     names = []
     for it in f_items:
-        nm = c.phrase(it["name"])
+        nm = it["name"] if it.get("latin") else c.phrase(it["name"])        # a commercial name (Windows, Azure) stays as it is
         if nm is None:
             return None
         names.append((nm, pct(share_of(it))))
@@ -185,7 +183,12 @@ def _labels(c: _Ctx, field_: str, items: list, limit: int, prefix_he: str = "") 
 
 def s_customers_revenue(c: _Ctx) -> Optional[str]:
     cts = _labels(c, "customer_types", _items(c.i, "customer_types"), MAX_LIST)
-    rms = _labels(c, "revenue_models", _items(c.i, "revenue_models"), MAX_LIST, prefix_he="מ")
+    rm_items = _items(c.i, "revenue_models")
+    if c.i.profile_name == "BANK":                                       # a bank earns first from interest
+        if not any(i.get("code") == "interest_income" for i in rm_items):
+            rm_items = [{"code": "interest_income", "source": "code", "status": "ok"}] + rm_items       # a bank always earns interest: added by code (profile BANK), marked source=code
+        rm_items = sorted(rm_items, key=lambda i: i.get("code") != "interest_income")
+    rms = _labels(c, "revenue_models", rm_items, MAX_LIST, prefix_he="מ")
     if c.lang == "en":
         if cts and rms:
             return f"It sells mainly to {join_en(cts)}, earning its revenue from {join_en(rms)}."

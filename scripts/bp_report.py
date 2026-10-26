@@ -66,44 +66,41 @@ def write_report(path: Path, tickers: list) -> str:
     b, _ = make_builder(0, False)
     vocab = b.vocab
     calls = json.loads(CALL_LOG.read_text(encoding="utf-8")) if CALL_LOG.exists() else {}
-    r1 = calls.get("gemini_attempts", 0) + sum(r.get("gemini_attempts", 0) for r in calls.get("refresh_runs", []))
+    runs = calls.get("refresh_runs", [])
+    r1 = calls.get("gemini_attempts", 0) + (runs[0].get("gemini_attempts", 0) if runs else 0)
+    r3 = sum(r.get("gemini_attempts", 0) for r in runs[1:])
     r2 = sum(r.get("gemini_attempts", 0) for r in calls.get("rounds", []) if r.get("round") == 2)
-    az = sum(r.get("translated_phrases", 0) for r in calls.get("rounds", []) if r.get("round") == 2)
     terms_rows = b.terms.rows()
     n_az = sum(1 for r in terms_rows if r["source"] == "azure")
-    out = [f"# שלב BP — סבב 2 (תיקונים): רקע מפרופיל עסקי, תרגום ב-Azure, רינדור מתבנית — {date.today().isoformat()}", "",
-           "> מסד: **test בלבד**. ייצור לא נגע. מסמך מקור: `docs/ai/ValueCompass_AI_Skills_Other_2026-10-26_10-30.md` (3.1–3.2) + התיקונים שבהודעה שלך. מבנה הדוח כמו בסבב 1.", ""]
+    n_human = sum(1 for r in terms_rows if r["source"] == "human")
+    out = [f"# שלב BP — סבב 3 (תיקונים לפני ייצור) — {date.today().isoformat()}", "",
+           "> מסד: **test בלבד**. ייצור לא נגע. מבנה הדוח כמו בסבבים הקודמים; סעיף 1 מתאר מה שונה בסבב הזה.", ""]
     out += ["## 1. סיכום", "",
-            f"- **קריאות Gemini בפועל בסבב הזה: {r2}** מתוך תקרה של 20 (סבב 1: {r1} מתוך 25; סה\"כ {r1 + r2}). מודל flash-lite בלבד, תהליך אחד, המונה המשותף. BP-1 נשאל שוב **רק על השדות שהפרומפט שלהם השתנה**: "
-            "`display_name`, `customer_types`, `revenue_models`, `competitors`, `competitor_types` (קריאה אחת לחברה; ל-KO נוספו 2 ניסיונות ל-`display_name`). המגזרים, האזורים והמוצרים מ-XBRL נקראו מחדש בלי מודל.",
-            f"- **תרגום: Azure Translator** (`TRANSLATION_PROVIDER=azure`, מפתח ואזור מ-`.env`, לא מודפסים; Google נשאר כחלופה בקוד). {az} ביטויים נשלחו בבקשות מרוכזות (עד 25 בבקשה), {n_az} נשמרו ב-`term_translations` כ-`azure`/`unreviewed`; "
-            "22 מונחי מילון (17 המקוריים + accident and health, P&C, A&H ושתי הצורות property and casualty insurance / accident and health insurance) `approved`/`human`.",
-            "- **הטקסטים העבריים של כל 7 החברות** מאושרים (`approval_status=approved`) עם `human_reviewed=false` — המשתמש יראה \"תרגום אוטומטי\" עד שתאשר את הביטויים (`vc.py terms review` / `approve` / `edit`).",
-            "- ריצה חוזרת: `render --all` נותן 0 שינויים, ו-BP-1 לא נשאל שוב על אותו `accession` — ראו סעיף 8.", ""]
-    out += ["### מה בוצע מההודעה שלך (לפי הסעיפים)", "",
-            "1. **Azure:** מומש (v3, `from=en&to=he`, כמה ביטויים בבקשה, `textType=html` כדי שסימני ההגנה על שמות ומונחים יישמרו). מיגרציה 18 על test הוסיפה `azure` לערכי `source`.",
-            "2. **מגזרי XBRL:** נבדקים כל מושגי ההכנסות (`Revenues`, `RevenueFromContract…`, `RevenuesNetOfInterestExpense`, `PremiumsEarnedNet`, `RevenueForReportableSegments`, `SalesRevenueNet` ועוד — כל מושג ששמו כולל Revenue/Premiums), נבחר המושג שסכום הממברים שלו הקרוב ביותר לסך ההכנסות, וגם הקשרים עם `ConsolidationItemsAxis=OperatingSegmentsMember` מתקבלים. "
-            "כשהממברים חופפים (סכום > 102%) נבחרת הקבוצה הגדולה ביותר שסכומה הוא סך ההכנסות (בגבול 0.5%) — **רק לציר המגזרים**. פירוט לכל חברה בסעיף 5.",
-            "3. **`display_name`:** שדה חדש ב-BP-1 (גרסת סקיל 2) עם ציטוט; הקוד מסיר סיומת משפטית (Inc./Corp./Co./Company…) ו-\"The\" מתחילת השם בתנאי שהשם הקצר עדיין בציטוט; כשל → נופלים לשם מה-EDGAR המנוקה. נשמר בעמודה `display_name` (מיגרציה 18) ומשמש בתבנית.",
-            "4. **BP-1:** (א) `revenue_models` רק כשהטקסט מתאר ממה ההכנסות, הראשי ראשון; (ב) נשלחות **כל** פסקאות התחרות של Item 1 (גם של כל מגזר), עד 12,000 תווים; (ג) `customer_types` כולל לקוחות עסקיים/מוסדיים/ממשלתיים כשמוזכרים.",
-            "5. **רשימות:** נוסף `revenue_models.investment_income` (הכנסות מהשקעות); `U.S. & Canada` → `north_america`; 22 התוויות ברבים אושרו ו-`active=true`, עם שני התיקונים (ברוקרי ביטוח ונותני שירותי ביטוח; חברות בנייה ויזמות נדל\"ן).",
-            "6. **מילון:** `accident and health` → \"ביטוח תאונות ובריאות\" נוסף; `P&C` ו-`A&H` מורחבים (property and casualty / accident and health) לפני התרגום, ונשמרו גם כערכים ישירים `approved`/`human`.",
-            "7. **תבנית:** (א) שיעור מוצג רק כשהוא שיעור מההכנסות מ-XBRL — אחרת שם בלי שיעור (וניסוח \"ביניהם\" במקום \"הגדולים שבהם\"); (ב) פריט בשם Other / Other Countries / Other Operating Segment לא מוצג ולא נספר; "
-            "(ג) INCOME_REAL_ESTATE: \"Its main property types are…\" / \"סוגי הנכסים העיקריים\"; (ד) אזורים בלי שיעורי XBRL: \"It operates in …\" / \"פועלת ב…\".",
-            "8. **סיווג UBER:** ראו להלן.", ""]
-    out += ["### UBER — סיווג הענף (דיווח בלבד, לא שיניתי)", "",
-            "UBER מסווגת **Software** (פרופיל `TECH_ASSET_LIGHT`) ולכן מופיעה כ\"חברה דומה\" ל-MSFT. הנימוק בראוטר: ה-SIC שלה, 7389, הוא קוד כללי (\"multi\") שלא מכריע, ולכן הוחלט לפי **ענף הספק** (`Software - Application` → Software, tier = provider). "
-            "ההגדרה של \"Internet platforms and advertising\" כוללת שווקים שמחברים קונים ומוכרים — Uber (נסיעות ומשלוחים) קרובה אליה יותר מאשר לתוכנה. שינוי כזה הוא החלטת ענף (ישפיע על קבוצת העמיתים ועל התוויות), לכן אני מחכה להחלטתך; "
-            "אם תאשר, התיקון הוא override ענף ל-UBER בראוטר והרצה מחדש של הציון בלבד.", ""]
-    out += ["### החלטות ושינויים שאני מבקש שתבדוק", "",
-            "1. **איכות התרגום האוטומטי — כל הביטויים `unreviewed`, ויש שגיאות שאני מבקש שתתקן עם `terms edit`:** \"Windows\" תורגם \"חלונות\" (שם מוצר שהוא מילה רגילה); \"Concentrate operations\" → \"פעולות ריכוז\" (המילון מכיר \"concentrates\" ברבים בלבד); "
-            "ב-JPM \"עוסקת בנקאות השקעות … וניהול ניהול נכסים\" (ה-\"ב\" נבלעת ו\"ניהול\" כפול סביב מונח המילון); שמות מגזרי CB (\"Insurance Overseas General\" → \"אינשורנס אוברסיז ג'נרל\", \"Life\" → \"חייו\"). "
-            "הגנה אוטומטית יש לשמות עם אות גדולה באמצע / ראשי תיבות ולמונחי המילון (כסימון מילון של Azure, כדי שהמונח יישמר בתוך הדקדוק); המילה Segment בתחילת/סוף שם מגזר לא מתורגמת. מותר להשאיר שם בלטינית: `terms edit <id> --he \"Windows\"`.",
-            "2. **\"הכנסות מהשקעות\"** מקבל \"מ\" פעמיים בעברית (\"מהכנסות מהשקעות\") — תקין אך כבד; מוכן לשנות את התווית אם תרצה.",
-            "3. **שיעורים שמוצגים:** רק שיעורי XBRL מההכנסות. שיעורי מגזרים מהטקסט (למשל אחוזי NPE ב-CB) לא מוצגים; אם מגזר מופיע בלי שיעור, המשפט אומר \"ביניהם\" ולא \"הגדולים שבהם\".",
-            "4. **שמות מגזרי XBRL** באנגלית באים מה-label של החברה; אם אין (MSFT: אין קובץ `_lab.xml` בפילינג) הם נגזרים משם הממבר (\"More Personal Computing\"). שם כמו \"Segment Insurance North American Commercial P&C\" (CB) הוא ה-label של החברה עצמה.",
-            "5. **בדיקת 70% מילות תוכן / פועל בגוף שלישי / ממברים מצטברים / סף 60% כיסוי**: כמו בסבב 1 (מאושרות 2 ו-3 לפי הודעתך; 4–6 בעינן).",
-            "6. **שיוך `Other Countries`** (אינטל) ל-`other`, לא ל-`outside_us` — כמו בסבב 1.", ""]
+            f"- **קריאות Gemini בסבב 3: {r3}** (תקרה 20): JPM ו-INTC — `revenue_models`; AMT — `customer_types`. סבבים קודמים: {r1} + {r2}; סה\"כ {r1 + r2 + r3}. flash-lite בלבד, תהליך אחד, המונה המשותף.",
+            f"- **Azure Translator בסבב 3: 9 ביטויים** (4 אחרי הסרת מילים כלליות מהשמות, 5 בתרגום מחדש); בטבלה {n_az} ביטויים `azure`/`unreviewed` ו-{n_human} `human`/`approved`.",
+            "- 7 הטקסטים באנגלית ובעברית מוצגים בסעיף 2 (העברית מאושרת, `human_reviewed=false`). `render --all` נותן 0 שינויים בריצה שנייה.", ""]
+    out += ["### מה בוצע (לפי סעיפי ההודעה)", "",
+            "1. **שמות (קוד, `src/bp/names.py`):** (א) מוסרים מהשם לפני תרגום ותצוגה: \"Segment\", \"Product Line(s)\"; במגזרים גם הקידומות \"Property, \" ו-\"Insurance \" (בקווי מוצרים הן נשארות — \"Property, Liability and Casualty Insurance\" הוא שם אמיתי). "
+            "(ב) שם מסחרי נשאר לטיני ולא מתורגם: `kind=brand`, או מוצר שהטקסט נתן בשם באותיות גדולות בכל מילה (Windows, Azure, Microsoft 365 Copilot); שמות מ-XBRL (Concentrate Operations, Retail) לעולם מתורגמים. "
+            "(ג) קו מוצרים בשם כללי (Property Revenue, Service(s), Product(s), Other…, Total…) לא מוצג; ואותו כלל לשמות מגזרים Other. אצל AMT קווי המוצרים נעלמו (Property Revenue / Service) ובמקומם נשאר המשפט על המגזרים. ",
+            "2. **`terms edit` לפי טבלה:** הקובץ `scripts/terms_fix_2026-10-26.md` **עדיין לא קיים** ולכן לא החלתי תיקונים. נוסף הפקודה `vc.py terms apply-file <קובץ>` שמקבלת שורות `| id | english | hebrew |` (או `english | hebrew`), מחילה כל שורה כמו `terms edit` (`human`/`approved`) ומרנדרת מחדש את החברות שמשתמשות בביטוי. "
+            "שגיאות התרגום הידועות שמחכות לתיקון: \"Concentrate operations\" → \"פעולות ריכוז\", JPM \"עוסקת בנקאות השקעות … וניהול ניהול נכסים\", שמות מגזרי CB (\"Overseas General\" → \"גנרל מעבר לים\", \"Life\" → \"חייו\"), \"Intelligent Cloud\" → \"ענן אינטליגנטי\".",
+            "3. **רשימות:** נוסף `customer_types.telecom_operators` (ספקי תקשורת); AMT נשאל מחדש על `customer_types` — עכשיו telecom_operators, government, enterprises (\"לקוחותיה הם בעיקר ספקי תקשורת, ממשלות…\"). "
+            "**למה צפון אמריקה חסרה אצל AMT:** אזורי AMT באים מהטקסט (אין ציר אזורים ב-XBRL); \"U.S. & Canada\" נשמר בפרופיל עם הקוד `other` מלפני שהמפה למדה אותו, והקוד מוסתר בתבנית. "
+            "תיקון: קוד אזור מהטקסט נגזר כל פעם מחדש מהשם לפי המפה העדכנית; עכשיו \"פועלת בצפון אמריקה, באירופה ובאמריקה הלטינית\". "
+            "**\"Africa & APAC\" עדיין לא מופיע באזורים** — שם מעורב של שני אזורים (מפה אחד→אחד); לכן נשאר `other` ומוסתר. אפשר להוסיף קוד אזור `africa_apac` או לפצל — החלטה שלך.",
+            "4. **מודל ההכנסות:** *למה חסר ב-JPM ו-INTC:* בסבב 2 הוספתי ל-BP-1 \"רק כשהטקסט מתאר ממה מגיעות ההכנסות\" (לפי ההנחיה), ופתיחת Item 1 של שתיהן לא מתארת זאת במפורש — המודל החזיר `[]`. "
+            "ניסחתי מחדש (גרסה 3): \"לפי מה שהטקסט אומר שהחברה מוכרת או גובה עליו, הראשי ראשון; `[]` רק אם הטקסט לא אומר דבר\". אחרי השאלה מחדש: INTC — מכירת מוצרים ושירותים; JPM — עמלות וניהול נכסים. "
+            "**בבנק interest_income ראשון** (קוד, פרופיל BANK): אם המודל לא החזיר אותו, הקוד מוסיף אותו ראשון עם `source=code` (בלי ציטוט — הערה: זה פריט בלי ציטוט, מסומן). "
+            "**KO:** `licensing` נדרש לציטוט שמדבר על רישוי/תמלוגים כהכנסה (licens/royalt/franchis + revenue/fee/income…); הציטוט של KO היה \"We own or license and market numerous beverage brands\" — הוסר. הכלל חל גם על כל פעם הבאה, ובדיקה חוזרת (`recheck`) החילה אותו על פרופילים קיימים.",
+            "5. **UBER:** מיגרציה 19 (`companies.industry_override`, `industry_override_reason`; חוסמת override בלי סיבה; rollback נוסה). הערך קוד אוצר מילים (`internet_platforms_advertising`) → שם הענף של הנתב. "
+            "הנתב (`route(..., override=...)`) מקבל את ה-Override מהשורה בכל טעינה (`runner.py`, שני המעברים), ולכן הוא נשמר בטעינות; גם רשומות העמיתים (`peer_source.load_records`) מקבלות אותו. UBER הוגדרה `internet_platforms_advertising` עם הנימוק. "
+            "בפועל: UBER כבר לא מופיעה כ\"חברה דומה\" ל-MSFT (הופיעו Oracle, Salesforce, Adobe). **הציון של UBER לא חושב מחדש** — היא ב-test רק כתוצאת golden; השפעת הענף על הפרופיל/הציון תיבדק בטעינה הבאה שלה.",
+            "6. **מדיניות שמירה — נדחה ל-K6d.** נושא שמירת פרופילים וטקסטים ישנים (מחיקה/ארכוב של גרסאות קודמות, כמה גרסאות של פרופיל נשמרות לכל חברה) לא נקבע עכשיו; כרגע: פרופיל אחד לכל (חברה, accession), טקסטי D1/T1 הישנים `superseded` ולא נמחקו. ", ""]
+    out += ["### החלטות שאני מבקש שתבדוק", "",
+            "1. **שורת interest_income בלי ציטוט** ב-JPM (קוד מוסיף לבנק) — מאשר שזה מקובל, או שעדיף להשאיר ריק.",
+            "2. **\"Africa & APAC\"** — ראו סעיף 3.",
+            "3. **\"Intel Core Ultra Series 3 processors\"** (מותג) ו-\"CPUs\" נשארים/מתורגמים לפי הכלל: מוצר שהטקסט נתן באותיות גדולות בכל מילה — לטיני; כל השאר מתורגם (\"CPUs\" נשאר כי הוא ראשי תיבות).", ""]
     # ------------------------------------------------------------------ per company
     out += ["## 2. 7 חברות סט הפיתוח", ""]
     others, axes_rows, used_types = [], [], {}
@@ -180,12 +177,12 @@ def write_report(path: Path, tickers: list) -> str:
                    f"{('%.0f%%' % (a['coverage'] * 100)) if a.get('coverage') else ''} | {cell(shown, 260)} | {a.get('n_dropped', 0)} | {notes.get(t, '') if sg.get('source') == 'xbrl' or t in notes else ''} |")
     out += ["", "- **KO**: נמצאו 5 מגזרים (North America, Europe/Middle East/Africa, Latin America, Bottling Investments, Asia Pacific) בכיסוי 99.7%.",
             "- **INTC**: נמצאו 3 פריטים לאחר פתרון החפיפה; **JPM**: 3 מגזרים בכיסוי 98%; **CB**: 6 מגזרים בכיסוי 89%.", ""]
-    out += ["## 6. קריאות בפועל", "", "| | מספר |", "|---|---|", f"| Gemini — סבב 1 | {r1} (מתוך 25) |", f"| **Gemini — סבב 2 (תקרה 20, נאכפת בקוד)** | **{r2}** |", f"| Gemini — סה\"כ | {r1 + r2} |",
-            f"| Azure Translator — ביטויים שנשלחו | {az} (בבקשות של עד 25 ביטויים; תקרה 200) |", f"| Azure — ביטויים שנשמרו | {n_az} |", "| Google Translate | 0 (חלופה, לא בשימוש) |", "",
+    out += ["## 6. קריאות בפועל", "", "| | מספר |", "|---|---|", f"| Gemini — סבב 1 | {r1} (מתוך 25) |", f"| Gemini — סבב 2 (תקרה 20) | **{r2}** |", f"| **Gemini — סבב 3 (תקרה 20, נאכפת בקוד)** | **{r3}** |", f"| Gemini — סה\"כ | {r1 + r2 + r3} |",
+            f"| Azure Translator — ביטויים שנשלחו בסבב 3 | 9 (בבקשות של עד 25 ביטויים; תקרה 200) |", f"| Azure — ביטויים שנשמרו | {n_az} |", "| Google Translate | 0 (חלופה, לא בשימוש) |", "",
             "ביטויים שנדחו בבדיקות (נשארים \"ממתינים\" עד תרגום מחדש או תיקון ידני): ראו `translation_failed` ב-`scripts/ai_store/bp_calls.json`; בסבב זה הבדיקות תוקנו (שם/ראשי תיבות שנשארים לטיניים, מונח מילון ארוך) והביטויים שנכשלו תורגמו מחדש. "
             "הניסיון החוזר של BP-1 (אחד לכל קריאה, עם הסיבה המדויקת) כלול בספירה.", ""]
     out += ["## 7. מבנה ומסד", "",
-            "- מיגרציה 17 (סבב 1) ומיגרציה 18 (`supabase/migrations/20261026160018_bp_display_name_azure.sql`, rollback ב-`supabase/rollback/`): העמודה `display_name` ב-`company_business_profiles` והערך `azure` ב-`term_translations.source`. "
+            "- מיגרציה 19 (`supabase/migrations/20261026190019_companies_industry_override.sql`): `companies.industry_override` + `industry_override_reason` (rollback נוסה). מיגרציה 17 (סבב 1) ומיגרציה 18 (`supabase/migrations/20261026160018_bp_display_name_azure.sql`, rollback ב-`supabase/rollback/`): העמודה `display_name` ב-`company_business_profiles` והערך `azure` ב-`term_translations.source`. "
             "על test: md5 של `companies`, `extraction_items`, `ai_assessments`, `financial_facts`, `score_runs` זהה לפני ואחרי (5 מתוך 5); ה-rollback נוסה בבלוק שבוטל והחזיר את המצב.",
             "- RLS ללא שינוי: משתמש מחובר קורא פרופילים, אוצר מילים פעיל ותרגומים; אין לו כתיבה; טקסטים — רק `approved`.",
             f"- `business_vocab`: {len(b.vocab.labels['customer_types']) + len(b.vocab.labels['revenue_models']) + len(b.vocab.labels['regions']) + len(b.vocab.labels['competitor_types'])} קודים; `sync-vocab` עדכן 22 תוויות/דגלי `active` והוסיף `investment_income`.", ""]
