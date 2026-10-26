@@ -13,7 +13,7 @@ from src.ai import content as C
 from src.scoring import peer_source as PS
 
 from . import bp1, render as R, xbrl_axes as X
-from .similar import pick_similar, size_of
+from .similar import SIZE_BY_ASSETS, pick_similar
 from .names import display_items
 from .stores import PROFILE_FIELDS, ProfileStore, TermStore
 from .translate import NoKey, make_translator, phrase_key, translate_many
@@ -80,6 +80,12 @@ def protected_names(profile: dict, company_name: str) -> list:
     names += [t for t in re.findall(r"[A-Za-z][A-Za-z&'\-]+", company_name) if len(t) > 2]
     names += [i["value"] for i in (profile.get("display_name") or {}).get("items") or []]
     return names
+
+
+def group_tickers(client, rec: dict, records: list) -> list:
+    """Tickers of the companies of THIS database (companies table, US exchange rows) that have the profile and the industry of ``rec`` (industry overrides included), the company itself excluded."""
+    in_db = {c["symbol"] for c in client.table("companies").select("symbol,exchange").execute().data if c.get("exchange") == "US"}
+    return sorted(r["ticker"] for r in records if r["ticker"] in in_db and r["ticker"] != rec["ticker"] and r["profile"] == rec["profile"] and r.get("industry") and r.get("industry") == rec.get("industry"))
 
 
 class BackgroundBuilder:
@@ -292,17 +298,36 @@ class BackgroundBuilder:
         return res
 
     # ---------------------------------------------------------------- render
+    def db_size(self, company_id: int, profile: str) -> Optional[float]:
+        """The size of a company in THIS database: total assets (banks, insurers) or revenue (the others), the latest fiscal year in ``financial_facts``; None when there is no such fact."""
+        from src.repositories.financial_repository import FinancialRepository
+        fin = FinancialRepository(self.client)
+        key = "total_assets" if profile in SIZE_BY_ASSETS else "revenue"
+        try:
+            iid = fin.item_id(key)
+        except KeyError:
+            return None
+        rows = [r for r in fin._select_all("financial_facts", "*", {"company_id": company_id, "item_id": iid}) if r.get("value") is not None]
+        return float(max(rows, key=lambda r: r["fiscal_year"])["value"]) if rows else None
+
+    def group_tickers(self, rec: dict, records: list) -> list:
+        return group_tickers(self.client, rec, records)
+
     def similar_names(self, ctx: dict) -> list:
+        """'Similar companies in ValueCompass' (3.2.3): only companies of this database - the same profile and industry - that have size data in financial_facts, the 3 closest in size. None -> empty:
+        the sentence is not written. (The score-result files on disk are not a source of companies.)"""
         rec, records = ctx["rec"], ctx["records"]
-        sizes, js = {}, {}
-        pool = [r for r in records if r["profile"] == rec["profile"] and r.get("industry") == rec.get("industry")]
+        ids = {c["symbol"]: c["id"] for c in self.client.table("companies").select("id,symbol,exchange").execute().data if c.get("exchange") == "US"}
+        pool = [r for r in records if r["ticker"] in set(self.group_tickers(rec, records))]
+        target = self.db_size(ids[rec["ticker"]], rec["profile"]) if rec["ticker"] in ids else None
+        sizes = {rec["ticker"]: target}
         for r in pool:
-            try:
-                js[r["ticker"]], _ = PS.load_json(self.results_dir, r["ticker"])
-            except KeyError:
-                js[r["ticker"]] = None
-            sizes[r["ticker"]] = size_of(r, js[r["ticker"]])
-        return [pretty_name(r["name"]) if r.get("name") and r["name"] != r["ticker"] else r["ticker"] for r in pick_similar(rec, records, sizes)]
+            sizes[r["ticker"]] = self.db_size(ids[r["ticker"]], r["profile"])
+        pool = [r for r in pool if sizes.get(r["ticker"])]
+        if not pool or not target:
+            return []
+        picks = pick_similar(rec, pool + [rec], sizes)
+        return [pretty_name(r["name"]) if r.get("name") and r["name"] != r["ticker"] else r["ticker"] for r in picks]
 
     def render_inputs(self, ctx: dict, profile: dict, translations: dict) -> R.RenderInput:
         co, rec = ctx["co"], ctx["rec"]

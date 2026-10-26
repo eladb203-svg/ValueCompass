@@ -460,6 +460,22 @@ def general_json(t, name, rev):
             "derived": {}, "buffett_quality": {}, "graham_quality": {}, "profile_router": {"classification": {"industry": "Software"}}}
 
 
+def add_peers(world, revenues: dict, acme: float = None, without_facts=(), overrides=None):
+    """Put companies (exchange US) with a revenue fact into the fake database; their score-result files are already in the results directory."""
+    c = world.client
+    c.tables.setdefault("dictionary_items", [])
+    if not any(r["item_key"] == "revenue" for r in c.tables["dictionary_items"]):
+        c.tables["dictionary_items"] += [{"id": 15, "item_key": "revenue"}, {"id": 12, "item_key": "total_assets"}]
+    rows = dict(revenues)
+    if acme is not None:
+        rows["ACM"] = acme
+    for sym, rev in rows.items():
+        co = c.table("companies").select("*").eq("symbol", sym).execute().data
+        cid = co[0]["id"] if co else c.table("companies").insert({"symbol": sym, "exchange": "US", "company_name": sym, "country": "US", **((overrides or {}).get(sym) or {})}).execute().data[0]["id"]
+        if sym not in without_facts:
+            c.table("financial_facts").insert({"company_id": cid, "fiscal_year": 2025, "item_id": 15, "value": rev, "status": "ok", "source_kind": "tag", "tag_id": None, "flags": [], "basis": None, "extraction_id": None}).execute()
+
+
 @pytest.fixture
 def world(tmp_path):
     from src.ai.db_stores import DbTextStore
@@ -542,6 +558,7 @@ def test_old_d1_t1_texts_are_marked_superseded_not_deleted_and_not_touched_twice
 
 
 def test_similar_companies_appear_only_when_no_competitor_is_named_and_come_from_the_pool(world):
+    add_peers(world, {"P1": 90.0, "P2": 250.0, "P3": 105.0}, acme=100.0)
     a = bp_answer()
     a["competitors"], a["competitor_types"] = [], []
     b, texts = world.build(gem=FakeGemini(a))

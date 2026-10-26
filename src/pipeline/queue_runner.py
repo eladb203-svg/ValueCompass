@@ -174,7 +174,7 @@ class QueueRunner:
         for t in self.queue.runnable():
             if getattr(self, "only", None) and self._label(t) not in self.only:
                 continue
-            if t["job_type"] in AI_JOBS and not self.ai_allowed():
+            if t["job_type"] in AI_JOBS and t.get("skill") != "render" and not self.ai_allowed():       # a render-only background task needs no model budget
                 continue                                      # AI work waits (queued) while there is no budget
             if self.queue.open_before(t):
                 rep.skipped_blocked += 1
@@ -236,6 +236,7 @@ class QueueRunner:
         if out.status != "scored":
             raise RuntimeError(f"scoring failed: {out.detail}")
         run_id, w = self.scores.write_result(cid, out.result)
+        self.enqueue_peer_renders(co)
         if stage == "first":
             self.companies.set_processing_state(cid, "scored_partial")
             planned = self.plan_ai(co, out, task["priority"])
@@ -244,6 +245,26 @@ class QueueRunner:
             return {"run_id": run_id, "write": w, "ai_pending": out.ai_pending, "planned": planned}
         self.companies.set_processing_state(cid, "complete" if out.ai_pending == 0 else "scored_partial")
         return {"run_id": run_id, "write": w, "ai_pending": out.ai_pending}
+
+    def enqueue_peer_renders(self, co: dict) -> list:
+        """A company of this database was scored: the companies of the same profile and industry that already have a business profile get their background rendered again (the 'similar companies'
+        sentence may change). A render-only task (``ai_background`` with skill ``render``): no model, no translation."""
+        from src.bp.pipeline import group_tickers
+        from src.bp.stores import ProfileStore
+        S._paths()
+        from src.scoring import peer_source as PS
+        records = PS.load_records(self.results_dir, self.companies.industry_overrides())
+        rec = next((r for r in records if r["ticker"] == co["symbol"]), None)
+        if rec is None:
+            return []
+        queued = []
+        profiles = ProfileStore(self.client)
+        for t in group_tickers(self.client, rec, records):
+            peer = self.companies.get_by_symbol(t, "US")
+            if peer and profiles.latest(peer["id"]):
+                task, _state = self.enqueue(peer["id"], "ai_background", None, "render", 3, {"reason": f"{co['symbol']} was loaded", "no_ai": True})
+                queued.append(t)
+        return queued
 
     def plan_ai(self, co: dict, out, priority: int) -> list:
         """The AI tasks a scored company still needs; a stored answer or text is not asked again."""
@@ -370,6 +391,8 @@ class QueueRunner:
         """BP-1 (one call, only when the profile of this annual report does not exist) -> profile -> translation of new phrases (Google, if the key exists) -> rendering of the English and the Hebrew text."""
         S._paths()
         t = self.ticker(task["company_id"])
+        if task.get("skill") == "render":                     # a company of the same profile and industry was loaded: render again from the stored profile, no model, no translation
+            return self.background_builder().render_only(t)
         before = self.gemini.attempts if self.gemini else 0
         try:
             out = self.background_builder().run(t)

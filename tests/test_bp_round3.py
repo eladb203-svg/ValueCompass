@@ -218,3 +218,61 @@ def test_general_plural_acronyms_are_translated_and_every_text_without_unreviewe
     for lang in ("en", "he"):
         row = texts.get("ACM", 2025, "background", "bp", "", lang)
         assert row["human_reviewed"] is (lang == "en")            # no translator key: Hebrew waits (not reviewed); English has no translated phrase to review
+
+
+# ---------------------------------------------------------------- round 5: similar companies only from this database
+from test_bp import add_peers  # noqa: E402
+
+
+def sentence(world, **kw):
+    a = bp_answer()
+    a["competitors"], a["competitor_types"] = [], []
+    b, texts = world.build(gem=FakeGemini(a))
+    b.run("ACM")
+    return texts.get("ACM", 2025, "background", "bp", "", "en")["text"] + "\n" + texts.get("ACM", 2025, "background", "bp", "", "he")["text"]
+
+
+def test_candidates_come_only_from_companies_of_this_database_with_size_data(world):
+    # P1, P2 are companies here; P3 is a company without any financial fact; P4 has a score-result file but is not in `companies` at all
+    add_peers(world, {"P1": 90.0, "P2": 250.0, "P3": 105.0}, acme=100.0, without_facts=("P3",))
+    t = sentence(world)
+    assert "Similar companies in ValueCompass: Peer One, Peer Two." in t and "Peer Three" not in t and "Peer Four" not in t
+    assert "חברות דומות ב-ValueCompass: Peer One, Peer Two." in t
+
+
+def test_no_candidates_no_sentence(world):
+    add_peers(world, {}, acme=100.0)                       # ACM alone in the database: the other result files are not companies here
+    t = sentence(world)
+    assert "Similar companies" not in t and "חברות דומות" not in t and "The report does not describe its competitors." in t
+
+
+def test_a_company_without_size_data_gets_no_sentence(world):
+    add_peers(world, {"P1": 90.0}, acme=100.0, without_facts=("ACM",))
+    assert "Similar companies" not in sentence(world)
+
+
+def test_the_industry_override_decides_the_group(world):
+    add_peers(world, {"P1": 90.0, "P2": 250.0}, acme=100.0)
+    cid = world.client.table("companies").select("*").eq("symbol", "P1").execute().data[0]["id"]
+    world.client.table("companies").update({"industry_override": "internet_platforms_advertising", "industry_override_reason": "owner"}).eq("id", cid).execute()
+    t = sentence(world)
+    assert "Similar companies in ValueCompass: Peer Two." in t and "Peer One" not in t
+
+
+def test_loading_a_company_queues_a_render_only_task_for_the_companies_of_its_group(world, tmp_path):
+    from src.pipeline.queue_runner import QueueRunner
+    from src.pipeline import scoring as S
+    add_peers(world, {"P1": 90.0, "P2": 250.0}, acme=100.0)
+    b, _ = world.build(gem=FakeGemini(bp_answer()))
+    b.run("ACM")
+    for sym in ("P1",):                                                    # only P1 already has a business profile
+        cid = world.client.table("companies").select("*").eq("symbol", sym).execute().data[0]["id"]
+        world.client.table("company_business_profiles").insert({"company_id": cid, "accession": "x", "fiscal_year": 2025, "skill_version": "3"}).execute()
+    runner = QueueRunner(world.client, results_dir=b.results_dir, executors={"ai_background": lambda task: {"rendered": task["skill"], "payload": task["payload"]}})
+    new = world.client.table("companies").select("*").eq("symbol", "P2").execute().data[0]
+    assert runner.enqueue_peer_renders(new) == ["ACM", "P1"]            # the companies of the same profile and industry that already have a profile
+    tasks = [t for t in runner.queue.list() if t["job_type"] == "ai_background"]
+    assert {t["skill"] for t in tasks} == {"render"} and len(tasks) == 2
+    assert runner.enqueue_peer_renders(new) == ["ACM", "P1"] and len([t for t in runner.queue.list() if t["job_type"] == "ai_background"]) == 2        # queued once
+    rep = runner.run(max_tasks=5)                                            # no model budget at all: the render-only tasks still run
+    assert len(rep.done) == 2 and rep.attempts == 0 and not rep.failed
