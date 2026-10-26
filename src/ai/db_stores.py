@@ -63,7 +63,7 @@ def select_all(client, table: str, filters: Optional[dict] = None, order: str = 
 
 # ---------------------------------------------------------------- texts (D1 / T1 / D2)
 TEXT_COLUMNS = {"ticker", "fiscal_year", "kind", "language", "text", "model", "prompt_version", "run_id", "accession", "state", "approval_status", "edited_by", "human_reviewed",
-                "checks", "quotes", "created_at", "id"}
+                "checks", "quotes", "created_at", "id", "template_version", "profile_id"}
 
 
 class DbTextStore:
@@ -76,6 +76,13 @@ class DbTextStore:
         return (r["ticker"], int(r["fiscal_year"]), r["kind"], r["language"], str(r["prompt_version"]), r.get("run_id") or "")
 
     def _to_db(self, row: dict) -> dict:
+        d = self._base(row)
+        for k in ("template_version", "profile_id"):                    # migration 17 columns: only written by the template-rendered background (production has them after its migration)
+            if row.get(k) is not None:
+                d[k] = row[k]
+        return d
+
+    def _base(self, row: dict) -> dict:
         return {"company_id": self.co.id(row["ticker"]), "fiscal_year": int(row["fiscal_year"]), "kind": row["kind"], "language": row["language"], "text": row.get("text"),
                 "model": row.get("model"), "prompt_version": str(row["prompt_version"]), "run_label": str(row.get("run_id") or ""), "run_id": row.get("score_run_id"),
                 "accession": row.get("accession"), "state": row.get("state") or "stored", "approval_status": row.get("approval_status") or ("approved" if row.get("state", "stored") == "stored" else "failed"),
@@ -85,7 +92,8 @@ class DbTextStore:
     def _from_db(self, r: dict) -> dict:
         row = {**(r.get("details") or {}), "ticker": self.co.symbol(r["company_id"]), "fiscal_year": r["fiscal_year"], "kind": r["kind"], "language": r["language"], "text": r["text"],
                "model": r["model"], "prompt_version": r["prompt_version"], "run_id": r["run_label"], "accession": r["accession"], "state": r["state"], "approval_status": r["approval_status"],
-               "edited_by": r["edited_by"], "human_reviewed": r["human_reviewed"], "checks": r["checks"], "quotes": r["quotes"], "created_at": r.get("created_at"), "id": r["id"], "score_run_id": r["run_id"]}
+               "edited_by": r["edited_by"], "human_reviewed": r["human_reviewed"], "checks": r["checks"], "quotes": r["quotes"], "created_at": r.get("created_at"), "id": r["id"], "score_run_id": r["run_id"],
+               "template_version": r.get("template_version"), "profile_id": r.get("profile_id")}
         return row
 
     def get(self, ticker, fiscal_year, kind, prompt_version, run_id="", language="he"):

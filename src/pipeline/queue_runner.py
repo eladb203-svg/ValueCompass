@@ -1,6 +1,6 @@
 """The work queue runner (K6c, K6 spec 2.8 and section 3): picks tasks from ``work_queue`` and runs them, one at a time.
 
-Order: priority (1 a user asked, 2 a new annual report, 3 backfill), then inside one company: the data job, the first score (without AI), C1, B extraction, A questions, D1 + T1, the score
+Order: priority (1 a user asked, 2 a new annual report, 3 backfill), then inside one company: the data job, the first score (without AI), C1, B extraction, A questions, BP background (BP-1 -> profile -> phrase translation -> rendering), the score
 with the AI answers (``final``), D2. A task waits for the earlier open tasks of its company. A model call is made only through ``self.gemini`` (a ``CappedGemini``): every request attempt
 counts against the run's budget and the shared daily counter (cap 450); when the budget is spent the task that needed a call becomes ``deferred_quota`` until the next reset
 (midnight Pacific = 10:00 Israel) and no further AI task starts. Data tasks (import, score, D2) need no budget and keep running. A stored answer is never asked again (R18).
@@ -156,7 +156,7 @@ class QueueRunner:
 
     def after_ai(self, task: dict) -> None:
         """When the last open scoring AI task (C1, B, A) of a company is done: the score with the AI answers and D2 follow (both are idempotent), and the state goes back to scored_partial until that
-        score decides. The background text (D1 + T1) is not waited for."""
+        score decides. The background text is not waited for."""
         cid = task["company_id"]
         if any(t["job_type"] in SCORING_AI and t["state"] in ("queued", "running", "deferred_quota") for t in self.queue.list(cid)):
             return
@@ -290,8 +290,8 @@ class QueueRunner:
         return [b for b in blocks if b not in have]
 
     def has_background(self, ticker: str, fy: int) -> bool:
-        """An approved Hebrew background of this fiscal year exists (any prompt version: a text made under an older D1 version stays until the 'recompute all' job, K6d)."""
-        return any(r["fiscal_year"] == fy and r["kind"] == "background" and r["language"] == "he" and r["approval_status"] == "approved" for r in self.texts.rows(ticker))
+        """A template-rendered background (BP) of this fiscal year exists, in either language and whatever its state (a Hebrew text that waits for a translation is re-rendered by `render`, not re-planned)."""
+        return any(r["fiscal_year"] == fy and r["kind"] == "background" and r.get("template_version") for r in self.texts.rows(ticker))
 
     # ------------------------------------------------------------ D2 (code, no model call)
     def exec_analysis(self, task: dict) -> dict:
@@ -359,37 +359,24 @@ class QueueRunner:
         _prompt, text_sent, sent = C.build_d1_prompt(facts, filing.accession, secs)
         return {"facts": facts, "text_sent": text_sent, "sent": sent, "fiscal_year": a.fiscal_year}
 
+    def background_builder(self, translator=None):
+        """The business-profile background (BP, 2026-10-26): XBRL axes + BP-1 -> profile -> phrase translation -> template rendering. Replaces D1 + T1 (``content.generate_background``, deprecated)."""
+        from src.bp.pipeline import BackgroundBuilder
+        sec = self.pipeline_factory().sec if self.pipeline_factory else None
+        return BackgroundBuilder(self.client, self.ai_store, self.texts, gemini=self.gemini, translator=translator, results_dir=self.results_dir, sec=sec, ensure_filing=self.ensure_filing,
+                                 companies=self.companies)
+
     def exec_background(self, task: dict) -> dict:
-        """D1 in English, then T1 (the Hebrew translation); both checked in code; the passing Hebrew text is approved at once with human_reviewed = false."""
-        if self.gemini is None:
-            raise QuotaSpent("no model budget")
+        """BP-1 (one call, only when the profile of this annual report does not exist) -> profile -> translation of new phrases (Google, if the key exists) -> rendering of the English and the Hebrew text."""
         S._paths()
-        from src.ai import assess, content as C
-        from src.ai.sections import find_filing
-        from src.scoring import peer_source as PS
-        co = self.company(task["company_id"])
-        t = co["symbol"]
-        res = self.load_result(t)
-        if res is None:
-            raise RuntimeError(f"no score result for {t}")
-        self.ensure_filing(t, co.get("cik"))
-        K5 = self._meta_context(co, res)
-        import run_ai_k5c as K5C
-        records = PS.load_records(self.results_dir)
-        rec = next(r for r in records if r["ticker"] == t)
-        facts, moat_source, missing = K5C.d1_inputs(rec, self.ai_store)
-        m = K5.meta(t)
-        filing = find_filing(t, str(m["end"][-1])[:10])
-        if filing is None:
-            raise RuntimeError(f"the 10-K of {t} is not in the local filings cache")
-        a = assess.Company(t, m["name"], m["profile"], int(rec["fiscal_year"][2:]), filing)
-        secs = {k: v.text for k, v in a.sections().items() if k in ("TXT-001", "TXT-003", "TXT-005") and v.found}
-        import os
-        C.SEED_SHIFT = int(os.environ.get("VC_D1_SEED_SHIFT", "0"))          # a later run of a failed text uses other seeds (the model is deterministic per seed)
-        row = C.generate_background(a, facts, secs, self.gemini, self.texts)
-        if row.get("state") == "skipped_budget":
-            raise QuotaSpent("; ".join((row.get("checks") or {}).get("reasons") or ["budget"]))
-        return {"state": row.get("state"), "approval_status": row.get("approval_status"), "reasons": (row.get("checks") or {}).get("reasons"), "missing_inputs": missing, "attempts": self.gemini.attempts}
+        t = self.ticker(task["company_id"])
+        before = self.gemini.attempts if self.gemini else 0
+        try:
+            out = self.background_builder().run(t)
+        except BudgetExceeded as e:
+            raise QuotaSpent(str(e)) from e
+        out["attempts"] = (self.gemini.attempts - before) if self.gemini else 0
+        return out
 
     def exec_assess(self, task: dict) -> dict:
         if self.gemini is None:

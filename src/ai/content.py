@@ -1,4 +1,7 @@
-"""D1 (company background) and D2 (results analysis): prompts, code checks, generation with one retry, file store (code stage K5c; the same structure as the K6 table ``ai_texts``).
+"""DEPRECATED (2026-10-26): D1 / T1 (the free-text background and its translation) are replaced by the business profile (src/bp: XBRL + BP-1, closed vocabulary, template rendering) and
+are no longer in the work queue; the code stays for the stored texts, which are marked `superseded`. D2 below is unchanged.
+
+D1 (company background) and D2 (results analysis): prompts, code checks, generation with one retry, file store (code stage K5c; the same structure as the K6 table ``ai_texts``).
 
 Checks (skills document "Other" 3.1 / 3.2): D1 - at most 120 words; every number of the Hebrew text appears in FACTS; every competitor appears in a verified quote; the moat wording matches the
 source A7 found; quotes verbatim. D2 - each paragraph at most 60 words (longer -> regenerated, never cut); every number appears in RESULTS or PEERS; ``criteria_cited`` exist in the run; no advice
@@ -668,7 +671,7 @@ def _row(co, language: str, text, state: str, pv: str, rep, res, attempts: list,
 
 
 def generate_background(co, facts: dict, sections: dict, client, store: TextStore, force: bool = False) -> dict:
-    """D1 in two stages (decision 2026-10-24). A: the model writes the background in English and every check runs on it against the report; B: a second call translates the checked text into
+    """DEPRECATED - replaced by src/bp (not called by the queue). D1 in two stages (decision 2026-10-24). A: the model writes the background in English and every check runs on it against the report; B: a second call translates the checked text into
     Hebrew with the glossary and the translation is checked against the English (same numbers, same names, Hebrew only). Both versions are stored (language en / he). -> the Hebrew row (or the
     last failed / skipped row). A failed stage is asked again in a later run; a stored English text is not written again."""
     pv = str(content_cfg()["d1"]["version"])

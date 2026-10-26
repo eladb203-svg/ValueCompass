@@ -1,0 +1,72 @@
+# Closed lists of the business profile (AI skills 2026-10-26_10-30, 3.1.2). Loaded into the table business_vocab by `scripts/bp_stage.py seed-vocab`; the code reads the table when it
+# has rows and this file otherwise. `gender` (m / f) of a Hebrew plural noun is code-only: it picks the form of a scope adjective ("בנקים ארציים" / "חברות ביטוח ארציות").
+customer_types:
+  consumers: {en: consumers, he: צרכנים}
+  smb: {en: small and medium-sized businesses, he: עסקים קטנים ובינוניים}
+  enterprises: {en: large enterprises, he: ארגונים גדולים}
+  government: {en: governments and public bodies, he: ממשלות וגופים ציבוריים}
+  distributors: {en: distributors and channel partners, he: מפיצים ושותפי הפצה}
+  retailers: {en: retailers, he: קמעונאים}
+  financial_institutions: {en: financial institutions, he: מוסדות פיננסיים}
+  healthcare_providers: {en: healthcare providers, he: נותני שירותי בריאות}
+  tenants: {en: tenants, he: שוכרים}
+  other: {en: other customers, he: אחר}
+revenue_models:
+  product_sales: {en: product sales, he: מכירת מוצרים}
+  subscriptions: {en: subscriptions, he: מנויים}
+  licensing: {en: licensing and royalties, he: רישוי ותמלוגים}
+  advertising: {en: advertising, he: פרסום}
+  services: {en: services, he: שירותים}
+  transaction_fees: {en: transaction fees, he: עמלות עסקאות}
+  interest_income: {en: interest income, he: הכנסות ריבית}
+  fees_asset_mgmt: {en: fees and asset management, he: עמלות וניהול נכסים}
+  insurance_premiums: {en: insurance premiums, he: פרמיות ביטוח}
+  rental_income: {en: rental income, he: הכנסות שכירות}
+  commodity_sales: {en: sales of commodities and raw materials, he: מכירת סחורות וחומרי גלם}
+  other: {en: other sources, he: אחר}
+regions:
+  us: {en: the United States, he: ארצות הברית}
+  north_america: {en: North America, he: צפון אמריקה}
+  europe: {en: Europe, he: אירופה}
+  asia_pacific: {en: Asia-Pacific, he: אסיה-פסיפיק}
+  latin_america: {en: Latin America, he: אמריקה הלטינית}
+  mea: {en: the Middle East and Africa, he: המזרח התיכון ואפריקה}
+  israel: {en: Israel, he: ישראל}
+  outside_us: {en: outside the United States, he: 'מחוץ לארה"ב'}
+  other: {en: other regions, he: אחר}
+# competitor_types: industry plurals are PROPOSALS (active: false) until the owner approves the Hebrew plural forms; scope and generic are the owner's list.
+competitor_types:
+  industry:        # key = the ValueCompass industry name (Rulebook B.1), as used by the router
+    Asset managers: {code: asset_managers, en: asset managers, he: מנהלי נכסים, gender: m}
+    BDCs and credit funds: {code: bdcs_credit_funds, en: BDCs and credit funds, he: 'חברות BDC וקרנות אשראי', gender: f}
+    Banks: {code: banks, en: banks, he: בנקים, gender: m}
+    Communications equipment: {code: communications_equipment, en: communications equipment makers, he: יצרני ציוד תקשורת, gender: m}
+    Consumer and commercial credit: {code: consumer_commercial_credit, en: consumer and commercial credit companies, he: חברות אשראי לצרכנים ולעסקים, gender: f}
+    Electronic components: {code: electronic_components, en: electronic component makers, he: יצרני רכיבים אלקטרוניים, gender: m}
+    Exchanges and data: {code: exchanges_data, en: exchanges and data providers, he: בורסות וספקי נתונים, gender: f}
+    Hardware: {code: hardware, en: hardware makers, he: יצרני חומרה, gender: m}
+    Homebuilders and developers: {code: homebuilders_developers, en: homebuilders and developers, he: 'בוני בתים ויזמי נדל"ן', gender: m}
+    IT services: {code: it_services, en: IT services companies, he: חברות שירותי מחשוב, gender: f}
+    Insurance brokers and services: {code: insurance_brokers_services, en: insurance brokers and service providers, he: מתווכי ביטוח וספקי שירותי ביטוח, gender: m}
+    Insurance carriers: {code: insurance_carriers, en: insurance carriers, he: חברות ביטוח, gender: f}
+    Internet platforms and advertising: {code: internet_platforms_advertising, en: internet platforms and advertising companies, he: פלטפורמות אינטרנט וחברות פרסום, gender: f}
+    Investment banks and brokers: {code: investment_banks_brokers, en: investment banks and brokers, he: בנקי השקעות וברוקרים, gender: m}
+    Managed health insurance: {code: managed_health_insurance, en: managed health insurers, he: חברות ביטוח בריאות מנוהל, gender: f}
+    Mortgage REITs: {code: mortgage_reits, en: mortgage REITs, he: קרנות ריט למשכנתאות, gender: f}
+    Payments: {code: payments, en: payments companies, he: חברות תשלומים, gender: f}
+    Property REITs and income real estate: {code: property_reits, en: property REITs and income real estate companies, he: 'חברות נדל"ן מניב וקרנות ריט', gender: f}
+    SPACs and asset-backed issuers: {code: spacs_abs, en: SPACs and asset-backed issuers, he: 'חברות SPAC ומנפיקות מגובות נכסים', gender: f}
+    Semiconductor equipment: {code: semiconductor_equipment, en: semiconductor equipment makers, he: יצרני ציוד למוליכים למחצה, gender: m}
+    Semiconductors: {code: semiconductors, en: semiconductor makers, he: יצרני מוליכים למחצה, gender: m}
+    Software: {code: software, en: software companies, he: חברות תוכנה, gender: f}
+  scope:
+    local: {en: local, he: מקומיות, he_m: מקומיים}
+    regional: {en: regional, he: אזוריות, he_m: אזוריים}
+    national: {en: national, he: ארציות, he_m: ארציים}
+    international: {en: international, he: בינלאומיות, he_m: בינלאומיים}
+  generic:
+    private_companies: {en: private companies, he: חברות פרטיות, gender: f}
+    private_label: {en: private-label brands, he: מותגים פרטיים, gender: m}
+    startups: {en: startups, he: סטארט-אפים, gender: m}
+    government_entities: {en: government entities, he: גופים ממשלתיים, gender: m}
+    other: {en: other competitors, he: אחר, gender: m}

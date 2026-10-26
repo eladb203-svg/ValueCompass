@@ -4,12 +4,12 @@ from __future__ import annotations
 import copy
 
 AUTO_ID = {"companies": "id", "fact_tags": "id", "extraction_items": "id", "company_listings": "id", "data_update_log": "id", "work_queue": "id", "ai_texts": "id", "score_runs": "id", "score_details": "id",
-           "valuations": "id", "ai_assessments": "id"}
+           "valuations": "id", "ai_assessments": "id", "company_business_profiles": "id", "business_vocab": "id", "term_translations": "id"}
 UNIQUE = {"companies": [("symbol", "exchange"), ("cik",)], "fact_tags": [("tag",)], "extraction_items": [("company_id", "item_key", "period", "document_ref")],
           "financial_facts": [("company_id", "fiscal_year", "item_id")], "filing_periods": [("company_id", "fiscal_year")], "company_listings": [("symbol", "exchange")],
           "company_profile_history": [("company_id", "fiscal_year")], "market_snapshot": [("company_id",)],
           "ai_texts": [("company_id", "fiscal_year", "kind", "language", "prompt_version", "run_label")], "ai_assessments": [("company_id", "fiscal_year", "question_id", "prompt_version")],
-          "company_score_summary": [("company_id",)]}
+          "company_score_summary": [("company_id",)], "company_business_profiles": [("company_id", "accession")], "business_vocab": [("field", "code")], "term_translations": [("en",)]}
 
 
 class Result:
