@@ -1,4 +1,4 @@
-"""A new price changes the price part of the score in place (K6 spec 3.3, K6d-1): the price score, the distance from the buy price and the conclusion. It never creates a score run.
+"""A new price changes the price part of the score in place (K6 spec 3.3, K6d-1): the price score, the distance from the buy price and the price_position. It never creates a score run.
 
 The price score is the engines' own rule: discount = (fair value - price) / fair value, points = piecewise-linear interpolation of the discount on the anchors of the model (the anchors the run stored
 in ``price_score.anchors``, or the engine constants when the run had no price). The quality score, the fair value and the buy price do not depend on the price and are not touched.
@@ -21,7 +21,7 @@ from src.scoring.interpolate import describe, interpolate
 
 HOT_RATIO = 1.10
 PRICE_EXTRAS = ("reverse_dcf", "implied_return", "price_to_tbv")
-CONCLUSIONS = ("at_or_below_buy_price", "near_buy_price", "above_buy_price", "no_buy_price")
+POSITIONS = ("at_or_below_buy_price", "near_buy_price", "above_buy_price", "no_buy_price")
 
 
 def parse_anchors(text: str) -> list:
@@ -51,9 +51,9 @@ def vs_buy(price: Optional[float], buy_block: Optional[dict], ratio: float = HOT
     """Distance of the price from the buy price (price / buy price - 1: above 0 = the price is above the buy price) and the conclusion."""
     buy = (buy_block or {}).get("buy_price") if (buy_block or {}).get("state") == "computed" else None
     if price is None or not isinstance(buy, (int, float)) or buy <= 0:
-        return {"price": price, "buy_price": None, "distance": None, "conclusion": "no_buy_price"}
+        return {"price": price, "buy_price": None, "distance": None, "price_position": "no_buy_price"}
     concl = "at_or_below_buy_price" if price <= buy else ("near_buy_price" if price <= buy * ratio else "above_buy_price")
-    return {"price": price, "buy_price": buy, "distance": price / buy - 1, "conclusion": concl}
+    return {"price": price, "buy_price": buy, "distance": price / buy - 1, "price_position": concl}
 
 
 def reprice_block(model: str, block: dict, price: Optional[float], stale: bool = False, ratio: float = HOT_RATIO) -> dict:

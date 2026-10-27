@@ -63,8 +63,15 @@ def fetch_prices_batch(tickers: list, intraday: bool = False) -> dict:
         return {}
     import yfinance as yf
     kw = {"period": "2d", "interval": "5m"} if intraday else {"period": "7d", "interval": "1d"}
-    df = yf.download(tickers if len(tickers) > 1 else tickers[0], auto_adjust=False, progress=False, group_by="ticker", threads=False, **kw)
-    return parse_batch(df, tickers)
+    def one_request(names: list) -> dict:
+        df = yf.download(names if len(names) > 1 else names[0], auto_adjust=False, progress=False, group_by="ticker", threads=False, **kw)
+        return parse_batch(df, names)
+
+    out = one_request(tickers)
+    missing = [t for t in tickers if t not in out]
+    if missing:                                       # the source sometimes drops a ticker from a batch: one more request for those only
+        out.update(one_request(missing))
+    return out
 
 
 def snapshot_row(company_id: int, p: dict, now: datetime) -> tuple:
@@ -77,12 +84,10 @@ def snapshot_row(company_id: int, p: dict, now: datetime) -> tuple:
 
 
 def apply_snapshot(client, company_id: int, p: Optional[dict], now: Optional[datetime] = None) -> dict:
-    """Write a fetched price (or the lack of one) into ``market_snapshot``. -> {"status": "updated" | "no_price", ...}. No price = the old row stays, flagged stale."""
+    """Write a fetched price (or the lack of one) into ``market_snapshot``. -> {"status": "updated" | "no_price", ...}. No price = the old row stays as it is: a failed request is not a stale
+    price - staleness is decided by the date of the last price (E1, ``dq.price_freshness`` and the database check)."""
     now = now or datetime.now(timezone.utc)
     if not p:
-        old = client.table("market_snapshot").select("company_id").eq("company_id", company_id).limit(1).execute().data
-        if old:
-            client.table("market_snapshot").update({"is_stale": True, "updated_at": now.isoformat()}).eq("company_id", company_id).execute()
         return {"status": "no_price", "detail": "no price from yfinance"}
     row, stale, detail = snapshot_row(company_id, p, now)
     client.table("market_snapshot").upsert(row, on_conflict="company_id").execute()

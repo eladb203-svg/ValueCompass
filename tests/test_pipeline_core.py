@@ -284,7 +284,7 @@ def test_price_freshness_and_snapshot_row():
     assert ok["status"] == "updated" and ok["is_stale"] is False and c.tables["market_snapshot"][0]["current_price"] == 12.5
     refresh_snapshot(c, 1, "ACM", lambda t: {"price": 13.0, "previous_close": 12.5, "market_date": date(2026, 10, 23)}, now)
     assert len(c.tables["market_snapshot"]) == 1 and c.tables["market_snapshot"][0]["current_price"] == 13.0         # updated in place, one row per stock
-    assert refresh_snapshot(c, 1, "ACM", lambda t: None, now)["status"] == "no_price" and c.tables["market_snapshot"][0]["is_stale"] is True
+    assert refresh_snapshot(c, 1, "ACM", lambda t: None, now)["status"] == "no_price" and c.tables["market_snapshot"][0]["is_stale"] is False and c.tables["market_snapshot"][0]["current_price"] == 13.0       # a failed request leaves the price as it is; the date decides if it is stale
 
 
 def test_filing_documents_go_through_the_same_client_and_reuse_the_old_cache_read_only(tmp_path, monkeypatch):

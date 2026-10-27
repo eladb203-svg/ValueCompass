@@ -103,11 +103,11 @@ def test_reprice_block_gives_the_engines_own_score_for_the_new_price():
     disc = (fv - 28.0) / fv
     assert b["price_score"]["points"] == pytest.approx(interpolate(disc, B.PRICE_ANCHORS)) and b["price_score"]["discount"] == pytest.approx(disc)
     assert b["price_current"] == 28.0 and b["fair_value"] == fv and b["buy_price"] == g["buffett_price"]["buy_price"]      # value and buy price do not move
-    assert b["price_vs_buy"]["conclusion"] == "near_buy_price" and b["price_vs_buy"]["distance"] == pytest.approx(28.0 / 26.431748 - 1)
+    assert b["price_vs_buy"]["price_position"] == "near_buy_price" and b["price_vs_buy"]["distance"] == pytest.approx(28.0 / 26.431748 - 1)
     assert g["buffett_price"]["price_current"] == 88.050003                                     # the input is not changed
     assert reprice_block("graham", g["graham_price"], 28.0)["price_score"]["points"] == 0.0     # far above the Graham value
     low = reprice_block("buffett", g["buffett_price"], 26.0)
-    assert low["price_vs_buy"]["conclusion"] == "at_or_below_buy_price" and reprice_block("buffett", g["buffett_price"], 80.0)["price_vs_buy"]["conclusion"] == "above_buy_price"
+    assert low["price_vs_buy"]["price_position"] == "at_or_below_buy_price" and reprice_block("buffett", g["buffett_price"], 80.0)["price_vs_buy"]["price_position"] == "above_buy_price"
 
 
 def test_a_stale_price_gives_no_price_score_and_a_missing_price_changes_nothing():
@@ -115,7 +115,7 @@ def test_a_stale_price_gives_no_price_score_and_a_missing_price_changes_nothing(
     assert reprice_block("buffett", g["buffett_price"], 30.0, stale=True)["price_score"] == {"state": "stale", "points": None, "reason": "the price was not updated for more than 3 trading days (E1)"}
     assert reprice_block("buffett", g["buffett_price"], None) is g["buffett_price"]
     assert reprice_result(g, None) is g
-    assert vs_buy(30.0, {"state": "not_suitable"})["conclusion"] == "no_buy_price"
+    assert vs_buy(30.0, {"state": "not_suitable"})["price_position"] == "no_buy_price"
 
 
 def test_a_value_that_cannot_be_priced_stays_as_the_engine_left_it():
@@ -136,7 +136,7 @@ def test_a_price_update_changes_the_price_part_in_place_and_never_creates_a_run(
     vals = {v["model"]: v for v in c.tables["valuations"]}
     fv = g["buffett_price"]["fair_value"]
     assert vals["buffett"]["price_score"] == pytest.approx(round(interpolate((fv - 28.0) / fv, B.PRICE_ANCHORS), 2)) and vals["buffett"]["price_state"] == "scored"
-    assert vals["buffett"]["details"]["price_vs_buy"]["conclusion"] == "near_buy_price" and vals["graham"]["price_score"] == 0.0
+    assert vals["buffett"]["details"]["price_vs_buy"]["price_position"] == "near_buy_price" and vals["graham"]["price_score"] == 0.0
     summ = c.tables["company_score_summary"][0]
     assert summ["buffett_price_score"] == vals["buffett"]["price_score"] and summ["buffett_quality_score"] == summ0["buffett_quality_score"] and summ["latest_run_id"] == run_id
     assert c.tables["score_runs"][0]["price"] == 28.0 and str(c.tables["score_runs"][0]["price_date"]) == "2026-10-26"
