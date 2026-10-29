@@ -191,7 +191,9 @@ class Pipeline:
             if eng != "general" and eng != engine:
                 unconfirmed.append(eng)
         engine, kw, raw, final = chosen
-        if engine == "general" and unconfirmed and not has_engine_rows and sic_hint(resolved.sic) == unconfirmed[0] and self.router_fallback:
+        # ... and the same when the rows exist but the test stays undetermined (rulebook B: an undetermined year is not a failure, so it is not STANDARD either): DLR's row 3 after the extraction
+        undetermined = any("-> undetermined (" in x for x in (getattr(final, "reason", None) or []))      # the latest year's row test had no result (the stored profile, if any, only carries over)
+        if engine == "general" and unconfirmed and sic_hint(resolved.sic) == unconfirmed[0] and ((not has_engine_rows and self.router_fallback) or (has_engine_rows and undetermined)):
             # K6d-2: the extraction was asked once and did not decide (it failed or gave nothing): the profile is set by the SIC code and the provider industry, with a flag - no second request
             eng2 = unconfirmed[0]
             kw, raw, f2 = candidates[eng2]

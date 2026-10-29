@@ -110,7 +110,8 @@ def inp(founded=None, listed=None):
 
 @pytest.mark.parametrize("founded,listed,en,he", [
     ({"year": 1886, "kind": "founded"}, {"year": 2021, "source": "ai"}, "Founded in 1886; listed since 2021.", "נוסדה ב-1886; נסחרת בבורסה מאז 2021."),
-    ({"year": 1919, "kind": "incorporated"}, {"year": 1962, "source": "price_history", "approximate": True}, "Incorporated in 1919; listed since about 1962.", "התאגדה ב-1919; נסחרת בבורסה מאז כ-1962."),
+    ({"year": 1919, "kind": "incorporated"}, {"year": 1962, "source": "price_history", "approximate": True}, "Listed since about 1962.", "נסחרת בבורסה מאז כ-1962."),
+    ({"year": 1919, "kind": "incorporated"}, None, None, None),
     ({"year": 1886, "kind": "founded"}, None, "Founded in 1886.", "נוסדה ב-1886."),
     (None, {"year": 2021, "source": "ai"}, "Listed since 2021.", "נסחרת בבורסה מאז 2021."),
     (None, None, None, None),

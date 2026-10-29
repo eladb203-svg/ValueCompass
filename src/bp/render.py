@@ -273,14 +273,13 @@ def s_revenue(c: _Ctx) -> Optional[str]:
 
 
 def s_history(c: _Ctx) -> Optional[str]:
-    """Sentence 6 (AI skills 2026-10-27, 3.2.1): "Founded in {year}; listed since {year}." - each half only when found; "Incorporated in" when the report says so; an approximate listing year
+    """Sentence 6 (AI skills 2026-10-27, 3.2.1): "Founded in {year}; listed since {year}." - each half only when found; an incorporation year is not shown; an approximate listing year
     (from the price history) is "listed since about {year}"."""
     f = (_items(c.i, "founded") or [None])[0]
     ls = (_items(c.i, "listed_since") or [None])[0]
     a = b = None
-    if f and f.get("year"):
-        inc = f.get("kind") == "incorporated"
-        a = (f"Incorporated in {f['year']}" if inc else f"Founded in {f['year']}") if c.lang == "en" else (f"התאגדה ב-{f['year']}" if inc else f"נוסדה ב-{f['year']}")
+    if f and f.get("year") and f.get("kind") != "incorporated":      # K6d-2: a report that gives only the year of incorporation is not a founding year: not shown
+        a = f"Founded in {f['year']}" if c.lang == "en" else f"נוסדה ב-{f['year']}"
     if ls and ls.get("year"):
         about = bool(ls.get("approximate"))
         b = (f"listed since {'about ' if about else ''}{ls['year']}") if c.lang == "en" else (f"נסחרת בבורסה מאז {'כ-' if about else ''}{ls['year']}")

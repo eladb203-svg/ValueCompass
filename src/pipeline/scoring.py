@@ -187,6 +187,9 @@ def score_company(ticker: str, profile: str, sink, ai_store, item_store, results
         res = MG.normalise(engine, tmp / "raw").get(ticker)
         if res is None:
             return ScoreOutcome(ticker, "failed", engine, detail=log[-600:])
+        if engine != "general" and (res.get("profile_router") or {}).get("profile") != profile:       # K6d-2: the pipeline set the profile by the SIC code (router fallback); the engine's own router, run on its series, may stay undetermined (STANDARD)
+            res["profile"] = profile
+            res["flags"] = list(res.get("flags") or []) + ["profile_by_sic_fallback"]
         if auto is not None:
             res["auto_inputs"] = auto.as_list()
             res["flags"] = list(res.get("flags") or []) + auto.flags()
