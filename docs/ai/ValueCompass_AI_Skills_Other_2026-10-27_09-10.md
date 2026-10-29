@@ -1,11 +1,13 @@
 ---
 title: "ValueCompass — AI Skills: Classification, Extraction, Content, Search (B1–B15, C1, BP-1, D2, S1–S2)"
-subtitle: "2026-10-26_10-30 · prompts in English · approved"
+subtitle: "2026-10-27_09-10 · prompts in English · approved"
 ---
 
 # AI Skills: Classification, Extraction, Content
 
-**עברית — מה במסמך:** שאר הסקילים של ק5, באותו מבנה של סקילי הניקוד (A1–A14): תבנית משותפת לכל סוג + בלוק נתונים לכל סקיל. **C1** — סיווג ענף (#15). **B1–B15** — חילוץ נתונים (#16–#29, כולל החילוץ הכללי). **D1** — רקע על החברה (#30). **D2** — ניתוח תוצאות (#31). **עדכון 26.10.2026 — הרקע נבנה מפרופיל עסקי, לא נכתב כטקסט חופשי (מחליף את D1 ו-T1):** קוד קורא מ-XBRL מגזרים, קווי מוצרים ואזורים; סקיל BP-1 (קריאה אחת לחברה לכל דוח שנתי, flash-lite) מחלץ מהדוח את הפעילות, סוגי הלקוחות, מודל ההכנסות והמתחרים — לכל פריט ציטוט; הקוד מנרמל לרשימות סגורות (`business_vocab`, עם תוויות בעברית) ובונה שתי פסקאות מתבנית קבועה באנגלית ובעברית. מתורגמים רק ביטויים קצרים (הפעילות, שמות קווי מוצרים ושמות מגזרים בטקסט העברי) — פעם אחת, ב-Azure Translator (ספק שמוחלף בהגדרה) עם הגנת מונחים, ונשמרים ב-`term_translations` לשימוש חוזר. כשהדוח לא נוקב בשמות מתחרים — סוגי מתחרים לפי רשימת הענפים, ו"חברות דומות ב-ValueCompass" (אותו פרופיל וענף, 3 הקרובות בגודל). המבנה זהה לכל שוק; רק מקור החילוץ משתנה. סעיפים 3.1–3.2; ‏D2 (3.3) ללא שינוי.
+**עברית — מה במסמך:** שאר הסקילים של ק5, באותו מבנה של סקילי הניקוד (A1–A14): תבנית משותפת לכל סוג + בלוק נתונים לכל סקיל. **C1** — סיווג ענף (#15). **B1–B15** — חילוץ נתונים (#16–#29, כולל החילוץ הכללי). **D1** — רקע על החברה (#30). **D2** — ניתוח תוצאות (#31). **עדכון 27.10.2026:** (1) **כללי אישור לחילוץ (2.3)** — דחייה אוטומטית כשאותה שורה שויכה לכמה פריטים, כששם השורה לא מתאים לפריט, ופריט שלא שייך לפרופיל לא נשאל בכלל; אישור אוטומטי לסיווג מאזן (B10) שמתאזן לסך הנכסים, ליחידות שותפות (B11) שתואמות ל-XBRL, ולפריט שעבר את כל הבדיקות ותואם לשנים סמוכות או ל-XBRL; תור אישורים רק לבדיקת התאמה שנכשלה. (2) **ברקע:** שנת הקמה ושנת כניסה לבורסה (3.1.1, 3.2.1).
+
+**עדכון 26.10.2026 — הרקע נבנה מפרופיל עסקי, לא נכתב כטקסט חופשי (מחליף את D1 ו-T1):** קוד קורא מ-XBRL מגזרים, קווי מוצרים ואזורים; סקיל BP-1 (קריאה אחת לחברה לכל דוח שנתי, flash-lite) מחלץ מהדוח את הפעילות, סוגי הלקוחות, מודל ההכנסות והמתחרים — לכל פריט ציטוט; הקוד מנרמל לרשימות סגורות (`business_vocab`, עם תוויות בעברית) ובונה שתי פסקאות מתבנית קבועה באנגלית ובעברית. מתורגמים רק ביטויים קצרים (הפעילות, שמות קווי מוצרים ושמות מגזרים בטקסט העברי) — פעם אחת, ב-Azure Translator (ספק שמוחלף בהגדרה) עם הגנת מונחים, ונשמרים ב-`term_translations` לשימוש חוזר. כשהדוח לא נוקב בשמות מתחרים — סוגי מתחרים לפי רשימת הענפים, ו"חברות דומות ב-ValueCompass" (אותו פרופיל וענף, 3 הקרובות בגודל). המבנה זהה לכל שוק; רק מקור החילוץ משתנה. סעיפים 3.1–3.2; ‏D2 (3.3) ללא שינוי.
 
 **עדכון 25.10.2026 (אחרי ריצות ק5ג):** ברקע (D1) — "כ-90–100 מילים" ובדיקה עד 140; עד 5 מתחרים; כשהדוח לא נוקב בשמות — עד 4 סוגי מתחרים במילות הדוח, בציטוט (בעיקר בנקים ומבטחים); ניסיון חוזר עם משוב מדויק (מספר המילים בפועל, מקור החפיר החסר). בתרגום (T1) — כל כתב שאינו עברית או לטינית נדחה (נמצאו אותיות תאילנדיות ויווניות). שנה בעברית מותרת; data / infrastructure / location לא נחשבים מקור חפיר נוסף. תקרת קריאות נאכפת בקוד. **איכות העברית:** מילון מונחי ענף בתרגום (הקוד שולח רק את המונחים שמופיעים בטקסט, ובודק שהתרגום שלהם הופיע); רקע עברי שעבר את הבדיקות מוצג מיד עם הסימון "תרגום אוטומטי" (עדכון 25.10 12:00, מחליף "ממתין לאישור"); אלעד מתקן כשהוא נתקל בשגיאה — התיקון נבדק מחדש בקוד ומוצע למילון; סקירה חד-פעמית של 7 חברות סט הפיתוח כדי למלא את המילון.
 
@@ -323,6 +325,32 @@ approval: automatic when the item feeds one sub-item and the control passes; adm
 #### B15 — Insurance-liability components (router) — folded into B13
 Kept as a separate number in the skill list (#28) for traceability; implemented inside B13.
 
+### 2.3 Approval rules for extraction (decided 2026-10-27; replace "always reviewed" and "feeds value → review")
+
+**Why:** a review of the 100 pending items in production (27.10) showed that most general-fallback (B14) items were wrong, although every quote was verified:
+
+- The same table row was assigned to several different items (O: "Property (including reimbursements)" as cost of revenue, real-estate tax and repairs).
+- An item that does not belong to the profile was asked: an insurance item ("claims_expense") taken from "cost of sales" for MSFT and INTC.
+- A row was matched to a wrong item: "Interest" (interest expense) recorded as interest capitalized.
+
+The gate must therefore **reject** automatically, not only approve.
+
+| # | Condition | Action | `approval_source` / status |
+|---|---|---|---|
+| 1 | The same quote, or the same values, assigned to 2 or more different `item_key`s, for the same company and period | **Reject all of them** | `rejected` (`dup_row`) |
+| 2 | The item is not in the profile's item list (dictionary × profile) | **Never asked.** This is a B14 list fix, not a check | — |
+| 3 | The quoted row label does not match the item's allowed labels / synonyms in the dictionary | **Reject** | `rejected` (`label_mismatch`) |
+| 4 | B10 NAV classification: the classified lines sum to total assets within 1% | **Approve** | `ai_controls` |
+| 5 | B11 operating-partnership units: consistent with XBRL (noncontrolling interest / unit count) | **Approve** | `ai_controls` |
+| 6 | All checks pass; an item that feeds value / buy price / profile is also consistent with neighbouring years (no 3× jump) or with an XBRL value | **Approve** | `ai_controls` |
+| 7 | A reconciliation control fails (E11 FFO / Q6 / RE29b, balance) or rule 4–6 not met | **Approval queue** | `pending` (reason stored) |
+
+**Notes:**
+
+- Rejected items are kept (with the reason) for audit.
+- A rejected or pending item is missing for the engine; the score shows a range where it matters.
+- Rule 3 uses the dictionary's label list for each `item_key`. Items without a label list → rule 6 only.
+
 ## 3. Content — company background (BP), D2 (revised 2026-10-26)
 
 **Decision (2026-10-26, replaces D1 free text + T1 translation of 2026-10-24):** the background is **not written as free text**. It is built in four steps:
@@ -358,6 +386,8 @@ Kept as a separate number in the skill list (#28) for traceability; implemented 
 | `regions` | Revenue by region, with shares | closed list + share | XBRL; BP-1 fallback |
 | `competitors` | Up to 5 competitor names, as named in the report | names | BP-1, with a quote |
 | `competitor_types` | When the report names no competitors: up to 4 types = industry (from the ValueCompass industry list) + optional scope (local / regional / national / international), or a generic type | closed list | BP-1, with a quote |
+| `founded` (added 2026-10-27) | `{year, kind: founded / incorporated}` — "founded in 1886" vs "incorporated in 1919" | year + kind | BP-1, with a quote |
+| `listed_since` (added 2026-10-27) | Year of the IPO / first listing: `{year, source: report / price_history, approximate}` | year | BP-1 when the report states it (e.g., "completed our IPO in 2021"); otherwise the first date in the price history (Yahoo), marked approximate |
 
 **Every item** carries:
 
@@ -494,6 +524,7 @@ BP-1 returns codes, so a Hebrew or Japanese report yields the same values as an 
 | 4 | "It reports {n} segments, the largest being {seg} ({share}), {seg} ({share}) and {seg} ({share}); {regions sentence}." | "היא מדווחת על {n} מגזרים, הגדולים שבהם {seg_he} ({share}), {seg_he} ({share}) ו{seg_he} ({share}); {משפט אזורים}." | segments; top 3 only |
 | 4a | regions: "{share} of revenue comes from {region} and {share} from {region}" | "{share} מההכנסות מ{region_he} ו-{share} מ{region_he}" | regions; top 2 + the rest |
 | 5 | "Revenue in FY{year}: {revenue}." | "הכנסות ב-FY{year}: {revenue_he}." | always (from `financial_facts`, formatted by code) |
+| 6 | "Founded in {year}; listed since {year}." / "Incorporated in {year}; …" — approximate listing year: "listed since about {year}" | "נוסדה ב-{year}; נסחרת בבורסה מאז {year}." / "התאגדה ב-…" — משוער: "מאז כ-{year}" | each half only when found |
 
 #### 3.2.2 Template — paragraph 2 (competition and advantage)
 

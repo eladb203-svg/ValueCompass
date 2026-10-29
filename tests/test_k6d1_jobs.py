@@ -152,7 +152,7 @@ def test_close_prices_updates_every_stock_in_one_request_and_the_score_in_place(
         return {"KO": {"price": 28.0, "previous_close": 27.0, "market_date": date(2026, 10, 23)}, "JPM": {"price": 250.0, "previous_close": 249.0, "market_date": date(2026, 10, 23)}}
 
     out = JobRunner(c, CFG, now=lambda: at(2026, 10, 26, 0, 30), fetch_batch=fetch).run("close_prices")
-    assert calls == [(["KO", "JPM", "NEW"], False)] and out.status == "partial_success" and out.detail["prices"] == 2 and out.detail["no_price"] == 1      # one request; FPI (unsupported) is not asked
+    assert calls == [(["KO", "JPM", "NEW"], True)] and out.status == "partial_success" and out.detail["prices"] == 2 and out.detail["no_price"] == 1      # one request; FPI (unsupported) is not asked
     assert out.detail["scores_updated_in_place"] == 2
     assert len(c.tables["score_runs"]) == 2 and {r["company_id"] for r in c.tables["market_snapshot"]} == {ko, jpm}
     ko_val = [v for v in c.tables["valuations"] if v["model"] == "buffett" and v["run_id"] == c.tables["score_runs"][0]["id"]][0]
@@ -244,10 +244,11 @@ def test_the_router_extraction_loop_stops_after_the_extraction_ran_once(tmp_path
     res = types.SimpleNamespace(status="success", state="data_loaded", router_needs="realestate", rows_written=0, years=[], profile="STANDARD")
     assert qr.after_load(res, co, 1)["extraction_requested"] == "realestate"
     t = c.tables["work_queue"][0]
+    assert t["priority"] == 2                                                                     # K6d-2: the router extraction is data completion (priority 2)
     t["state"] = "done"                                                                           # the extraction ran ...
-    with pytest.raises(RuntimeError, match="loop is stopped"):
-        qr.after_load(res, co, 1)                                                                 # ... and the router still wants it: no second model request is queued
-    assert len(c.tables["work_queue"]) == 1
+    out = qr.after_load(res, co, 1)                                                               # ... and the router still has nothing to decide with: no second model request
+    assert out["router_fallback"] == "realestate" and [x["job_type"] for x in c.tables["work_queue"]] == ["ai_extract", "repair"]
+    assert c.tables["work_queue"][1]["payload"] == {"router_fallback": True} and c.tables["work_queue"][1]["priority"] == 2
 
 
 def test_plan_completion_queues_the_first_score_of_a_company_that_has_none_at_priority_2(tmp_path):

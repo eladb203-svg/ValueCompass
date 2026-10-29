@@ -15,15 +15,17 @@ from src.ai.sections import split_sections
 
 from .vocab import Vocab, region_of
 
-SKILL_ID, SKILL_VERSION = "BP-1", "3"
+SKILL_ID, SKILL_VERSION = "BP-1", "4"                  # v4 (2026-10-27): founded and listed_since
 OPENING_CHARS = 8000
 COMPETITION_CAP = 12000
 PRODUCTS_CAP = 4000
 MAX_CORE_WORDS = 12
 CONTENT_WORD_SHARE = 0.70
 MAX_COMPETITORS, MAX_TYPES = 5, 4
-FIELDS = ("display_name", "core_activity", "customer_types", "revenue_models", "competitors", "competitor_types", "segments", "products_services", "regions")
-ALWAYS = ("display_name", "core_activity", "customer_types", "revenue_models", "competitors", "competitor_types")
+FIELDS = ("display_name", "core_activity", "customer_types", "revenue_models", "competitors", "competitor_types", "segments", "products_services", "regions", "founded", "listed_since")
+ALWAYS = ("display_name", "core_activity", "customer_types", "revenue_models", "competitors", "competitor_types", "founded", "listed_since")
+NEW_FIELDS = ("founded", "listed_since")               # asked alone for a profile built before v4
+LISTING_WORDS = re.compile(r"\bipo\b|initial public offering|public offering|listed|listing|began trading|commenced trading|has traded|have traded|traded on|first traded", re.I)
 PRAISE = ("leading", "largest", "world-class", "world class", "premier", "best-in-class", "foremost", "renowned", "number one", "world's", "greatest", "unrivaled", "unparalleled")
 _STOP = {"and", "the", "for", "its", "with", "that", "from", "into", "other", "such", "various", "related", "their", "which", "also", "has", "have", "are", "services", "service", "products", "product"}
 
@@ -61,6 +63,10 @@ FIELD_TEXT = {
     "segments": """segments: the reportable segments exactly as the report names them — {{"name": "<as reported>", "share_pct": <percent of total revenue if the TEXT states it, else null>, "quote": "..."}}.""",
     "products_services": """products_services: up to 5 main product lines, services or brands — {{"name": "<as reported>", "kind": "product_line" | "service" | "brand", "share_pct": <percent if stated, else null>, "quote": "..."}}.""",
     "regions": """regions: revenue by geographic area as the report names it — {{"name": "<as reported>", "share_pct": <percent of total revenue if the TEXT states it, else null>, "quote": "..."}}.""",
+    "founded": """founded: when the company was founded or incorporated, only if the TEXT says so — {{"year": <4-digit year>, "kind": "founded" | "incorporated", "quote": "..."}}. Use "incorporated" when the
+  TEXT says incorporated or organized (not founded). null if the TEXT does not say.""",
+    "listed_since": """listed_since: the year of the company's IPO or first listing on a stock exchange, only if the TEXT states it (for example "completed our IPO in 2021") — {{"year": <4-digit year>, "quote": "..."}}.
+  null if the TEXT does not say; do not infer it from the founding year.""",
 }
 SHAPES = {
     "display_name": {"value": "...", "quote": "..."},
@@ -72,8 +78,10 @@ SHAPES = {
     "segments": [{"name": "...", "share_pct": None, "quote": "..."}],
     "products_services": [{"name": "...", "kind": "product_line", "share_pct": None, "quote": "..."}],
     "regions": [{"name": "...", "share_pct": None, "quote": "..."}],
+    "founded": {"year": 1900, "kind": "founded", "quote": "..."},
+    "listed_since": {"year": 2000, "quote": "..."},
 }
-ORDER = ("display_name", "core_activity", "customer_types", "revenue_models", "competitors", "competitor_types", "segments", "products_services", "regions")
+ORDER = ("display_name", "core_activity", "customer_types", "revenue_models", "competitors", "competitor_types", "segments", "products_services", "regions", "founded", "listed_since")
 
 
 # ---------------------------------------------------------------- the text sent
@@ -396,6 +404,33 @@ def check_named_list(items, field: str, text_norm, sections, limit: int = 5, kin
     return {"status": "other" if any(i["status"] == "other" for i in out) else ("ok" if out else "not_found"), "source": "ai", "reasons": [], "items": out}
 
 
+def check_year_field(v, field: str, text_norm, sections) -> dict:
+    """``founded`` / ``listed_since`` (BP-1 v4): a 4-digit year that stands in its quote; ``founded`` has a kind; ``listed_since`` needs a quote that speaks of an IPO / a listing. null = not found."""
+    if v in (None, "", {}):
+        return {"status": "not_found", "source": "ai", "items": [], "reasons": []}
+    if not isinstance(v, dict):
+        return {"status": "failed", "source": "ai", "items": [], "reasons": [f"{field}: not_an_object"]}
+    reasons: list = []
+    y = v.get("year")
+    year = int(y) if isinstance(y, (int, float)) and not isinstance(y, bool) and float(y).is_integer() else (int(y) if isinstance(y, str) and y.strip().isdigit() else None)
+    if year is None or not (1600 <= year <= 2100):
+        reasons.append(f"{field}: year_invalid")
+    q = _quote(v.get("quote"), text_norm, sections, reasons, field)
+    if q and year is not None and str(year) not in q["text"]:
+        reasons.append(f"{field}: year_not_in_quote")
+    item = {"year": year, "quote": q["text"] if q else None, "section": q["section"] if q else None, "source": "ai", "status": "ok"}
+    if field == "founded":
+        kind = v.get("kind")
+        if kind not in ("founded", "incorporated"):
+            reasons.append("founded: kind_must_be_founded_or_incorporated")
+        item["kind"] = kind
+    elif q and not LISTING_WORDS.search(q["text"]):
+        reasons.append("listed_since: the quote does not speak of an IPO or a listing")
+    if reasons:
+        return {"status": "failed", "source": "ai", "items": [], "reasons": reasons}
+    return {"status": "ok", "source": "ai", "reasons": [], "items": [item]}
+
+
 def validate(answer: Optional[dict], vocab: Vocab, sections: list, fields: list, company_name: str = "") -> dict:
     """-> {field: field result} for the requested fields. A field with a problem is `failed` with its reasons; the others are unaffected. Competitors and competitor types are never both kept."""
     if not isinstance(answer, dict):
@@ -420,6 +455,8 @@ def validate(answer: Optional[dict], vocab: Vocab, sections: list, fields: list,
             res[f] = check_named_list(v, f, text_norm, sections, limit=5, kinds=True)
         elif f == "regions":
             res[f] = check_named_list(v, f, text_norm, sections, limit=10, region=True)
+        elif f in NEW_FIELDS:
+            res[f] = check_year_field(v, f, text_norm, sections)
     if res.get("competitors", {}).get("items") and res.get("competitor_types", {}).get("items"):
         res["competitor_types"] = {"status": "not_found", "source": "ai", "items": [], "reasons": [], "note": "dropped: the report names competitors"}
     for f, r in res.items():

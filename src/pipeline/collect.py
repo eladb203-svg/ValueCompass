@@ -110,7 +110,10 @@ def fill_from_extraction(fs: FactSet, extraction_rows: list, report: SourceRepor
     for r in extraction_rows:
         if r.get("approval_status") != "approved" or r.get("value_state") != "value" or r.get("value") is None:
             continue
-        key, mode = fm.extraction_key(fs.engine, r["item_key"])
+        if r.get("skill_id") == "EXT-GENERAL":                      # K6d-2: a B14 item is named by the engine field it fills (gains_realized, re_tax ...): its fact is that field's item
+            key, mode = fm.FIELDS.get(fs.engine, {}).get(r["item_key"]), "single"
+        else:
+            key, mode = fm.extraction_key(fs.engine, r["item_key"])
         if key is None or mode != "single":
             continue
         if dictionary_keys is not None and key not in dictionary_keys:

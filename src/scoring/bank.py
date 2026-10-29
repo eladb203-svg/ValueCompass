@@ -73,6 +73,10 @@ BANK_SIC = tuple(sorted(str(x) for x in bank_sic_set(default_tables())))
 
 
 # ---------------------------------------------------------------- inputs
+# K6d-2: tickers whose required CET1 is the documented default (set by src/pipeline/auto_config.py; empty for every golden run)
+REQUIRED_CET1_DEFAULT: set = set()
+
+
 @dataclass
 class BankInputs:
     ticker: str
@@ -151,6 +155,11 @@ def resolve_latest(bi: BankInputs) -> dict:
     for a, v in ratios.items():
         if v is None:
             continue
+        if reqs[a] is None and bi.ticker in REQUIRED_CET1_DEFAULT:
+            # K6d-2: neither the filing's requirement nor the SCB was extracted for a new bank: the documented default (4.5% minimum + 2.5% buffer = 7.0%) is used and marked "default";
+            # the capital-buffer sub-item then widens the score range (coverage.evaluate_criterion)
+            reqs[a] = bi.required_cet1
+            out["flags"] += ["default", f"requirement_default_cet1_{bi.required_cet1:g}"]
         if reqs[a] is None:
             out["flags"].append(f"requirement_missing_{a}_approach_excluded")
             continue

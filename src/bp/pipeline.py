@@ -16,11 +16,12 @@ from . import bp1, render as R, xbrl_axes as X
 from .similar import SIZE_BY_ASSETS, pick_similar
 from .names import display_items
 from .stores import PROFILE_FIELDS, ProfileStore, TermStore
-from .translate import NoKey, make_translator, phrase_key, translate_many
+from .translate import NoKey, glossary_pairs, make_translator, phrase_key, translate_many
 from .vocab import Vocab
 
 PROMPT_VERSION = "bp"            # ai_texts.prompt_version of the rendered background (template_version changes in place)
-MIN_COVERAGE = 0.6               # an XBRL axis whose members cover less of the revenue is not used: BP-1 completes the field
+YAHOO_MIN_YEAR = 2000           # the first price in Yahoo's history is used as "listed since" only from this year (earlier = the data starts there, not the listing)
+MIN_COVERAGE = 0.6              # an XBRL axis whose members cover less of the revenue is not used: BP-1 completes the field
 
 
 def pretty_name(edgar_name: str) -> str:
@@ -174,6 +175,7 @@ class BackgroundBuilder:
                 if f in xb["fields"] and r["status"] != "failed":
                     r = {**r, "reasons": r.get("reasons", []) + (xb["fields"][f].get("reasons") or [])}
                 row_fields[f] = r
+        row_fields["listed_since"] = self.listed_fallback(co["symbol"], row_fields.get("listed_since"))
         ax = xb["axes"]
         axes_found = {"end": str(ax["end"]) if ax and ax["end"] else None, "total_revenue": ax["total_revenue"] if ax else None, "labels_found": ax["labels_found"] if ax else 0,
                       "axes": {k: {"found": v["found"], "concept": v["concept"], "coverage": v["coverage"], "flags": v["flags"], "n_items": len(v["items"]), "n_dropped": len(v["dropped"])}
@@ -184,6 +186,61 @@ class BackgroundBuilder:
         saved = self.profiles.put(row)
         self.log["profiles_built"] += 1
         return saved
+
+    def listed_fallback(self, ticker: str, fld: Optional[dict]) -> dict:
+        """``listed_since``: the year the report states, else the year of the first date in the Yahoo price history, marked approximate (3.1.1). No history -> not found."""
+        empty = {"status": "not_found", "source": "code", "items": [], "reasons": []}
+        if fld and fld.get("status") == "ok" and fld.get("items"):
+            if (fld["items"][0] or {}).get("source") == "price_history" and (fld["items"][0].get("year") or 0) < YAHOO_MIN_YEAR:
+                return empty                       # a stored approximate year before 2000 is withdrawn (decided 2026-10-29)
+            return fld
+        try:
+            first = self.first_price_date(ticker)
+        except Exception:   # noqa: BLE001 - no price history: the field stays empty
+            first = None
+        if first is None or first.year < YAHOO_MIN_YEAR:
+            # Yahoo's history of an old company starts at the start of the data (1962 for KO), not at its listing: only a year from 2000 on says something about the listing, otherwise nothing is shown
+            return fld if (fld and fld.get("source") == "ai") else empty
+        return {"status": "ok", "source": "code", "reasons": [], "items": [{"year": first.year, "source": "price_history", "approximate": True,
+                                                                           "tag": f"first date in the Yahoo price history: {first.isoformat()}", "status": "ok"}]}
+
+    @staticmethod
+    def first_price_date(ticker: str):
+        from src.providers import prices as PP
+        rows = PP._load_history(ticker)
+        return rows[0][0] if rows else None
+
+    def add_new_fields(self, ticker: str, seed_base: int = 0) -> dict:
+        """BP-1 v4 for a profile built before it: ONE call that asks only for ``founded`` and ``listed_since``; the rest of the profile is untouched. ``listed_since`` falls back to the price history.
+        No call when both fields are already in the profile."""
+        ctx = self.load(ticker)
+        co, filing = ctx["co"], ctx["filing"]
+        p = self.profiles.get(co["id"], filing.accession)
+        if p is None:
+            raise RuntimeError(f"{ticker} has no business profile for {filing.accession}")
+        af = dict(p.get("axes_found") or {})
+        asked_before = set(af.get("bp1_fields") or []) | {x for r in af.get("added_fields") or [] for x in r.get("fields") or []}       # one attempt per field per annual report
+        have = {f for f in bp1.NEW_FIELDS if f in asked_before and (p.get(f) or {}).get("status")}
+        ask = [f for f in bp1.NEW_FIELDS if f not in have]
+        attempts = 0
+        if ask:
+            if self.gemini is None:
+                from src.ai.content import BudgetExceeded
+                raise BudgetExceeded("no model budget for BP-1")
+            sections, err = bp1.select_text(filing.text, need_products=False)
+            if err:
+                out = {"fields": {f: {"status": "failed", "source": "ai", "items": [], "reasons": [err]} for f in ask}, "attempts": [], "model": ""}
+            else:
+                out = bp1.run(self.gemini, self.vocab, filing.accession, sections, ask, C.display_name(co["company_name"]), seed_base)
+            for f in ask:
+                p[f] = out["fields"][f]
+            attempts = len(out["attempts"])
+            af.setdefault("added_fields", []).append({"skill_version": bp1.SKILL_VERSION, "fields": ask, "attempts": out["attempts"]})
+        p["listed_since"] = self.listed_fallback(co["symbol"], p.get("listed_since"))
+        p["axes_found"] = af
+        saved = self.profiles.put({k: v for k, v in p.items() if k != "created_at"})
+        return {"profile_id": saved["id"], "asked": ask, "attempts": attempts, "founded": [(i.get("year"), i.get("kind")) for i in (saved.get("founded") or {}).get("items") or []],
+                "listed_since": [(i.get("year"), i.get("source")) for i in (saved.get("listed_since") or {}).get("items") or []]}
 
     def refresh_failed(self, ticker: str, seed_base: int = 0, fields: Optional[list] = None) -> dict:
         """One new BP-1 call for a stored profile whose AI fields failed, or no longer pass the current checks (the stored core_activity is checked again, no call); the first attempt already carries the
@@ -198,7 +255,7 @@ class BackgroundBuilder:
             raise RuntimeError(f"{ticker} has no business profile for {filing.accession}")
         af = dict(p["axes_found"] or {})
         sections, err = bp1.select_text(filing.text, need_products="TXT-PRD" in (af.get("sections_sent") or []))
-        failing = {f: (p[f].get("reasons") or []) for f in PROFILE_FIELDS if (p[f] or {}).get("status") == "failed" and (p[f] or {}).get("source") == "ai"}
+        failing = {f: ((p.get(f) or {}).get("reasons") or []) for f in PROFILE_FIELDS if (p.get(f) or {}).get("status") == "failed" and (p.get(f) or {}).get("source") == "ai"}
         ca = (p["core_activity"] or {}).get("items") or []
         if ca and (p["core_activity"] or {}).get("status") == "ok":
             r = bp1.check_core({"value": ca[0]["value"], "quote": ca[0]["quote"]}, bp1.normalize(bp1.sent_text(sections)), sections)
@@ -247,7 +304,7 @@ class BackgroundBuilder:
                 p["revenue_models"] = again if again["items"] else {"status": "not_found", "source": "ai", "items": [], "reasons": ["every item dropped by the licensing rule"]}
                 adopted.append("revenue_models")
         for f in PROFILE_FIELDS:
-            fld = p[f] or {}
+            fld = p.get(f) or {}
             asked = set(af.get("bp1_fields") or []) | {x for r in af.get("refreshes") or [] for x in r.get("fields") or []}
             if f not in asked or fld.get("source") == "xbrl":
                 continue
@@ -284,7 +341,10 @@ class BackgroundBuilder:
             return res
         names = protected_names(profile, company_name)
         try:
-            outs = translate_many([(en, names, whole) for en, _kind, whole in todo], self.translator)
+            gloss = list(glossary_pairs())                                                    # the T1 glossary + the terms a person approved (sector glossary): the translator's dictionary
+            seen = {phrase_key(e) for e, _h in gloss}
+            gloss += [(e, h) for e, h in self.terms.glossary_entries() if phrase_key(e) not in seen]
+            outs = translate_many([(en, names, whole) for en, _kind, whole in todo], self.translator, gloss)
         except NoKey:
             res["pending"] = [p[0] for p in todo]
             return res

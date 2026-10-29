@@ -56,20 +56,21 @@ def parse_batch(df, tickers: list) -> dict:
     return out
 
 
-def fetch_prices_batch(tickers: list, intraday: bool = False) -> dict:
-    """One yfinance request for all tickers. ``intraday``: 5-minute bars of the last two days (the last bar is the latest price); otherwise the daily bars of the last week."""
+def fetch_prices_batch(tickers: list, intraday: bool = True, retry_missing: bool = False) -> dict:
+    """One yfinance request for all tickers: the LAST PRICE (K6d-2) - the last traded 1-minute bar of the last two days, not the daily close row (which does not exist while the day is open
+    and may lag after it). The previous close is the last bar of the day before. ``intraday=False`` reads the daily rows of the last week. No second attempt unless ``retry_missing``."""
     tickers = sorted({t for t in tickers if t})
     if not tickers:
         return {}
     import yfinance as yf
-    kw = {"period": "2d", "interval": "5m"} if intraday else {"period": "7d", "interval": "1d"}
+    kw = {"period": "2d", "interval": "1m"} if intraday else {"period": "7d", "interval": "1d"}
     def one_request(names: list) -> dict:
         df = yf.download(names if len(names) > 1 else names[0], auto_adjust=False, progress=False, group_by="ticker", threads=False, **kw)
         return parse_batch(df, names)
 
     out = one_request(tickers)
     missing = [t for t in tickers if t not in out]
-    if missing:                                       # the source sometimes drops a ticker from a batch: one more request for those only
+    if missing and retry_missing:                     # the source sometimes drops a ticker from a batch: one more request for those only
         out.update(one_request(missing))
     return out
 

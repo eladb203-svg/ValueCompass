@@ -16,6 +16,7 @@
     vc.py scheduler --stop                orderly stop: a job in the middle finishes, the lock is released
     vc.py scheduler --status              per job: last run and result, next run, jobs missed while the PC was off
     vc.py scheduler --once <job>          run one job now: close_prices intraday_prices new_reports ai_queue audit yields fx cleanup
+    vc.py approvals recheck [--ticker T] [--dry-run | --apply]   the extraction approval rules (AI skills 2.3) on the rows in the database; default only lists
     vc.py cleanup [--apply]               the retention cleanup (K6 spec 3.3): prints what would be deleted (default); --apply deletes it
   Background (business profile: XBRL + BP-1 -> closed vocabulary -> template; replaces D1 / T1)
     vc.py profile show <ticker>           the stored profile: field, value, source (xbrl / ai / code), quote or tag, status
@@ -32,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 import sys
 from pathlib import Path
 
@@ -108,6 +110,19 @@ def companies_using_phrases(builder, ens: list) -> list:
     return sorted(set(out))
 
 
+def rerender_all(builder) -> list:
+    """Every company that has a business profile is rendered again (no model, no translation call)."""
+    done = []
+    for co in builder.companies.client.table("companies").select("id,symbol").execute().data:
+        if builder.profiles.latest(co["id"]):
+            try:
+                builder.render_only(co["symbol"])
+                done.append(co["symbol"])
+            except Exception as e:   # noqa: BLE001
+                print(f"  could not render {co['symbol']}: {e}")
+    return done
+
+
 def rerender_for_phrase(builder, en: str) -> list:
     """The companies whose Hebrew text uses this phrase are rendered again."""
     from src.bp.pipeline import phrases_needed
@@ -170,9 +185,23 @@ def apply_terms_file(builder, path: Path) -> int:
 
 def background_command(runner, a) -> int:
     builder = runner.background_builder()
+    if a.command == "profile" and a.arg == "add-fields":      # BP-1 v4 on a stored profile: ONE call per company, only `founded` and `listed_since`, then the texts are rendered again
+        tickers = [t.upper() for t in (a.ticker or [])]
+        if not tickers or runner.gemini is None:
+            print("usage: vc.py profile add-fields --ticker T [T ...] --budget N")
+            return 2
+        for t in tickers:
+            try:
+                r = builder.add_new_fields(t)
+                r["render"] = builder.render_only(t)
+                print(t, r)
+            except Exception as e:   # noqa: BLE001
+                print(t, "NOT DONE:", type(e).__name__, e)
+        print("model request attempts:", runner.gemini.attempts)
+        return 0
     if a.command == "profile":
         if a.arg != "show" or not a.arg2:
-            print("usage: vc.py profile show <ticker>")
+            print("usage: vc.py profile show <ticker> | add-fields --ticker T ... --budget N")
             return 2
         co = runner.companies.get_by_symbol(a.arg2.upper(), "US")
         p = builder.profiles.latest(co["id"]) if co else None
@@ -197,6 +226,12 @@ def background_command(runner, a) -> int:
                 print(t, builder.render_only(t))
             except Exception as e:   # noqa: BLE001
                 print(t, "NOT RENDERED:", e)
+        return 0
+    if a.arg == "seed-sectors":                           # the sector / product-line glossary as human / approved terms (K6d-2)
+        r = builder.terms.seed_sectors(dry_run=a.dry_run)
+        print(f"sector glossary: {r['inserted']} term(s) {'would be ' if a.dry_run else ''}added, {r['existing']} already there")
+        if r["inserted"] and not a.dry_run:
+            print("rendered again:", sorted(rerender_all(builder)))
         return 0
     if a.arg == "review":
         rows = builder.terms.unreviewed()
@@ -273,9 +308,36 @@ def scheduler_command(a) -> int:
     return service.serve(cfg, get_supabase_client, log=lambda m: print(m, flush=True))
 
 
+def approvals_command(a) -> int:
+    """`vc.py approvals recheck [--ticker T] [--dry-run | --apply]`: the extraction approval rules (AI skills 2.3) on the rows in the database. Default: only the list."""
+    from datetime import datetime
+    from src.ai import recheck as RC
+    from src.db import get_supabase_client
+    if a.arg != "recheck":
+        print("usage: vc.py approvals recheck [--ticker T] [--dry-run | --apply]")
+        return 2
+    client = get_supabase_client()
+    tick = a.ticker[0] if a.ticker else None
+    before = RC.status_table(client, [tick] if tick else None)
+    res = RC.recheck(client, tick, apply=a.apply and not a.dry_run)
+    ds = res["decisions"]
+    out_dir = ROOT / "scripts" / "state"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"approvals_recheck_{db_target()}_{datetime.now():%Y%m%d_%H%M%S}.txt"
+    lines = [f"{d.ticker:<6}{(d.skill or ''):<14}{d.item_key[:34]:<35}{d.period:<8}{d.before:<9}-> {d.after:<9}{d.rule:<22}{d.reason[:150]}" for d in ds if d.changed]
+    kept = [d for d in ds if not d.changed]
+    lines += ["", f"UNCHANGED ({len(kept)}):"] + [f"{d.ticker:<6}{(d.skill or ''):<14}{d.item_key[:34]:<35}{d.period:<8}{d.before:<9}   {d.rule:<22}{d.reason[:100]}" for d in kept if d.before == "pending"]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(RC.table(ds))
+    tot = Counter(f"{d.before}->{d.after}" for d in ds if d.changed)
+    print(f"\nrows judged: {len(ds)}  changed: {res['changed']}  {dict(tot)}  (applied: {res['applied']})  full list: {path}")
+    print("before (figure rows by status):", {t: {s: dict(c) for s, c in v.items()} for t, v in before.items()})
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=("load", "audit", "status", "score", "ai-queue", "queue", "texts", "glossary", "profile", "render", "terms", "scheduler", "cleanup"))
+    ap.add_argument("command", choices=("load", "audit", "status", "score", "ai-queue", "queue", "texts", "glossary", "profile", "render", "terms", "scheduler", "cleanup", "approvals"))
     ap.add_argument("arg", nargs="?", help="ticker, or the sub-command of queue / texts / glossary")
     ap.add_argument("arg2", nargs="?", help="id of a text / number of a proposal / ticker for queue status")
     ap.add_argument("--job", choices=JOBS, default="initial_import")
@@ -293,11 +355,14 @@ def main(argv=None) -> int:
     ap.add_argument("--stop", action="store_true", help="scheduler: orderly stop")
     ap.add_argument("--status", action="store_true", help="scheduler: last/next run of every job")
     ap.add_argument("--once", help="scheduler: run this job now")
-    ap.add_argument("--apply", action="store_true", help="cleanup / scheduler --once cleanup: really delete (default: only list)")
+    ap.add_argument("--apply", action="store_true", help="cleanup / scheduler --once cleanup / approvals recheck: really write (default: only list)")
+    ap.add_argument("--ticker", nargs="*", help="approvals recheck: one company")
     a = ap.parse_args(argv)
     print(f"[database target: {db_target()}]", flush=True)
     if a.command in ("scheduler", "cleanup"):
         return scheduler_command(a)
+    if a.command == "approvals":
+        return approvals_command(a)
     if a.command == "audit":
         resolved, plans = make_pipeline(True).audit(a.arg)
         print(A.render(resolved, plans))
@@ -335,7 +400,7 @@ def main(argv=None) -> int:
     if a.command == "queue":
         queue_status(make_runner(), a.arg2 if a.arg == "status" else None)
         return 0
-    runner = make_runner()
+    runner = make_runner(a.budget if (a.command == "profile" and a.arg == "add-fields") else 0)
     if a.command in ("profile", "render", "terms"):
         return background_command(runner, a)
     from src.pipeline import texts as TX

@@ -68,7 +68,7 @@ def reprice_block(model: str, block: dict, price: Optional[float], stale: bool =
         b["extras_price"] = block.get("price_current")
     b["price_current"] = price
     if stale:
-        b["price_score"] = {"state": "stale", "points": None, "reason": "the price was not updated for more than 3 trading days (E1)"}
+        b["price_score"] = {"state": "stale", "points": None, "reason": "the price date is before the last trading day (E1)"}
     else:
         anchors = anchors_for(model, block)
         disc = (fv - price) / fv

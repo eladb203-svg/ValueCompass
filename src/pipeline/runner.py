@@ -12,6 +12,7 @@ Job types (spec section 3), no schedule (K6d):
 """
 from __future__ import annotations
 
+import dataclasses
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -82,6 +83,7 @@ class Pipeline:
         self.industry_fn = industry_fn or industry_provider.get_industry
         self.price_fn = price_fn or P.fetch_last_price
         self.today = today or date.today()
+        self.router_fallback = False           # K6d-2: set by the queue after the router extraction ran once and did not decide
 
     # ------------------------------------------------------------ read-only steps
     def _company(self, ticker: str, resolved=None):
@@ -164,9 +166,11 @@ class Pipeline:
         # SRC + COLLECT, final router run with the engine's own series (and its approved extraction rows) - E10. The first pass has no series, so a REIT or a bank can come out
         # as STANDARD; the engines hinted by the SIC code are tried too, and the first whose own series gives a profile of that engine wins.
         extraction_rows = self._extraction_rows(company)
-        decoded = self.extraction.get_rows(company["id"], res.ticker) if company else []
+        # K6d-2 (the root of the DLR loop): the router must see the rows of the AI extraction too; "csv" only returned the hand-made CSV rows, so it asked for the extraction for ever
+        decoded = self.extraction.get_rows(company["id"], res.ticker, source="all") if company else []
         self.financial._load_items()
-        chosen, unconfirmed = None, []
+        chosen, unconfirmed, candidates = None, [], {}
+        has_engine_rows = any(r.get("skill_id") != "EXT-GENERAL" for r in extraction_rows)       # B14 rows (the general fallback) say nothing about a bank, an insurer or a REIT
         for eng in _candidates(resolved.sic, engine, cf):
             try:
                 kw, raw = C.provider_kwargs(eng, self.sec, res.ticker, rr.profile if eng == "general" else "STANDARD", self.splits_fn)
@@ -178,6 +182,7 @@ class Pipeline:
             reg = reg_from_rows(eng, decoded) if eng != "general" else None
             final = route(self.sec, res.ticker, f=raw["f"], labels=raw["labels"], ends=raw["ends"], reg=reg, reg_engine=eng if eng != "general" else None,
                           previous_profile=previous, industry_fn=self.industry_fn, override=override)
+            candidates[eng] = (kw, raw, final)
             if chosen is None or eng == engine:
                 chosen = (eng, kw, raw, final)                     # fallback: the first-pass engine
             if ENGINE_OF_PROFILE.get(final.profile) == eng:
@@ -186,7 +191,16 @@ class Pipeline:
             if eng != "general" and eng != engine:
                 unconfirmed.append(eng)
         engine, kw, raw, final = chosen
-        if engine == "general" and unconfirmed and not decoded and sic_hint(resolved.sic) == unconfirmed[0]:
+        if engine == "general" and unconfirmed and not has_engine_rows and sic_hint(resolved.sic) == unconfirmed[0] and self.router_fallback:
+            # K6d-2: the extraction was asked once and did not decide (it failed or gave nothing): the profile is set by the SIC code and the provider industry, with a flag - no second request
+            eng2 = unconfirmed[0]
+            kw, raw, f2 = candidates[eng2]
+            prof = {"bank": "BANK", "insurance": "INSURANCE", "realestate": "INCOME_REAL_ESTATE"}[eng2]
+            final = dataclasses.replace(f2, profile=prof, reason=list(f2.reason) + [f"router fallback: the extraction did not decide; profile {prof} by SIC {resolved.sic} and the provider industry"],
+                                        flags=list(f2.flags) + ["router_fallback_by_sic"])
+            engine = eng2
+            res.warnings.append(f"router fallback: profile {prof} by SIC and provider industry (the extraction did not decide)")
+        elif engine == "general" and unconfirmed and not has_engine_rows and sic_hint(resolved.sic) == unconfirmed[0]:
             # a bank / REIT / insurer that the router can only confirm with extraction rows (B1-B13) that do not exist yet: the profile is provisional, the extraction is requested (K6c section 6.2)
             res.router_needs = unconfirmed[0]
             res.warnings.append(f"provisional profile: the {unconfirmed[0]} engine fits by SIC / tags but the router needs extraction rows that do not exist yet; extraction requested")

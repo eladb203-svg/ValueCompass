@@ -67,18 +67,12 @@ def runner_engine(profile: str, ticker: str) -> str:
 
 
 def configured(engine: str, ticker: str) -> bool:
-    """Does the runner have the per-company configuration it needs?"""
-    _paths()
-    if engine == "bank":
-        import run_bank_test as rbt
-        return ticker in rbt.BANKS
-    if engine == "insurance":
-        import run_insurance_final as rif
-        return ticker in rif.COMPANIES
-    if engine == "realestate":
-        import run_realestate_pricing_v7 as v7
-        return ticker in v7.T
+    """Does the runner have the per-company configuration it needs? (K6d-2: a bank, an insurer or a REIT that the hand-made tables do not know gets its inputs automatically -
+    ``auto_config``: XBRL, then the AI extraction, then a documented default - so it is always configured.)"""
     return True
+
+
+AUTO: dict = {}                                  # ticker -> AutoInputs of the score in progress (read by run_runner)
 
 
 def patch_inputs_from_db(sink) -> None:
@@ -115,7 +109,8 @@ def run_runner(engine: str, ticker: str, raw_dir: Path) -> str:
     try:
         rst.COMPANIES = [(ticker, "K6c score job")]
         rmc.COMPANIES = [ticker] if engine == "managed_care" else []
-        rbt.BANKS = {ticker: saved[2][ticker]} if engine == "bank" else {}
+        auto = AUTO.get(ticker)
+        rbt.BANKS = {ticker: saved[2].get(ticker, auto.values["required_cet1"] if auto else 7.0)} if engine == "bank" else {}
         rif.COMPANIES = [ticker] if engine == "insurance" else []
         v7.T = [ticker] if engine == "realestate" else []
         return MG.run_engine(engine, raw_dir)
@@ -140,6 +135,33 @@ def pending_ai(result: dict) -> int:
     return sum(1 for k in ("buffett_quality", "graham_quality") for c in (result.get(k) or {}).get("criteria", []) for i in c["items"] if i.get("state") == "ai_pending")
 
 
+def derive_auto(engine: str, ticker: str, item_store):
+    """The automatic inputs of a bank, insurer or REIT that the hand-made tables do not know (``auto_config``); None for every other company."""
+    if engine not in ("bank", "insurance", "realestate"):
+        return None
+    _paths()
+    from src.pipeline import auto_config as AC
+    from src.repositories.company_repository import CompanyRepository
+    client = item_store.client
+    company = CompanyRepository(client).get_by_symbol(ticker, "US") or {}
+    if engine == "bank":
+        import run_bank_test as rbt
+        if ticker in rbt.BANKS:
+            return None
+    if engine == "realestate" and ticker in AC.MANUAL_RE:
+        return None
+    if engine == "insurance" and ticker in AC.MANUAL_INS:
+        return None
+    rows = [r for r in item_store.rows_for(ticker) if r.get("state") == "value" and r.get("approval_status") == "approved"]
+    facts = None
+    if engine == "realestate" and company.get("id"):
+        from src.ai.recheck import company_facts
+        facts = company_facts(client, company["id"])
+    auto = AC.derive(engine, ticker, company, rows, client, facts)
+    AC.apply(auto)
+    return auto
+
+
 def score_company(ticker: str, profile: str, sink, ai_store, item_store, results_dir: Path = RESULTS_DIR, use_ai: bool = True) -> ScoreOutcome:
     """Run the engines for ``ticker`` on the database. The caller writes the result with ``ScoreRepository``."""
     engine = runner_engine(profile, ticker)
@@ -153,17 +175,30 @@ def score_company(ticker: str, profile: str, sink, ai_store, item_store, results
             os.environ.pop(k, None)
         if use_ai:
             os.environ.update(export_ai(ai_store, item_store, ticker, tmp))
-        log = run_runner(engine, ticker, tmp / "raw")
+        auto = derive_auto(engine, ticker, item_store)
+        if auto is not None:
+            AUTO[ticker] = auto
+        try:
+            log = run_runner(engine, ticker, tmp / "raw")
+        finally:
+            AUTO.pop(ticker, None)
         _paths()
         import make_golden as MG
         res = MG.normalise(engine, tmp / "raw").get(ticker)
         if res is None:
             return ScoreOutcome(ticker, "failed", engine, detail=log[-600:])
+        if auto is not None:
+            res["auto_inputs"] = auto.as_list()
+            res["flags"] = list(res.get("flags") or []) + auto.flags()
         if res.get("state") not in (None, "scored") and not res.get("buffett_quality"):
             return ScoreOutcome(ticker, "not_scored", engine, result=res, detail=str(res.get("reason") or res.get("state")))
         out = results_dir / engine / f"{ticker}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(res, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
+        for other in ENGINE_KEYS:                           # a company has one engine: a result of an earlier (provisional) engine would be read first by `load_result`
+            stale = results_dir / other / f"{ticker}.json"
+            if other != engine and stale.exists() and not (GOLDEN_DIR / other / f"{ticker}.json").exists():
+                stale.unlink()
         return ScoreOutcome(ticker, "scored", engine, result=res, ai_pending=pending_ai(res))
     finally:
         for k, v in env_before.items():

@@ -112,7 +112,7 @@ def test_reprice_block_gives_the_engines_own_score_for_the_new_price():
 
 def test_a_stale_price_gives_no_price_score_and_a_missing_price_changes_nothing():
     g = golden("general", "KO")
-    assert reprice_block("buffett", g["buffett_price"], 30.0, stale=True)["price_score"] == {"state": "stale", "points": None, "reason": "the price was not updated for more than 3 trading days (E1)"}
+    assert reprice_block("buffett", g["buffett_price"], 30.0, stale=True)["price_score"] == {"state": "stale", "points": None, "reason": "the price date is before the last trading day (E1)"}
     assert reprice_block("buffett", g["buffett_price"], None) is g["buffett_price"]
     assert reprice_result(g, None) is g
     assert vs_buy(30.0, {"state": "not_suitable"})["price_position"] == "no_buy_price"
@@ -249,11 +249,15 @@ def test_priced_result_uses_the_stored_snapshot_and_rewrites_the_result_file(tmp
 
 
 # ---------------------------------------------------------------- E1
-def test_a_price_is_stale_after_three_trading_days_without_an_update():
-    fri = datetime(2026, 10, 23, 21, 0, tzinfo=timezone.utc)
-    assert dq.price_freshness(fri, datetime(2026, 10, 26, 12, tzinfo=timezone.utc)) == (False, "price is 1 trading day(s) old")             # Monday
-    assert dq.price_freshness(fri, datetime(2026, 10, 28, 12, tzinfo=timezone.utc))[0] is False                                           # Wednesday: 3 trading days
-    assert dq.price_freshness(fri, datetime(2026, 10, 29, 12, tzinfo=timezone.utc))[0] is True                                            # Thursday: 4
-    wed = datetime(2026, 11, 25, 21, 0, tzinfo=timezone.utc)                                    # Thanksgiving week: Thu 26 is a holiday, Fri 27 a half day
-    assert dq.price_freshness(wed, datetime(2026, 11, 30, 12, tzinfo=timezone.utc))[0] is False                                           # Fri + Mon = 2 trading days
+def test_a_price_is_stale_when_its_date_is_before_the_last_trading_day():
+    """E1 (2026-10-28): the last trading day = the most recent day whose session has closed (New York time)."""
+    fri = datetime(2026, 10, 23, 21, 0, tzinfo=timezone.utc)                                              # the close of Friday 23 Oct
+    assert dq.price_freshness(fri, datetime(2026, 10, 26, 12, tzinfo=timezone.utc))[0] is False         # Monday morning (before the open): Friday is the last trading day
+    assert dq.price_freshness(fri, datetime(2026, 10, 26, 18, tzinfo=timezone.utc))[0] is False         # Monday during the session: still fresh
+    assert dq.price_freshness(fri, datetime(2026, 10, 26, 20, 30, tzinfo=timezone.utc))[0] is True      # Monday after the close: Monday is the last trading day, Friday's price is old
+    mon = datetime(2026, 10, 26, 21, 0, tzinfo=timezone.utc)
+    assert dq.price_freshness(mon, datetime(2026, 10, 27, 14, tzinfo=timezone.utc))[0] is False         # Tuesday during the session
+    thanks = datetime(2026, 11, 25, 21, 0, tzinfo=timezone.utc)                                          # Wednesday before Thanksgiving
+    assert dq.price_freshness(thanks, datetime(2026, 11, 26, 20, tzinfo=timezone.utc))[0] is False       # Thursday is a holiday: Wednesday stays the last trading day
+    assert dq.price_freshness(thanks, datetime(2026, 11, 27, 19, tzinfo=timezone.utc))[0] is True        # Friday (half day, closed 18:00 UTC): the price of Wednesday is old
     assert dq.price_freshness(None)[0] is True

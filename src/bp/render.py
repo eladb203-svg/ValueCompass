@@ -15,7 +15,7 @@ from .names import display_items
 from .translate import phrase_key
 from .vocab import Vocab
 
-TEMPLATE_VERSION = "1"
+TEMPLATE_VERSION = "2"                     # v2 (2026-10-27): sentence 6, founded / listed since
 MAX_LINES, MAX_BRANDS, MAX_SEGMENTS, MAX_LIST = 3, 5, 3, 3
 MOAT_PREFIX = {"he": {2: "יתרון תחרותי ברור:", 1: "יתרון תחרותי לא מוכח:", 0: "אין יתרון תחרותי מזוהה."},
                "en": {2: "A clear competitive advantage:", 1: "A competitive advantage that is not proven:", 0: "No identifiable competitive advantage."}}
@@ -272,6 +272,27 @@ def s_revenue(c: _Ctx) -> Optional[str]:
     return f"Revenue in FY{c.i.fiscal_year}: {money_en(c.i.revenue)}." if c.lang == "en" else f"הכנסות ב-FY{c.i.fiscal_year}: {money_he(c.i.revenue)}."
 
 
+def s_history(c: _Ctx) -> Optional[str]:
+    """Sentence 6 (AI skills 2026-10-27, 3.2.1): "Founded in {year}; listed since {year}." - each half only when found; "Incorporated in" when the report says so; an approximate listing year
+    (from the price history) is "listed since about {year}"."""
+    f = (_items(c.i, "founded") or [None])[0]
+    ls = (_items(c.i, "listed_since") or [None])[0]
+    a = b = None
+    if f and f.get("year"):
+        inc = f.get("kind") == "incorporated"
+        a = (f"Incorporated in {f['year']}" if inc else f"Founded in {f['year']}") if c.lang == "en" else (f"התאגדה ב-{f['year']}" if inc else f"נוסדה ב-{f['year']}")
+    if ls and ls.get("year"):
+        about = bool(ls.get("approximate"))
+        b = (f"listed since {'about ' if about else ''}{ls['year']}") if c.lang == "en" else (f"נסחרת בבורסה מאז {'כ-' if about else ''}{ls['year']}")
+    if a and b:
+        return f"{a}; {b}."
+    if a:
+        return a + "."
+    if b:
+        return (b[0].upper() + b[1:] if c.lang == "en" else b) + "."
+    return None
+
+
 # ---------------------------------------------------------------- paragraph 2
 def type_label(c: _Ctx, it: dict) -> Optional[str]:
     code = it["industry"]
@@ -324,7 +345,7 @@ def s_moat(c: _Ctx) -> Optional[str]:
 def render(inp: RenderInput, lang: str, preview: bool = False) -> tuple:
     """-> (text, info). info: {"missing": [English phrases without Hebrew], "used": [English phrases whose Hebrew is in the text], "unreviewed": [...], "sentences": n}."""
     c = _Ctx(inp, lang, preview)
-    p1 = [s for s in (s_activity(c), s_products(c), s_customers_revenue(c), s_segments_regions(c), s_operates(c), s_revenue(c)) if s]
+    p1 = [s for s in (s_activity(c), s_products(c), s_customers_revenue(c), s_segments_regions(c), s_operates(c), s_revenue(c), s_history(c)) if s]
     p2 = [s for s in (*s_competition(c), s_moat(c)) if s]
     text = "\n\n".join(" ".join(p) for p in (p1, p2) if p)
     # a Hebrew sentence that was left out because a phrase had no translation makes the text incomplete

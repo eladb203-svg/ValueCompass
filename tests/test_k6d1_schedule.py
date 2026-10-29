@@ -42,13 +42,13 @@ def test_prev_trading_day_skips_weekends_and_holidays_and_the_extra_closed_list(
 
 
 # ---------------------------------------------------------------- due times
-def test_close_prices_run_30_minutes_after_the_close_in_israel_time_across_both_clock_changes():
+def test_close_prices_run_at_2300_israel_time_on_a_trading_day_whatever_the_clock_changes():
     c = cfg()
     # Israel changed to winter time on 25 Oct 2026, New York on 1 Nov: three different offsets in three weeks
-    assert c.slots("close_prices", date(2026, 10, 23)) == [datetime(2026, 10, 23, 23, 30, tzinfo=IL)]    # both still on summer time: close 23:00 Israel
-    assert c.slots("close_prices", date(2026, 10, 26)) == [datetime(2026, 10, 26, 22, 30, tzinfo=IL)]    # Israel on winter time, New York still on summer time: close 22:00
-    assert c.slots("close_prices", date(2026, 11, 2)) == [datetime(2026, 11, 2, 23, 30, tzinfo=IL)]      # both on winter time again
-    assert c.slots("close_prices", date(2026, 11, 27)) == [datetime(2026, 11, 27, 20, 30, tzinfo=IL)]    # a half day: close 13:00 New York = 20:00 Israel
+    assert c.slots("close_prices", date(2026, 10, 23)) == [datetime(2026, 10, 23, 23, 0, tzinfo=IL)]    # both still on summer time: close 23:00 Israel
+    assert c.slots("close_prices", date(2026, 10, 26)) == [datetime(2026, 10, 26, 23, 0, tzinfo=IL)]    # Israel on winter time, New York still on summer time: close 22:00
+    assert c.slots("close_prices", date(2026, 11, 2)) == [datetime(2026, 11, 2, 23, 0, tzinfo=IL)]      # both on winter time again
+    assert c.slots("close_prices", date(2026, 11, 27)) == [datetime(2026, 11, 27, 23, 0, tzinfo=IL)]    # a half day: the session closed at 20:00 Israel time, the run is still at 23:00
     assert c.slots("close_prices", date(2026, 11, 26)) == [] and c.slots("close_prices", date(2026, 10, 24)) == []   # Thanksgiving, a Saturday
     assert c.slots("close_prices", date(2026, 7, 3)) == []                                              # the observed Independence Day
 
@@ -91,8 +91,8 @@ def test_daily_weekly_and_monthly_jobs_and_next_and_last_due():
     assert c.last_due("new_reports", now) == datetime(2026, 10, 26, 6, 0, tzinfo=IL)
     assert c.last_due("audit", now) == datetime(2026, 10, 25, 3, 0, tzinfo=IL)
     assert c.last_due("yields", now) == datetime(2026, 10, 3, 7, 0, tzinfo=IL)
-    assert c.last_due("close_prices", now) == datetime(2026, 10, 23, 23, 30, tzinfo=IL)
-    assert c.next_due("close_prices", now) == datetime(2026, 10, 26, 22, 30, tzinfo=IL)
+    assert c.last_due("close_prices", now) == datetime(2026, 10, 23, 23, 0, tzinfo=IL)
+    assert c.next_due("close_prices", now) == datetime(2026, 10, 26, 23, 0, tzinfo=IL)
     assert c.next_due("new_reports", now) == datetime(2026, 10, 27, 6, 0, tzinfo=IL)
 
 
@@ -130,7 +130,7 @@ def test_a_missed_job_runs_once_and_a_job_that_ran_after_its_due_time_does_not()
     jobs = JobRunner(db, c, now=lambda: now.astimezone(timezone.utc))
     assert jobs.missed(now) == ["close_prices", "new_reports", "audit", "yields", "fx", "cleanup", "ai_queue"]     # the catch-up order; the intraday job is never caught up
     db.tables["data_update_log"] = [ok_row("new_reports", datetime(2026, 10, 26, 6, 5, tzinfo=IL)), ok_row("audit", datetime(2026, 10, 25, 3, 1, tzinfo=IL)),
-                                    ok_row("close_prices", datetime(2026, 10, 23, 23, 31, tzinfo=IL)), ok_row("fx", datetime(2026, 10, 26, 7, 31, tzinfo=IL), "no_change"),
+                                    ok_row("close_prices", datetime(2026, 10, 23, 23, 1, tzinfo=IL)), ok_row("fx", datetime(2026, 10, 26, 7, 31, tzinfo=IL), "no_change"),
                                     ok_row("yields", datetime(2026, 10, 3, 7, 1, tzinfo=IL)), ok_row("cleanup", datetime(2026, 10, 25, 4, 0, tzinfo=IL)),
                                     ok_row("ai_queue", datetime(2026, 10, 26, 12, 0, 30, tzinfo=IL), "partial_success")]
     assert jobs.missed(now) == []

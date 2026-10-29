@@ -8,7 +8,7 @@ from src.ai.db_stores import select_all
 
 from .translate import ABBREVIATIONS, glossary_pairs, phrase_key
 
-PROFILE_FIELDS = ("display_name", "core_activity", "segments", "products_services", "customer_types", "revenue_models", "regions", "competitors", "competitor_types")
+PROFILE_FIELDS = ("display_name", "core_activity", "segments", "products_services", "customer_types", "revenue_models", "regions", "competitors", "competitor_types", "founded", "listed_since")
 
 
 def _now() -> str:
@@ -99,6 +99,21 @@ class TermStore:
         if new:
             self.client.table("term_translations").insert(new).execute()
         return {"inserted": len(new), "existing": len(pairs) - len(new)}
+
+    def seed_sectors(self, dry_run: bool = False) -> dict:
+        """The sector / product-line name glossary (``sector_glossary.yaml``) as human / approved terms; a term that is already there is left as it is. -> {"inserted", "existing", "terms"}."""
+        import yaml
+        from .translate import ROOT
+        pairs = [(t["en"].strip(), str(t["he"]).strip()) for t in yaml.safe_load((ROOT / "src" / "ai" / "skills" / "sector_glossary.yaml").read_text(encoding="utf-8"))["terms"]]
+        have = {phrase_key(r["en"]) for r in self.rows()}
+        new = [{"en": en, "he": he, "source": "human", "status": "approved", "reviewed_at": _now()} for en, he in pairs if phrase_key(en) not in have]
+        if new and not dry_run:
+            self.client.table("term_translations").insert(new).execute()
+        return {"inserted": len(new), "existing": len(pairs) - len(new), "terms": pairs}
+
+    def glossary_entries(self, max_words: int = 3) -> list:
+        """[(english, hebrew)] of the short terms a person approved (the T1 glossary and the sector glossary): sent to the translator as its dictionary."""
+        return [(r["en"], r["he"]) for r in self.rows() if r["source"] == "human" and r["status"] == "approved" and len(r["en"].split()) <= max_words]
 
     def get_by_id(self, tid: int) -> Optional[dict]:
         r = self.client.table("term_translations").select("*").eq("id", tid).limit(1).execute().data

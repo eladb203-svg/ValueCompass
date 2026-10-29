@@ -177,8 +177,10 @@ class JobRunner:
         companies = self.active_companies()
         if not companies:
             return Outcome("no_change", detail={"stocks": 0})
-        prices = self.fetch_batch([c["symbol"] for c in companies], intraday=False)
-        return self.apply_prices(companies, prices)
+        prices = self.fetch_batch([c["symbol"] for c in companies], intraday=True)          # K6d-2: the last price traded, not the daily close row; one request, no second attempt
+        out = self.apply_prices(companies, prices)
+        out.detail["price_kind"] = "last_price"
+        return out
 
     def intraday_prices(self) -> Outcome:
         if not self.cfg.intraday_open(self.now()):

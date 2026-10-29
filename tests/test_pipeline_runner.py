@@ -198,7 +198,7 @@ def test_provisional_profile_requests_the_extraction_first_and_the_wrong_engine_
     runner = QueueRunner(c, results_dir=__import__("pathlib").Path("scripts/output_k6c/test_results_unused"))
     out = runner.after_load(r, c.tables["companies"][0]["id"], 1)
     q = runner.queue.list()
-    assert out["extraction_requested"] == "realestate" and [(t["job_type"], t["priority"], t["payload"]["purpose"]) for t in q] == [("ai_extract", 1, "router")]    # and no score is queued
+    assert out["extraction_requested"] == "realestate" and [(t["job_type"], t["priority"], t["payload"]["purpose"]) for t in q] == [("ai_extract", 2, "router")]    # data completion (K6d-2, priority 2); and no score is queued
     # the extraction exists now and the router confirms the real-estate profile
     env.profile = "INCOME_REAL_ESTATE"
     c.tables["extraction_items"] = [{"id": 1, "company_id": 1, "item_key": "occupancy", "period": "FY2025", "value": 0.95, "value_state": "value", "unit": "fraction", "document_ref": "",

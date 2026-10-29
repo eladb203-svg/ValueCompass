@@ -155,17 +155,21 @@ def check_year_coverage(facts: list, results: list, engine: str = "general") -> 
             results.append(DqResult("year_coverage", "flagged", None, key, f"{n} years: fewer than 5 for a 10-year criterion"))
 
 
-def price_freshness(last_price_at: Optional[datetime], now: Optional[datetime] = None, max_days: int = PRICE_STALE_DAYS) -> tuple:
-    """E1: a price that was not updated for more than ``max_days`` trading days (NYSE calendar, New York dates) is stale. -> (is_stale, detail).
-    The same rule runs in the database (migration 20, ``flag_stale_prices``)."""
+def price_freshness(last_price_at: Optional[datetime], now: Optional[datetime] = None, max_days: Optional[int] = None) -> tuple:
+    """E1 (decided 2026-10-28): a price is stale when its date is before the last trading day, i.e. the most recent day whose session has closed (the NYSE calendar, New York time). A price
+    of the day that is still trading is fresh, and so is the last close until the next session has closed. -> (is_stale, detail). The same rule runs in the database
+    (migration 22, ``flag_stale_prices``). ``max_days`` is kept for old callers and ignored."""
     from src.sched.nyse import NY, Calendar
     now = now or datetime.now(timezone.utc)
     if last_price_at is None:
         return True, "no price time"
     if last_price_at.tzinfo is None:
         last_price_at = last_price_at.replace(tzinfo=timezone.utc)
-    age = Calendar().trading_days_between(last_price_at.astimezone(NY).date(), now.astimezone(NY).date())
-    return age > max_days, f"price is {age} trading day(s) old"
+    cal = Calendar()
+    day = last_price_at.astimezone(NY).date()
+    last = cal.last_close_at_or_before(now)
+    last_day = last.date() if last else None
+    return (last_day is not None and day < last_day), f"price date {day.isoformat()}, last trading day {last_day.isoformat() if last_day else '?'}"
 
 
 def reconciliation_inputs(facts: list) -> dict:

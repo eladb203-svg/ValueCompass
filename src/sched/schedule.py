@@ -63,6 +63,16 @@ class Config:
         step = j.get("interval_minutes")
         if step:
             return [self._at(d, time(0, 0)) + timedelta(minutes=k) for k in range(0, 24 * 60, int(step))]
+        if job == "close_prices" and j.get("at"):
+            # K6d-2: a fixed time, 23:00 Israel time, on a day whose NYSE session closed on that Israel date at or before that time (a weekend, a holiday: no run). The price taken is the last price.
+            at = _hm(j["at"])
+            for nd in (d - timedelta(days=1), d, d + timedelta(days=1)):
+                s = self.calendar.session(nd)
+                if s:
+                    close_il = s[1].astimezone(self.tz)
+                    if close_il.date() == d and close_il.time() <= at:
+                        return [self._at(d, at)]
+            return []
         if job == "close_prices":
             out = []
             for nd in (d - timedelta(days=1), d, d + timedelta(days=1)):

@@ -509,7 +509,7 @@ def test_no_key_english_is_approved_hebrew_waits_and_the_second_run_changes_noth
     out = b.run("ACM")
     assert out["he_state"] == "awaiting_translation" and out["translation"]["pending"] >= 1 and b.log["translation_skipped_no_key"] >= 1
     en, he = texts.get("ACM", 2025, "background", "bp", "", "en"), texts.get("ACM", 2025, "background", "bp", "", "he")
-    assert en["approval_status"] == "approved" and en["template_version"] == "1" and en["profile_id"] == out["profile_id"] and en["text"].startswith("Acme manufactures and sells industrial widgets.")
+    assert en["approval_status"] == "approved" and en["template_version"] == "2" and en["profile_id"] == out["profile_id"] and en["text"].startswith("Acme manufactures and sells industrial widgets.")
     assert he["approval_status"] == "pending_review" and he["state"] == "awaiting_translation" and he["human_reviewed"] is False
     again, _ = world.build(gem=FakeGemini())                                     # a model with no answers: BP-1 must not be asked again
     out2 = again.run("ACM")

@@ -21,7 +21,7 @@ from src.ai.db_stores import DbAiItemStore, DbAssessmentStore, DbTextStore
 from src.pipeline import scoring as S
 from src.repositories.company_repository import CompanyRepository
 from src.repositories.score_repository import ScoreRepository
-from src.repositories.work_queue_repository import SCORING_AI, WorkQueueRepository
+from src.repositories.work_queue_repository import PRIORITY, SCORING_AI, WorkQueueRepository
 
 ROOT = Path(__file__).resolve().parents[2]
 ISRAEL = ZoneInfo("Asia/Jerusalem")
@@ -187,6 +187,7 @@ class QueueRunner:
         if self.pipeline_factory is None:
             raise RuntimeError("no pipeline configured for data jobs")
         p = self.pipeline_factory()
+        p.router_fallback = bool((task.get("payload") or {}).get("router_fallback"))
         res = p.load(self.ticker(task["company_id"]), task["job_type"])
         return self.after_load(res, task["company_id"], task["priority"])
 
@@ -202,9 +203,10 @@ class QueueRunner:
             profile = {"bank": "BANK", "insurance": "INSURANCE", "realestate": "INCOME_REAL_ESTATE"}[res.router_needs]
             ran = [t for t in self.queue.list(company_id) if t["job_type"] == "ai_extract" and t["state"] == "done" and (t.get("payload") or {}).get("purpose") == "router"
                    and (t["payload"] or {}).get("engine") == res.router_needs]
-            if ran:                                   # K6d-1: the extraction ran and the router still needs it - asking again would repeat the same model call for ever (found with DLR)
-                raise RuntimeError(f"the router still needs the {res.router_needs} extraction after it ran ({len(ran)} time(s)): the loop is stopped, a person must look at it")
-            self.enqueue(task["company_id"], "ai_extract", None, None, 1, {"blocks": BLOCKS_OF[profile], "purpose": "router", "engine": res.router_needs, "priority_reason": "router"})
+            if ran:                                   # K6d-2: the extraction ran once and the router still has no rows to decide with: no second request (the DLR loop) - the profile is set by the SIC code
+                self.enqueue(task["company_id"], "repair", None, None, PRIORITY["completion"], {"router_fallback": True})
+                return {"status": res.status, "provisional_profile": res.profile, "router_fallback": res.router_needs}
+            self.enqueue(task["company_id"], "ai_extract", None, None, PRIORITY["completion"], {"blocks": BLOCKS_OF[profile], "purpose": "router", "engine": res.router_needs, "priority_reason": "router"})
             return {"status": res.status, "rows": res.rows_written, "years": res.years, "provisional_profile": res.profile, "extraction_requested": res.router_needs}
         self.enqueue(task["company_id"], "score", None, "first", task["priority"])
         return {"status": res.status, "rows": res.rows_written, "years": res.years}
@@ -304,8 +306,8 @@ class QueueRunner:
         """The weekly audit (K6d-1): the tasks a loaded company still needs - the first score when it has none, otherwise the AI answers, extraction items and background text that are missing
         (``plan_ai``; a stored answer or text is not asked again). Priority 2 (data completion). Nothing is planned without the company's result file."""
         cid = co["id"]
-        if co.get("processing_state") in ("unsupported", "resolved", "failed") or not co.get("profile"):
-            return []
+        if co.get("processing_state") in ("unsupported", "resolved", "failed") or not co.get("profile") or str(co.get("profile_reason") or "").startswith("provisional"):
+            return []                                         # a provisional profile waits for its extraction (the router), it is not scored on the wrong engine
         if not self.scores.latest_run(cid):
             return [self.enqueue(cid, "score", None, "first", priority)[0]["id"]]
         res = self.load_result(co["symbol"])
@@ -368,6 +370,8 @@ class QueueRunner:
         inputs["changes"] = (run or {}).get("changes")           # K6d-1: the "what changed" line is computed when the run is written and kept in the run (the previous run is deleted)
         if inputs.get("ai_pending"):
             return {"state": "skipped_ai_pending", "ai_pending": inputs["ai_pending"]}
+        if any(m.get("score") is None for m in inputs["results"]["models"].values()):         # K6d-2: no quality score (coverage below 60%) = nothing to analyse; the analysis waits for data
+            return {"state": "skipped_no_score"}
         row = T.generate_analysis_template(t, int(rec["fiscal_year"][2:]), inputs, self.texts)
         if run:
             self.client.table("score_runs").update({"peer_group": {"ids": g["ids"], "definition": g["definition"], "n": g["n"], "fallback": g["fallback"]}}).eq("id", run["id"]).execute()
@@ -504,7 +508,7 @@ class QueueRunner:
         co = self.company(task["company_id"])
         t = co["symbol"]
         res = self.load_result(t)
-        if res is None and (task.get("payload") or {}).get("purpose") == "router":
+        if (task.get("payload") or {}).get("purpose") == "router":      # K6d-2 (the DLR loop): a result file of the provisional profile (a score that ran on the general engine) must not decide which blocks are asked
             eng = (task["payload"] or {}).get("engine")
             profile = {"bank": "BANK", "insurance": "INSURANCE", "realestate": "INCOME_REAL_ESTATE"}[eng]
             res = self.result_from_db(co, eng, profile)
@@ -520,6 +524,12 @@ class QueueRunner:
         rows = [json.loads(ln) for ln in (out_root / "items.jsonl").read_text(encoding="utf-8").splitlines() if ln.strip()] if (out_root / "items.jsonl").exists() else []
         rows = [r for r in rows if r["ticker"] == t]
         n = self.item_store.upsert_rows(rows, "ai_controls") if rows else {}
+        if rows:                                                      # K6d-2: the approval rules (AI skills 2.3) judge the new rows before the score reads them
+            from src.ai import recheck as RC
+            n["approval_rules"] = RC.recheck(self.client, t, apply=True)["applied"]
+            if any(r.get("skill_id") == "EXT-GENERAL" and r.get("state") == "value" and r.get("approval_status") == "approved" for r in self.item_store.rows_for(t)):
+                # an approved B14 value is an engine input only once it is a fact (K6 spec 2.3, step 5): a `repair` job rebuilds the facts from the cache with the approved rows, before the score
+                n["repair_queued"] = self.enqueue(task["company_id"], "repair", None, None, task["priority"], {"reason": "approved B14 values become facts"})[1]
         if (task.get("payload") or {}).get("purpose") == "router":
             self.enqueue(task["company_id"], "repair", None, None, 1)               # re-route from the cache now that the extraction exists; the score follows
         return {"items": n, "attempts": self.gemini.attempts - before}

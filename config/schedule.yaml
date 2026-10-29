@@ -13,11 +13,11 @@ extra_closed: []
 ignore_market_hours: false
 
 jobs:
-  # All stocks, once per trading day: `minutes_after_close` after the NYSE / NASDAQ close (13:00 New York time on a half day). One batch request.
-  # Note: the close is 23:00 Israel time most of the year, so this run is at 23:30, outside the 10:00-23:00 window of the intraday job (decision: 30 minutes after the close).
+  # All stocks, once per trading day at 23:00 Israel time (decided 2026-10-28; before: 30 minutes after the close). The price taken is the LAST PRICE traded (not the daily close row), one batch request,
+  # no second attempt. A price is stale (E1) when its date is before the last trading day (the last session that has closed).
   close_prices:
     enabled: true
-    minutes_after_close: 30
+    at: "23:00"
 
   # The "hot" stocks only (held in a portfolio or on a watchlist, and the price is at most `hot_ratio` x the buy price of Buffett or Graham): every `every_minutes` (30-60)
   # while the exchange is open and only between `from` and `to` Israel time. No hot stock = no request.

@@ -42,6 +42,17 @@ def b14_items(t: str, m: dict) -> tuple:
     return B14.b14_items(_DICT, ENGINE_OF[t], m["fins"], m["fy"][-3:])
 
 
+def record_failure(calls, rep, skill_id: str, block: dict, err: Exception, items=None) -> None:
+    """K6d-2: one extraction attempt per skill per annual report. A call that failed for good (the model client gave up) is stored as a failure, and a stored call is never asked again - a failure
+    stays a failure until a new annual report. A run that only ran out of budget is not a failure of the call and is asked again."""
+    from src.ai.content import BudgetExceeded
+    if isinstance(err, BudgetExceeded) or "budget" in str(err).lower():
+        return
+    calls.put({"ticker": rep.ticker, "fiscal_year": rep.fiscal_year, "skill_id": skill_id, "version": block["version"], "prompt_version": E.PROMPT_VERSION, "accession": rep.filing.accession,
+               "items_asked": [i["key"] for i in (items if items is not None else block["items"])], "section_flags": [], "model": "", "raw": None, "usage": {},
+               "sections_sent": [], "no_call": f"failed: {str(err)[:120]}"})
+
+
 def main(argv=None, client=None) -> None:
     """``client``: an injected model client (the K6c queue passes one with a request budget); without it a real client is built."""
     ap = argparse.ArgumentParser()
@@ -74,6 +85,7 @@ def main(argv=None, client=None) -> None:
             except RuntimeError as e:
                 log["errors"][f"{t}:{sid}"] = str(e)[:150]
                 print(f"  FAILED {t} {sid}: {str(e)[:120]}", flush=True)
+                record_failure(calls, rep, sid, b, e)
                 continue
             rows, creasons = E.rows_from_call(rep, b, rec)
             rows_by_block[sid] = rows
@@ -97,6 +109,7 @@ def main(argv=None, client=None) -> None:
                         print(f"  {t} {pid}: {len(chunk)} items asked, {len(rows)} rows {creasons}", flush=True)
                     except RuntimeError as e:
                         log["errors"][f"{t}:EXT-GENERAL#{part}"] = str(e)[:150]
+                        record_failure(calls, rep, pid, b, e, chunk)
                 rows_by_block["EXT-GENERAL"] = rows_all
                 per_block["EXT-GENERAL"] = {"calls": sum(p["calls"] for p in parts), "parts": parts, "rows": len(rows_all), "asked": [k for p in parts for k in (p["asked"] or [])]}
         # engine-based controls (real estate): computed on the engine inputs with this company's accepted items merged in

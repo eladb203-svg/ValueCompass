@@ -93,8 +93,11 @@ def evaluate_criterion(id: str, name: str, items: list) -> CriterionResult:
     if applicable <= _EPS:  # whole criterion not applicable: neutral
         return CriterionResult(id, name, weight, items, 0.0, 0.0, na_max, 0.0, 0.0, 0.0, True,
                                None, None, None, weight, [])
-    mn = observed / applicable * weight
-    mx = (observed + unknown_max) / applicable * weight
+    # K6d-2: a sub-item computed from a documented default (flag "default") counts in the score but not in the certain part: the range runs from 0 to its full points for that item
+    dflt = [i for i in computed if "default" in (i.flags or [])]
+    d_pts, d_max = sum(i.points or 0.0 for i in dflt), sum(i.max_pts for i in dflt)
+    mn = (observed - d_pts) / applicable * weight
+    mx = (observed - d_pts + d_max + unknown_max) / applicable * weight
     unk = [{"id": i.id, "name": i.name, "state": i.state, "max_pts": i.max_pts, "note": i.note}
            for i in items if i.state in UNKNOWN_STATES]
     basis = applicable - ai_max  # points that can be judged by code

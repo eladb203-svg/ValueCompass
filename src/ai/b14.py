@@ -37,13 +37,29 @@ def parse_dictionary(text: str) -> list:
     return out
 
 
-def eligible(row: dict, prefix: str) -> list:
-    """Engine fields of this profile that B14 may ask for, from one dictionary row."""
+# Approval rule 2 (AI skills 2026-10-27, 2.3): an item that does not belong to the profile is never asked. The dictionary lists some insurance concepts under the general prefix because the
+# managed-care engine (rule C13) reads them: "claims and benefits incurred" (FIN-061 / FIN-111, G.claims_expense) is a managed-care item; a company with another general profile
+# (MSFT, INTC) has no claims, and the model took "cost of sales" for it. field -> the engine kinds that may be asked for it.
+PROFILE_ONLY = {"claims_expense": ("managed_care",)}
+
+
+def eligible(row: dict, prefix: str, kind: Optional[str] = None) -> list:
+    """Engine fields of this profile that B14 may ask for, from one dictionary row (``kind``: the engine kind, to apply PROFILE_ONLY)."""
     st = next((v for k, v in SECTION_OF.items() if row["statement"].lower().startswith(k)), None)
     ex = row["extracts"]
     if st is None or "Code" not in ex or "C5" in ex:
         return []
-    return [f for f in row["fields"].get(prefix, []) if f not in COVERED.get(prefix, set())]
+    return [f for f in row["fields"].get(prefix, []) if f not in COVERED.get(prefix, set()) and (kind is None or f not in PROFILE_ONLY or kind in PROFILE_ONLY[f])]
+
+
+def removed_by_profile(rows: list) -> dict:
+    """{engine kind: [items that the dictionary lists under the profile's prefix but B14 no longer asks for]} - for the report."""
+    out = {}
+    for kind, pre in PREFIX.items():
+        all_f = {f for r in rows for f in eligible(r, pre)}
+        ok = {f for r in rows for f in eligible(r, pre, kind)}
+        out[kind] = sorted(all_f - ok)
+    return out
 
 
 def b14_items(rows: list, kind: str, series: dict, labels: list) -> tuple:
@@ -53,7 +69,7 @@ def b14_items(rows: list, kind: str, series: dict, labels: list) -> tuple:
     items, secs, needed, asked = [], [], 0, 0
     for row in rows:
         st = next(v for k, v in SECTION_OF.items() if row["statement"].lower().startswith(k)) if any(row["statement"].lower().startswith(k) for k in SECTION_OF) else None
-        for f in eligible(row, prefix):
+        for f in eligible(row, prefix, kind):
             if f not in series or any(i['key'] == f for i in items):
                 continue                                        # the profile's data has no such series (not read by this company's engine)
             yrs = labels[-2:] if st == "X-BS" else labels

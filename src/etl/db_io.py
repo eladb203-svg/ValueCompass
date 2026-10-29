@@ -77,8 +77,11 @@ class FactSetDb:
         cid = self.company_id(template)
         periods = [(p["fiscal_year"], year_to_label(p["fiscal_year"]), date.fromisoformat(p["fiscal_year_end"]) if p["fiscal_year_end"] else None) for p in self.financial.get_filing_periods(cid)]
         # facts that came from approved extraction (source_kind 'extraction', K6b) are not part of the engine input: the engines read those values from the extraction rows themselves
+        # K6d-2: ... except the facts of approved B14 values (EXT-GENERAL): those fill a missing engine series (gains, claims ...) and the engine has no other way to read them
+        from src.ai.db_stores import select_all
+        b14 = {r["id"] for r in select_all(self.financial.client, "extraction_items", {"company_id": cid, "skill_id": "EXT-GENERAL"})}
         facts = [Fact(template.ticker, d["fiscal_year"], d["item_key"], _num(d["value"]), d["status"], d["source_kind"], tag=d["tag"], flags=tuple(d["flags"]), basis=d["basis"])
-                 for d in self.financial.get_history(cid) if d["source_kind"] != "extraction"]
+                 for d in self.financial.get_history(cid) if d["source_kind"] != "extraction" or d.get("extraction_id") in b14]
         fs = FactSet(ticker=template.ticker, name=template.name, engine=template.engine, periods=periods, facts=facts, extras=template.extras, extraction=[],
                      context=template.context, extra_tags=template.extra_tags, series_fields=template.series_fields, has_reg=template.has_reg)
         fs.extraction = self.extraction.get_rows(cid, template.ticker) if template.has_reg else []
