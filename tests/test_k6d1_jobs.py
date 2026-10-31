@@ -335,3 +335,33 @@ def test_the_annual_builder_runs_only_when_a_year_has_ended_and_before_the_month
 
     r = refdata.refresh_yield_csv(date(2027, 1, 5), lambda: "m", stops, p)
     assert r["monthly"] == "m" and r["annual"].startswith("annual builder stopped")
+
+
+# ---------------------------------------------------------------- K6d-2: automatic recovery of a cut-off task
+def test_a_task_a_dead_process_left_running_is_queued_again_and_one_out_of_attempts_fails():
+    c = FakeClient()
+    cid = add_company(c, "KO", "0000021344")
+    q = WorkQueueRepository(c, now=lambda: at(2026, 10, 29, 12))
+    old, fresh, spent = (q.enqueue(cid, "ai_extract", fy, None, 2)[0] for fy in (2023, 2024, 2025))
+    for t, upd, att in ((old, at(2026, 10, 29, 10), 1), (fresh, at(2026, 10, 29, 11, 50), 1), (spent, at(2026, 10, 29, 9), 3)):
+        row = next(r for r in c.tables["work_queue"] if r["id"] == t["id"])
+        row.update({"state": "running", "attempts": att, "updated_at": upd.isoformat()})
+    got = {r["id"]: r["state"] for r in q.recover_stale()}
+    assert got == {old["id"]: "queued", spent["id"]: "failed"}                                       # the task that started 10 minutes ago is left alone
+    assert next(r for r in c.tables["work_queue"] if r["id"] == fresh["id"])["state"] == "running"
+    assert "interrupted" in next(r for r in c.tables["work_queue"] if r["id"] == old["id"])["last_error"]
+
+
+def test_a_company_left_in_progress_with_no_task_behind_it_gets_its_final_score_queued(tmp_path):
+    from src.pipeline.queue_runner import QueueRunner, RunReport
+    c = FakeClient()
+    cid = add_company(c, "AVB", "0000915912", state="ai_in_progress", profile="STANDARD")
+    qr = QueueRunner(c, results_dir=tmp_path, now=lambda: at(2026, 10, 29, 12))
+    qr.scores.latest_run = lambda company_id: {"id": 1}
+    qr.plan_completion = lambda co, priority=2: []                                                   # nothing else is missing
+    rep = RunReport()
+    qr.recover(rep)
+    assert [(t["job_type"], t["skill"], t["state"]) for t in c.tables["work_queue"]] == [("score", "final", "queued")]
+    assert rep.recovered and rep.recovered[0][2] == "AVB"
+    qr.recover(RunReport())                                                                          # a second run does not queue it twice
+    assert len(c.tables["work_queue"]) == 1

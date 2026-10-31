@@ -9,6 +9,7 @@ unencumbered NOI, secured debt, acquisition / development yields, disclosed fair
 from __future__ import annotations
 
 import csv
+import re
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
@@ -19,6 +20,10 @@ from .sec_companyfacts import ROOT, SecClient, _match, annual_series, fy_label
 
 EXTRACTED_CSV = ROOT / "scripts" / "realestate_extracted.csv"
 CIK_OVERRIDE = {"EQR": ("0000906107", "EQUITY RESIDENTIAL"), "AVB": ("0000915912", "AVALONBAY COMMUNITIES")}  # absent from SEC company_tickers.json
+# K6d-2 fixes (2026-10-30): both tickers are stale. AVB filed Form 25-NSE (2026-08-17) and Form 15 (deregistered 2026-09-16) after the merger communications (425, S-4) of summer 2026; the entity of EQR
+# was renamed VIVMARK RESIDENTIAL (VMRK) on 2026-08-12. The mapping is kept for the history in the database; E2 is no longer waived for these tickers (see resolve).
+CIK_OVERRIDE_STALE = {"AVB": "merged: Form 25-NSE 2026-08-17, Form 15-15D 2026-09-16; successor VIVMARK RESIDENTIAL (VMRK, CIK 0000906107)",
+                      "EQR": "the entity was renamed VIVMARK RESIDENTIAL (VMRK) on 2026-08-12 after the merger with AVB; the ticker EQR no longer exists"}
 
 # field -> (kind, unit, [standard us-gaap tags in priority order])
 RE_FIELDS: dict = {
@@ -86,6 +91,18 @@ RE_FIELDS: dict = {
     "nci_redeemable": ("instant", "USD", ["RedeemableNoncontrollingInterestEquityCarryingAmount", "TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests",
                                           "RedeemableNoncontrollingInterestEquityRedemptionValue"]),
 }
+GAIN_TAG = re.compile(r"(Gain|Loss).*(Sale|Dispos)|(Sale|Dispos).*(Gain|Loss)")
+
+
+def has_sale_gain_tag(facts: dict) -> bool:
+    """K6d-2 fixes: does the company's XBRL (companyfacts, every namespace) carry any gain / loss on sale or disposal element with an annual value?"""
+    for ns in (facts.get("facts") or {}).values():
+        for name, body in ns.items():
+            if GAIN_TAG.search(name) and any(x.get("fp") == "FY" for u in (body.get("units") or {}).values() for x in u):
+                return True
+    return False
+
+
 PER_SHARE = ("eps", "dps")
 SHARE_COUNTS = ("shares_dil", "shares_basic", "shares_out")
 ZERO_IF_ABSENT_FLOW = ("pref_div", "impairment", "debt_extinguishment", "transaction_costs", "buybacks", "acq_real_estate", "acq_business", "development",
@@ -112,6 +129,9 @@ DEBT_PARTS: dict = {
     "BXP": (["SeniorNotes", "SecuredDebt", "ConvertibleDebt", "OtherBorrowings", "LineOfCredit"], []),
     "AMT": (["LongTermDebtAndCapitalLeaseObligations", "LongTermDebtCurrent"], []),
 }
+# K6d-2 fixes: a ticker without a hand-made entry above whose balance sheet has no single debt total (MAA: NotesPayable = secured + unsecured; DLR: senior notes + line of credit + secured + unsecured)
+GENERIC_DEBT_TOTAL = ["NotesPayable"]                                                         # a tagged total of the notes (secured + unsecured) when it is there
+GENERIC_DEBT_PARTS = ["SecuredDebt", "UnsecuredDebt", "SeniorNotes", "LineOfCredit", "ConvertibleDebt"]       # else the sum of at least two of these
 # NOI is always computed by us (RE13): property revenue (rental + other) - property operating expenses; the expense components differ by filer.
 # components: fields subtracted from property revenue. "revenue_less_cost" = total revenue - cost of revenue (data centers: no property-level data, proxy, flagged).
 # Company-reported NOI (SPG, FRT, EQR, WELL, ...) is only a reconciliation input (noi_reported).
@@ -180,6 +200,7 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
     for std, _ in DEBT_PARTS.values():
         all_tags.setdefault("_debt_parts", [])
         all_tags["_debt_parts"] = sorted(set(all_tags["_debt_parts"]) | set(std))
+    all_tags["_debt_parts"] = sorted(set(all_tags.get("_debt_parts", [])) | set(GENERIC_DEBT_TOTAL) | set(GENERIC_DEBT_PARTS))
     series = {name: {tag: annual_series(facts, tag, RE_FIELDS[name][1], RE_FIELDS[name][0]) for tag in tags} for name, tags in all_tags.items() if name in RE_FIELDS}
     parts_series = {tag: annual_series(facts, tag, "USD", "instant") for tag in all_tags.get("_debt_parts", [])}
     anchor: set = set()
@@ -276,6 +297,19 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
             if parts and (len(parts) >= 2 or ticker == "AMT"):
                 f["debt_total"][i] = sum(v for _, v in parts)
                 log["debt_total"][lab] = {"tag": "SUM: " + " + ".join(t for t, _ in parts), "value": f["debt_total"][i]}
+    if ticker not in DEBT_PARTS:
+        for i, (end, lab) in enumerate(zip(ends, labels)):
+            if f["debt_total"][i] is not None:
+                continue
+            tot = next((fa for fa in (_match(parts_series.get(t, {}), end) for t in GENERIC_DEBT_TOTAL) if fa is not None), None)
+            if tot is not None:
+                f["debt_total"][i] = tot.val
+                log["debt_total"][lab] = {"tag": f"{tot.tag} (no LongTermDebt total; the notes total is used)", "value": tot.val}
+                continue
+            parts = [(t, fa.val) for t in GENERIC_DEBT_PARTS for fa in [_match(parts_series.get(t, {}), end)] if fa is not None]
+            if len(parts) >= 2:
+                f["debt_total"][i] = sum(v for _, v in parts)
+                log["debt_total"][lab] = {"tag": "SUM: " + " + ".join(t for t, _ in parts), "value": f["debt_total"][i]}
     # plausibility of the total debt: a year whose tagged total implies an interest rate above 9% is a component, not the total -> missing (flagged)
     bad = []
     for i, lab in enumerate(labels):
@@ -286,8 +320,19 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
             f["debt_total"][i] = None
     if bad:
         problems.append("debt_total: implausible (interest / debt above 9%, probably a component tag), set missing in " + ", ".join(bad))
-    # zero-if-absent (flagged, as T10 in the general model); gains on sale are NOT assumed zero (they decide FFO)
+    # zero-if-absent (flagged, as T10 in the general model); gains on sale are NOT assumed zero (they decide FFO) - except when the company's XBRL has no gain / loss on sale or disposal
+    # element at all (VICI: a lessor that sells nothing; K6d-2 fixes, 2026-10-30): then the line does not exist and is 0, flagged; the company's own FFO reconciliation (AI extraction) overrides it
     assumed: dict = {}
+    if not has_sale_gain_tag(facts):
+        labs = []
+        for i, lab in enumerate(labels):
+            if f["gains_sale"][i] is None and f["net_income"][i] is not None:
+                f["gains_sale"][i] = 0.0
+                log["gains_sale"][lab] = {"tag": "assumed_zero (no gain / loss on sale element in the company's XBRL)", "value": 0.0}
+                labs.append(lab)
+        if labs:
+            assumed["gains_sale"] = labs
+            problems.append(f"gains_sale: no gain / loss on sale or disposal element in the company's XBRL, assumed_zero in {', '.join(labs)}")
     for name in ZERO_IF_ABSENT_FLOW:
         labs = []
         for i, lab in enumerate(labels):

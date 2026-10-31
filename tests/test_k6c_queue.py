@@ -30,7 +30,7 @@ def test_the_same_open_task_is_queued_once_and_a_user_request_lifts_its_priority
     assert (s1, s2) == ("queued", "exists") and a["id"] == b["id"] and b["priority"] == 1
     c, s3 = q.enqueue(1, "ai_assess", 2024, None, 3)                                    # another year is another task
     assert s3 == "queued" and c["id"] != a["id"]
-    q.done(q.claim(q.runnable()[0]))
+    q.done(q.claim(next(t for t in q.runnable() if t["fiscal_year"] == 2025)))
     assert q.enqueue(1, "ai_assess", 2025, None, 3)[1] == "queued"                      # a finished task can be queued again
 
 
@@ -130,11 +130,11 @@ def test_the_budget_stops_ai_tasks_and_the_next_run_continues_without_asking_twi
     for i in range(4):
         r1.queue.enqueue(cid, "ai_assess", 2025, f"S{i}", 3)
     rep1 = r1.run()
-    assert rep1.attempts == 5 and len(rep1.done) == 2 and len(rep1.deferred) == 1          # S0, S1 done (4 calls); S2 got one call, then the cap: deferred, not failed
+    assert rep1.attempts == 5 and len(rep1.done) == 2 and not rep1.deferred and len(rep1.released) == 1     # S0, S1 done (4 calls); S2 got one call, then the run budget: queued again, not postponed
     states = {t["skill"]: t["state"] for t in r1.queue.list(cid)}
-    assert states == {"S0": "done", "S1": "done", "S2": "deferred_quota", "S3": "queued"}
+    assert states == {"S0": "done", "S1": "done", "S2": "queued", "S3": "queued"}
+    assert all(t["next_run_at"] <= clock().isoformat() for t in r1.queue.list(cid) if t["state"] == "queued")      # due now (K6d-2 fixes: the run's budget is no reason to wait for tomorrow)
     assert inner.sent == 5
-    clock.t = next_reset(clock()) + timedelta(minutes=1)                                  # the quota is back
     r2 = make(10)
     r2.run()
     states = {t["skill"]: t["state"] for t in r2.queue.list(cid) if t["job_type"] == "ai_assess"}

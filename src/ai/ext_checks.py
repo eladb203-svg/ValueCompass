@@ -82,6 +82,9 @@ class ItemResult:
     value_full: Optional[float] = None
 
 
+FORWARD_PERIOD = {"debt_maturity_year1": 1, "debt_maturity_year2": 2}          # items whose period is the maturity year after the report
+
+
 def check_item(it: dict, keys: dict, text_norm: str, fy: int, window: int = 2, rule: Optional[str] = None) -> ItemResult:
     """``keys`` = {item_key: expected unit}. One item of the model's answer."""
     res = ItemResult(False, it)
@@ -98,7 +101,15 @@ def check_item(it: dict, keys: dict, text_norm: str, fy: int, window: int = 2, r
     res.year, assumed = period_year(str(it.get("period") or ""), fy)
     if assumed:
         res.flags.append("period_assumed_fiscal_year")
-    if not (fy - window <= res.year <= fy):
+    if key in FORWARD_PERIOD:
+        # K6d-2 fixes: a maturity of the next year(s) is stated for a year AFTER the report (2026, 2027 in the 2025 report). The figure belongs to the report year: year 1 = fy + 1, year 2 = fy + 2.
+        if res.year in (fy, fy + FORWARD_PERIOD[key]):
+            if res.year != fy:
+                res.flags.append(f"forward_period_{res.year}_stored_for_report_year")
+            res.year = fy
+        else:
+            res.reasons.append("period_mismatch")
+    elif not (fy - window <= res.year <= fy):
         res.reasons.append("period_mismatch")
     v = it.get("value")
     if state != "value":

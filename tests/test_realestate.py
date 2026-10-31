@@ -294,3 +294,12 @@ def test_amt_style_reconciliation_starts_from_consolidated_net_income():
 def test_re23_buffett_34_weights():
     items = _items(score_realestate(reit())["buffett_quality"])
     assert [items[("3.4", k)].max_pts for k in ("1", "2", "3")] == [4, 6, 5]
+
+
+def test_a_company_without_any_sale_gain_element_has_no_gain_line_and_a_company_with_one_keeps_the_rule():
+    from src.providers.realestate_facts import has_sale_gain_tag
+    fy = {"units": {"USD": [{"fp": "FY", "val": 1}]}}
+    assert not has_sale_gain_tag({"facts": {"us-gaap": {"Depreciation": fy, "ImpairmentOfRealEstate": fy}}})
+    assert has_sale_gain_tag({"facts": {"us-gaap": {"GainLossOnSaleOfProperties": fy}}})
+    assert has_sale_gain_tag({"facts": {"us-gaap": {"GainLossOnDispositionOfAssets1": fy}}})
+    assert not has_sale_gain_tag({"facts": {"us-gaap": {"GainLossOnSaleOfProperties": {"units": {"USD": [{"fp": "Q2", "val": 1}]}}}}})

@@ -105,6 +105,30 @@ def test_resolve_a_normal_filer_lists_annual_reports_and_listings():
     assert [f.fiscal_year for f in r.annual][:2] == [2025, 2024] and r.e2_ok and r.listings == [{"symbol": "ACM", "exchange": "NYSE", "mic": "XNYS", "is_primary": True}]
 
 
+def test_resolve_finds_a_ticker_the_sec_list_leaves_out_through_the_manual_cik_map(monkeypatch):
+    # a ticker the SEC company_tickers.json leaves out and whose submissions file has no tickers (AvalonBay looked like this on 2026-10-29): the hand-made map names its CIK
+    monkeypatch.setattr(R, "CIK_OVERRIDE", {"XYZ": ("0000000009", "XYZ CORP")})
+    xyz = sub(K10, sic="6798", tickers=(), exchanges=(), name="XYZ CORP")
+    r = R.resolve(fake_sec(xyz, tickers={"ACM": "0000000001"}), "xyz")
+    assert r.cik == "0000000009" and r.name == "XYZ CORP" and r.supported and r.e2_ok and not r.warnings       # the map says the ticker belongs to this CIK: no E2 warning
+    with pytest.raises(R.ResolveError):
+        R.resolve(fake_sec(xyz, tickers={"ACM": "0000000001"}), "NOPE")                                      # any other missing ticker still stops
+
+
+def test_a_delisted_and_deregistered_company_is_unsupported_with_the_evidence_and_its_map_entry_is_stale():
+    # AVB 2026: Form 25-NSE (2026-08-17), Form 15-15D (2026-09-16), merger filings (425) in July; no current ticker
+    forms = K10 + [("425", "m-1", "2026-07-22", None), ("25-NSE", "m-2", "2026-08-17", None), ("15-12G", "m-3", "2026-08-27", None), ("15-15D", "m-4", "2026-09-16", None)]
+    avb = sub(forms, sic="6798", tickers=(), exchanges=(), name="AVALONBAY COMMUNITIES INC")
+    r = R.resolve(fake_sec(avb, tickers={"ACM": "0000000001"}), "AVB")
+    assert not r.supported and "Form 25-NSE filed 2026-08-17" in r.unsupported_reason and "Form 15-12G" in r.unsupported_reason and "merger filings" in r.unsupported_reason
+    assert not r.e2_ok and any("stale" in w for w in r.warnings)                                             # E2 is not waived for a stale map entry
+
+
+def test_a_form_25_for_another_security_does_not_delist_a_company_that_still_trades():
+    r = R.resolve(fake_sec(sub(K10 + [("25-NSE", "p-1", "2026-05-01", None)], tickers=("ACM",))), "ACM")       # e.g. a preferred class; the common ticker is still current
+    assert r.supported and r.e2_ok
+
+
 @pytest.mark.parametrize("forms,sic,why", [
     ([("20-F", "a-1", "2026-03-01", "2025-12-31")], "3674", "20-F"),
     ([("40-F", "a-2", "2026-03-01", "2025-12-31")], "1000", "40-F"),

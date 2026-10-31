@@ -52,6 +52,7 @@ FIELD_MAP: dict = {
                                    "ProfitLoss"]),
     "interest_expense": ("flow", "USD", ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt",
                                          "InterestExpenseLongTermDebt", "InterestAndDebtExpense"]),
+    "_net_interest": ("flow", "USD", ["InterestIncomeExpenseNonoperatingNet", "InterestIncomeExpenseNet"]),        # net interest INCOME (positive = income); K6d-2 fixes: NKE has no gross interest tag
     "eps": ("flow", "USD/shares", ["EarningsPerShareDiluted", "EarningsPerShareBasicAndDiluted"]),
     "shares": ("flow", "shares", ["WeightedAverageNumberOfDilutedSharesOutstanding",
                                   "WeightedAverageNumberOfSharesOutstandingBasicAndDiluted"]),
@@ -495,6 +496,13 @@ def build_inputs(sec: SecClient, ticker: str, profile: str, splits: list, n_year
         if f["pretax"][i] is None and f["_pretax_dom"][i] is not None and f["_pretax_for"][i] is not None:
             f["pretax"][i] = f["_pretax_dom"][i] + f["_pretax_for"][i]
             tag_log["pretax"][lab] = {"tag": "DERIVED: pretax domestic + foreign", "value": f["pretax"][i]}
+    # K6d-2 fixes: no gross interest-expense tag in a year but a net interest line exists (e.g. NKE: interest expense (income), net): interest expense = - net interest income, flagged derived.
+    # A net interest income gives a non-positive "interest expense": the coverage state is then zero_interest (the net line cannot say what the gross interest on the debt is).
+    for i, lab in enumerate(labels):
+        if f["interest_expense"][i] is None and f["_net_interest"][i] is not None:
+            f["interest_expense"][i] = -f["_net_interest"][i]
+            tag_log["interest_expense"][lab] = {"tag": "DERIVED: -net interest income (" + str((tag_log["_net_interest"].get(lab) or {}).get("tag")) + ")", "value": f["interest_expense"][i]}
+            problems.append(f"{lab}: interest expense derived as - net interest income/expense line (no gross interest-expense tag)")
     # derived EBIT fallback: pretax + interest expense
     for i, lab in enumerate(labels):
         if f["ebit"][i] is None and f["pretax"][i] is not None and f["interest_expense"][i] is not None:

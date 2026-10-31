@@ -44,6 +44,7 @@ from src.db import db_target  # noqa: E402
 from src.pipeline import audit as A  # noqa: E402
 from src.pipeline.factory import make_pipeline, make_runner  # noqa: E402
 from src.pipeline.runner import JOBS  # noqa: E402
+from src.sched.awake import keep_awake  # noqa: E402
 
 
 def print_result(r) -> None:
@@ -70,13 +71,23 @@ def print_result(r) -> None:
 
 
 def print_report(rep) -> None:
-    print(f"queue: {len(rep.done)} done, {len(rep.failed)} failed, {len(rep.deferred)} deferred, model request attempts {rep.attempts}")
+    print(f"queue: {len(rep.done)} done, {len(rep.failed)} failed, {len(rep.deferred)} deferred, model request attempts {rep.attempts}  per company: {getattr(rep, 'calls_by_company', {})}")
     for t in rep.done:
         print("  done    ", t)
     for t in rep.failed:
         print("  FAILED  ", t)
     for t in rep.deferred:
         print("  deferred", t)
+    for t in getattr(rep, "released", []):
+        print("  queued again (no budget left in this run)", t)
+    for t in getattr(rep, "retried", []):
+        print("  RETRY (network)", t)
+    for t in getattr(rep, "alerts", []):
+        print("  ADMIN_ALERT", t)
+    if getattr(rep, "waited_seconds", 0):
+        print(f"  waited for network retries: {rep.waited_seconds:.0f} s")
+    for t in getattr(rep, "recovered", []):
+        print("  RECOVERED", t)
 
 
 def queue_status(runner, ticker=None) -> None:
@@ -305,7 +316,10 @@ def scheduler_command(a) -> int:
         print(json.dumps({"job": a.once, "status": out.status, "inserted": out.inserted, "updated": out.updated, "deleted": out.deleted, "error": out.error, "warnings": out.warnings[:10],
                           "skipped": out.skipped, "detail": out.detail}, indent=1, ensure_ascii=False, default=str))
         return 1 if out.status == "failed" else 0
-    return service.serve(cfg, get_supabase_client, log=lambda m: print(m, flush=True))
+    from src.sched.awake import keep_awake
+    with keep_awake() as awake:                                  # the computer does not sleep while the scheduler runs; released when it stops (--stop)
+        print(f"[scheduler] keep-awake {'on' if awake else 'not available'}", flush=True)
+        return service.serve(cfg, get_supabase_client, log=lambda m: print(m, flush=True))
 
 
 def approvals_command(a) -> int:
@@ -385,17 +399,20 @@ def main(argv=None) -> int:
         from src.repositories.work_queue_repository import JOB_PRIORITY, PRIORITY
         prio = PRIORITY["user"] if before is None or not before.get("processing_state") else JOB_PRIORITY.get(a.job, PRIORITY["completion"])        # a new company = a user's request (1)
         print("after load:", runner.after_load(res, row["id"], prio))
-        print_report(runner.run(a.max_tasks))
+        with keep_awake():
+            print_report(runner.run(a.max_tasks, only={a.arg.upper()}))        # only this company's tasks: the rest of the queue belongs to the scheduler
         return 0
     if a.command == "score":
         runner = make_runner(a.budget)
         row = runner.companies.get_by_symbol(a.arg.upper(), "US")
         runner.enqueue(row["id"], "score", None, "first", 1)
-        print_report(runner.run(a.max_tasks))
+        with keep_awake():
+            print_report(runner.run(a.max_tasks, only={a.arg.upper()}))
         return 0
     if a.command == "ai-queue":
         runner = make_runner(a.budget)
-        print_report(runner.run(a.max_tasks, only=set(a.tickers) if a.tickers else None))
+        with keep_awake():
+            print_report(runner.run(a.max_tasks, only=set(a.tickers) if a.tickers else None))
         return 0
     if a.command == "queue":
         queue_status(make_runner(), a.arg2 if a.arg == "status" else None)

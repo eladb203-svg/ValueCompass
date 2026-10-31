@@ -9,10 +9,13 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
+from src.providers.realestate_facts import CIK_OVERRIDE, CIK_OVERRIDE_STALE
 from src.providers.sec_companyfacts import fy_label
 
 ANNUAL_FORMS = ("10-K", "10-K/A", "10-KT", "10-KT/A", "10-K405", "10-K405/A")
 FOREIGN_ANNUAL_FORMS = ("20-F", "20-F/A", "40-F", "40-F/A")
+DELIST_FORMS = ("25", "25-NSE", "25-NSE/A", "25/A")                 # exchange notice that the security is removed from listing
+DEREG_FORMS = ("15-12B", "15-12G", "15-15D", "15F-12B", "15F-12G")  # the issuer stops reporting
 SPAC_SIC = {"6770"}                 # blank check
 ABS_SIC = {"6189"}                  # asset-backed securities
 MIC = {"NYSE": "XNYS", "NASDAQ": "XNAS", "CBOE": "BATS", "NYSE ARCA": "ARCX", "NYSE AMERICAN": "XASE", "OTC": "OTCM"}
@@ -93,10 +96,26 @@ def unsupported_reason(sub: dict, filings: list) -> Optional[str]:
     return None
 
 
+def delisting_reason(filings: list, annual: list, tickers: list, ticker: str) -> Optional[str]:
+    """K6d-2 fixes: the company no longer trades. Form 25 (removal from listing) filed after the latest annual report and the ticker is no longer one of the entity's current tickers; the Form 15
+    (deregistration) and the merger communications (425 / S-4) are quoted as the evidence. -> the reason text, or None."""
+    if ticker in tickers:
+        return None
+    last = annual[0].filed if annual else None
+    after = lambda f: last is None or f.filed >= last  # noqa: E731
+    f25 = sorted((f for f in filings if f.form in DELIST_FORMS and after(f)), key=lambda f: f.filed)
+    if not f25:
+        return None
+    f15 = sorted((f for f in filings if f.form in DEREG_FORMS and f.filed >= f25[0].filed), key=lambda f: f.filed)
+    merger = sorted(f.filed for f in filings if f.form in ("425", "S-4", "S-4/A", "8-K12B", "DEFM14A") and f.filed >= (last or f25[0].filed))
+    parts = [f"Form {f25[0].form} filed {f25[0].filed}"] + [f"Form {f15[0].form} filed {f15[0].filed}"] * bool(f15) + [f"merger filings (425 / S-4) from {merger[0]}"] * bool(merger)
+    return (f"delisted: {'; '.join(parts)}; the entity has no current ticker. The company merged or went private: no price and no score until a successor files its own annual report (E2)")
+
+
 def resolve(sec, ticker: str) -> Resolved:
     ticker = ticker.strip().upper()
     try:
-        cik, title = sec.cik_for(ticker)
+        cik, title = CIK_OVERRIDE.get(ticker) or sec.cik_for(ticker)       # K6d-2: the tickers the SEC list leaves out (EQR, AVB) are mapped by hand, as the providers already do
     except KeyError as e:
         raise ResolveError("not_found", f"ticker {ticker} is not in the SEC company list") from e
     sub = sec.get_json(f"https://data.sec.gov/submissions/CIK{cik}.json", f"sub_{cik}.json")
@@ -112,8 +131,10 @@ def resolve(sec, ticker: str) -> Resolved:
         listings.append({"symbol": t, "exchange": ex or "US", "mic": MIC.get((ex or "").upper()), "is_primary": t == ticker})
     r = Resolved(ticker=ticker, cik=cik, name=sub.get("name") or title, former_names=[x.get("name") for x in sub.get("formerNames", [])], sic=str(sub.get("sic") or ""),
                  sic_description=sub.get("sicDescription") or "", fiscal_year_end=sub.get("fiscalYearEnd") or "", listings=listings, filings=filings, annual=annual)
-    r.unsupported_reason = unsupported_reason(sub, filings)
-    if ticker not in tickers:                                            # E2: the ticker does not belong to the filing entity (e.g. after a merger)
+    r.unsupported_reason = unsupported_reason(sub, filings) or delisting_reason(filings, annual, tickers, ticker)
+    if ticker in CIK_OVERRIDE_STALE:
+        r.warnings.append(f"CIK_OVERRIDE for {ticker} is stale: {CIK_OVERRIDE_STALE[ticker]}")
+    if ticker not in tickers and (ticker not in CIK_OVERRIDE or ticker in CIK_OVERRIDE_STALE):             # E2: the ticker does not belong to the filing entity (e.g. after a merger)
         r.e2_ok = False
         r.warnings.append(f"E2: ticker {ticker} is not listed under CIK {cik} ({', '.join(tickers) or 'no current tickers'}); a price score is not possible until the successor files its own annual report")
         r.listings.append({"symbol": ticker, "exchange": "US", "mic": None, "is_primary": True})

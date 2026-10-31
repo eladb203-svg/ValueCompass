@@ -18,7 +18,11 @@ JOB_PRIORITY = {"initial_import": PRIORITY["completion"], "backfill": PRIORITY["
 OPEN = ("queued", "running", "deferred_quota")
 RUNNABLE = ("queued", "deferred_quota")
 MAX_ATTEMPTS = 3
+MAX_TRANSIENT_ATTEMPTS = 5                  # K6d-2 fixes: a temporary network error (ConnectError, ReadError, timeout, DNS) goes back to the queue with a wait, up to 5 attempts
+NETWORK_MARK = "[network] "                 # last_error of a task that waits for a network retry
+TRANSIENT_DELAY = timedelta(minutes=1)      # waits 1, 2, 4, 8 minutes after attempt 1, 2, 3, 4
 RETRY_DELAY = timedelta(minutes=10)
+STALE_RUNNING = timedelta(minutes=30)       # a task that has been `running` this long was cut off (a dropped connection, a killed process): the run is single-process, so nobody else owns it
 # the order of the jobs inside one company (K6 spec 2.8): the first score, then C1, B, A, the score with the AI answers, D2, and last the background text (D1 + T1). The background does not
 # gate the score: the company is `complete` when its final score is written and no scoring item waits for the AI; a failed or waiting background is shown by itself (v_company_status).
 JOB_ORDER = {"initial_import": 0, "backfill": 0, "new_report": 0, "amendment": 0, "repair": 0, "score": 1, "ai_classify": 2, "ai_extract": 3, "ai_assess": 4, "analysis": 7, "ai_background": 8}
@@ -54,11 +58,30 @@ class WorkQueueRepository:
                "last_error": None, "next_run_at": self._now().isoformat()}
         return self.client.table("work_queue").insert(row).execute().data[0], "queued"
 
-    def runnable(self) -> list:
-        """The tasks that may run now, in the order they should run."""
+    def runnable(self, sticky: Optional[dict] = None) -> list:
+        """The tasks that may run now, in the order they should run: company after company until it is finished (K6d-2 fixes, decided 2026-10-29). The company's turn is set by the best
+        priority among its open tasks and then by its arrival (its oldest open task); inside the company the tasks follow the job order. Tasks of different companies are not mixed.
+        ``sticky``: a dict the caller keeps for the length of a run, so that the turn of a company does not change while its own tasks finish."""
         now = self._now().isoformat()
-        rows = [r for r in self.client.table("work_queue").select("*").execute().data if r["state"] in RUNNABLE and r["next_run_at"] <= now]
-        return sorted(rows, key=lambda r: (r["priority"], r["company_id"] or 0, task_rank(r), r["fiscal_year"] or 0, r["skill"] or "", r["id"]))
+        allrows = self.client.table("work_queue").select("*").execute().data
+        group: dict = {}
+        for r in allrows:
+            if r["state"] in OPEN:
+                g = group.setdefault(r["company_id"], [99, r["id"]])
+                g[0], g[1] = min(g[0], r["priority"]), min(g[1], r["id"])
+        if sticky is not None:
+            for cid, g in group.items():
+                g[0], g[1] = sticky.setdefault(cid, (g[0], g[1]))
+        rows = [r for r in allrows if r["state"] in RUNNABLE and r["next_run_at"] <= now]
+        return sorted(rows, key=lambda r: (group[r["company_id"]][0], group[r["company_id"]][1] if r["company_id"] is not None else r["id"], r["company_id"] or 0, task_rank(r),
+                                           r["fiscal_year"] or 0, r["skill"] or "", r["id"]))
+
+    def next_wait(self, labels_of: Optional[set] = None) -> Optional[datetime]:
+        """The earliest time a queued task that is only waiting for its retry time becomes runnable (None when there is none). ``labels_of``: company ids to look at."""
+        now = self._now().isoformat()
+        times = [r["next_run_at"] for r in self.client.table("work_queue").select("*").execute().data
+                 if r["state"] == "queued" and r["next_run_at"] > now and str(r.get("last_error") or "").startswith(NETWORK_MARK) and (labels_of is None or r["company_id"] in labels_of)]
+        return datetime.fromisoformat(min(times)) if times else None
 
     def open_before(self, task: dict) -> list:
         """Open tasks of the same company that come earlier in the order (a task waits for them)."""
@@ -69,18 +92,53 @@ class WorkQueueRepository:
     def claim(self, task: dict) -> dict:
         return self.client.table("work_queue").update({"state": "running", "attempts": task["attempts"] + 1, "updated_at": self._now().isoformat()}).eq("id", task["id"]).execute().data[0]
 
+    def recover_stale(self, max_age: timedelta = STALE_RUNNING) -> list:
+        """K6d-2: a task left `running` by a process that died goes back to `queued` (or `failed` when it has used all its attempts). -> the recovered task rows."""
+        cutoff = self._now() - max_age
+        out = []
+        for r in self.client.table("work_queue").select("*").eq("state", "running").execute().data:
+            if datetime.fromisoformat(r["updated_at"]) >= cutoff:
+                continue
+            final = r["attempts"] >= MAX_ATTEMPTS
+            out.append(self.client.table("work_queue").update({"state": "failed" if final else "queued", "next_run_at": self._now().isoformat(), "updated_at": self._now().isoformat(),
+                                                               "last_error": f"interrupted: running since {r['updated_at'][:16]} without finishing; " + ("out of attempts" if final else "queued again")}
+                                                              ).eq("id", r["id"]).execute().data[0])
+        return out
+
     def done(self, task: dict, payload: Optional[dict] = None) -> dict:
         fields = {"state": "done", "last_error": None, "updated_at": self._now().isoformat()}
         if payload is not None:
             fields["payload"] = {**(task.get("payload") or {}), "result": payload}
         return self.client.table("work_queue").update(fields).eq("id", task["id"]).execute().data[0]
 
-    def fail(self, task: dict, error: str) -> dict:
-        """A failed attempt: queued again after a delay, failed for good after MAX_ATTEMPTS."""
-        final = task["attempts"] >= MAX_ATTEMPTS
-        fields = {"state": "failed" if final else "queued", "last_error": str(error)[:500], "updated_at": self._now().isoformat(),
-                  "next_run_at": (self._now() + RETRY_DELAY * task["attempts"]).isoformat()}
+    def fail(self, task: dict, error: str, transient: bool = False) -> dict:
+        """A failed attempt: queued again after a delay, failed for good after MAX_ATTEMPTS (3). A temporary network error (``transient``) waits 1, 2, 4, 8 minutes and has 5 attempts."""
+        final = task["attempts"] >= (MAX_TRANSIENT_ATTEMPTS if transient else MAX_ATTEMPTS)
+        delay = TRANSIENT_DELAY * (2 ** max(0, task["attempts"] - 1)) if transient else RETRY_DELAY * task["attempts"]
+        fields = {"state": "failed" if final else "queued", "last_error": ((NETWORK_MARK if transient else "") + str(error))[:500], "updated_at": self._now().isoformat(), "next_run_at": (self._now() + delay).isoformat()}
         return self.client.table("work_queue").update(fields).eq("id", task["id"]).execute().data[0]
+
+    def fail_for_good(self, task: dict, reason: str) -> dict:
+        return self.client.table("work_queue").update({"state": "failed", "last_error": str(reason)[:500], "updated_at": self._now().isoformat()}).eq("id", task["id"]).execute().data[0]
+
+    def release(self, task: dict, reason: str) -> dict:
+        """The run ran out of its own request budget (not the daily cap): the task goes back to ``queued``, due now, the attempt does not count. Nothing is postponed to another day."""
+        return self.client.table("work_queue").update({"state": "queued", "attempts": max(0, task["attempts"] - 1), "next_run_at": self._now().isoformat(), "last_error": reason[:200],
+                                                       "updated_at": self._now().isoformat()}).eq("id", task["id"]).execute().data[0]
+
+    def add_calls(self, task: dict, calls: int) -> dict:
+        """The model request attempts this task has used (summed over its attempts), kept in its payload: the per-company limit counts them."""
+        if calls <= 0:
+            return task
+        payload = {**(task.get("payload") or {}), "calls": int((task.get("payload") or {}).get("calls", 0)) + int(calls)}
+        task["payload"] = payload
+        self.client.table("work_queue").update({"payload": payload}).eq("id", task["id"]).execute()
+        return task
+
+    def company_calls(self, company_id: int, fiscal_year: Optional[int]) -> int:
+        """Model request attempts already used for one company's annual report (tasks of that fiscal year, or of no fiscal year)."""
+        return sum(int((r.get("payload") or {}).get("calls", 0)) for r in self.client.table("work_queue").select("*").eq("company_id", company_id).execute().data
+                   if r["fiscal_year"] in (None, fiscal_year))
 
     def defer(self, task: dict, until: datetime, reason: str = "daily budget spent") -> dict:
         """Out of budget: the attempt does not count; the task waits for the next reset."""

@@ -2,8 +2,9 @@
 
 Order: priority (1 a user asked, 2 data completion, 3 a new annual report, 4 wide loading; K6 spec 2.8), then inside one company: the data job, the first score (without AI), C1, B extraction, A questions, BP background (BP-1 -> profile -> phrase translation -> rendering), the score
 with the AI answers (``final``), D2. A task waits for the earlier open tasks of its company. A model call is made only through ``self.gemini`` (a ``CappedGemini``): every request attempt
-counts against the run's budget and the shared daily counter (cap 450); when the budget is spent the task that needed a call becomes ``deferred_quota`` until the next reset
-(midnight Pacific = 10:00 Israel) and no further AI task starts. Data tasks (import, score, D2) need no budget and keep running. A stored answer is never asked again (R18).
+counts against the run's budget, the company's limit (40 per annual report: a guard against loops) and the shared daily counter (cap 450). Only the daily cap postpones a task
+(``deferred_quota`` until midnight Pacific = 10:00 Israel); a spent run budget leaves the task queued; the company limit fails the company and alerts the administrator.
+Companies run one after the other until each is finished. Data tasks (import, score, D2) need no budget and keep running. A stored answer is never asked again (R18).
 """
 from __future__ import annotations
 
@@ -30,8 +31,28 @@ BLOCKS_OF = {"BANK": ["EXT-BANK-CAP", "EXT-BANK-LOANS"], "INSURANCE": ["EXT-INS-
              "INCOME_REAL_ESTATE": ["EXT-RE-OPS", "EXT-RE-MAINT", "EXT-RE-VALUE", "EXT-RE-LIQ", "EXT-RE-UNENC", "EXT-RE-NAV", "EXT-RE-OPU", "EXT-RE-FFO", "EXT-PROFILE"]}
 
 
+COMPANY_CALL_CAP = 40                                  # model request attempts for one company's annual report: a guard against a loop, not a quota (K6d-2 fixes, 2026-10-29)
+COMPANY_CAP_MSG = "company call limit"
+MAX_RETRY_WAIT = 15 * 60                                # a run waits for a network retry that is due within this many seconds; a later one is left to the next run
+TRANSIENT_TYPES = ("ConnectError", "ReadError", "ConnectTimeout", "ReadTimeout", "WriteError", "PoolTimeout", "TimeoutException", "Timeout", "TimeoutError", "gaierror", "ConnectionError",
+                   "ConnectionResetError", "ConnectionAbortedError", "RemoteProtocolError", "NetworkError", "ServerDisconnectedError")
+TRANSIENT_TEXT = ("WinError 10054", "WinError 10060", "WinError 10053", "getaddrinfo failed", "name resolution", "timed out", "Connection reset", "Connection aborted", "ConnectError", "ReadError")
+ALERT_LOG = ROOT / "scripts" / "state" / "admin_alerts.log"
+
+
 class QuotaSpent(Exception):
     """The run's budget or the shared daily cap is spent."""
+
+
+def is_transient(e: BaseException) -> bool:
+    """A temporary network error (ConnectError, ReadError, timeout, DNS), also when it is wrapped in another exception: the task is tried again later."""
+    seen = set()
+    while e is not None and id(e) not in seen:
+        seen.add(id(e))
+        if type(e).__name__ in TRANSIENT_TYPES or any(m in str(e) for m in TRANSIENT_TEXT):
+            return True
+        e = e.__cause__ or e.__context__
+    return False
 
 
 def next_reset(now: Optional[datetime] = None) -> datetime:
@@ -48,19 +69,24 @@ class CappedGemini:
         self.inner, self.cap = inner, cap
         self.model = getattr(inner, "model", "")
         self.attempts = 0
+        self.task_start, self.task_cap = 0, None          # the attempts the running task may still make for its company (set by the runner before each task)
+
+    def check(self) -> None:
+        if self.attempts >= self.cap:
+            raise BudgetExceeded(f"run budget of {self.cap} request attempts reached")
+        if self.task_cap is not None and self.attempts - self.task_start >= self.task_cap:
+            raise BudgetExceeded(f"{COMPANY_CAP_MSG} reached ({COMPANY_CALL_CAP} request attempts for this annual report)")
 
     @property
     def calls(self) -> int:
         return self.attempts
 
     def generate(self, prompt: str, seed_offset: int = 0, **kw):
-        if self.attempts >= self.cap:
-            raise BudgetExceeded(f"run budget of {self.cap} request attempts reached")
+        self.check()
         inner_guard = getattr(self.inner, "_shared_guard", None)
         if inner_guard is not None:                         # count every attempt (also the retries inside one call)
             def guard():
-                if self.attempts >= self.cap:
-                    raise BudgetExceeded(f"run budget of {self.cap} request attempts reached")
+                self.check()
                 inner_guard()
                 self.attempts += 1
             self.inner._shared_guard = guard
@@ -83,12 +109,19 @@ class RunReport:
     skipped_blocked: int = 0
     attempts: int = 0
     notes: list = field(default_factory=list)
+    released: list = field(default_factory=list)           # tasks queued again because this run's own request budget was spent (never postponed to another day)
+    retried: list = field(default_factory=list)            # tasks that hit a temporary network error and wait for another attempt
+    alerts: list = field(default_factory=list)             # companies stopped by the per-company call limit (admin_alert)
+    calls_by_company: dict = field(default_factory=dict)
+    waited_seconds: float = 0.0                             # time spent waiting for network retries
+    recovered: list = field(default_factory=list)          # K6d-2: (task id, job, company) of tasks a dead process left running, and companies whose state had no task behind it
 
 
 class QueueRunner:
     def __init__(self, client, gemini=None, budget: int = 0, pipeline_factory: Optional[Callable] = None, results_dir: Path = S.RESULTS_DIR, now: Optional[Callable] = None,
-                 executors: Optional[dict] = None):
-        self.client, self.budget = client, budget
+                 executors: Optional[dict] = None, sleep: Optional[Callable] = None):
+        self.client, self.budget, self.sleep = client, budget, sleep
+        self._turns: dict = {}
         self.gemini = CappedGemini(gemini, budget) if (gemini is not None and budget > 0) else None
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.queue = WorkQueueRepository(client, now=self.now)
@@ -110,7 +143,17 @@ class QueueRunner:
         return self.gemini is not None and self.gemini.attempts < self.gemini.cap
 
     def load_result(self, ticker: str) -> Optional[dict]:
-        for eng in S.ENGINE_KEYS:
+        """The stored result of the company. K6d-2 fixes: the engine of the company's profile first - a company routed to another engine after its first pass (VTR: general, then real estate) keeps
+        the result file of the old engine, which has no ``inputs`` and used to win."""
+        order = list(S.ENGINE_KEYS)
+        try:
+            co = self.companies.get_by_symbol(ticker, "US")
+            if co and co.get("profile"):
+                want = S.runner_engine(co["profile"], ticker)
+                order = [want] + [e for e in order if e != want]
+        except Exception:   # noqa: BLE001 - without a profile the old order stays
+            pass
+        for eng in order:
             p = self.results_dir / eng / f"{ticker}.json"
             if p.exists():
                 return json.loads(p.read_text(encoding="utf-8"))
@@ -125,34 +168,132 @@ class QueueRunner:
         rep = RunReport()
         S.seed_results(self.results_dir)
         self.only = {t.upper() for t in only} if only else None
+        self._turns = {}
+        self.recover(rep)
         for _ in range(max_tasks):
             task = self._next(rep)
             if task is None:
+                if self._wait_retry(rep):
+                    continue
                 break
+            is_ai = task["job_type"] in AI_JOBS and task.get("skill") != "render"
+            remaining = COMPANY_CALL_CAP - self.queue.company_calls(task["company_id"], task["fiscal_year"]) if (is_ai and task["company_id"]) else None
+            if remaining is not None and remaining <= 0:
+                self._trip(task, rep, COMPANY_CALL_CAP - remaining)
+                continue
             task = self.queue.claim(task)
             if task["job_type"] in SCORING_AI and task["company_id"]:
                 self.companies.set_processing_state(task["company_id"], "ai_in_progress")
+            before = self.gemini.attempts if self.gemini else 0
+            if self.gemini:
+                self.gemini.task_start, self.gemini.task_cap = before, remaining
+
+            def book(task=task, before=before):
+                calls = (self.gemini.attempts - before) if self.gemini else 0
+                if calls:
+                    rep.calls_by_company[self._label(task)] = rep.calls_by_company.get(self._label(task), 0) + calls
+                    self.queue.add_calls(task, calls)
+
             try:
                 payload = self.executors[task["job_type"]](task) or {}
+                book()
                 self.queue.done(task, payload)
                 rep.done.append((task["id"], task["job_type"], task.get("skill"), self._label(task)))
                 if task["job_type"] in SCORING_AI and task["company_id"]:
                     self.after_ai(task)
             except (BudgetExceeded, QuotaSpent) as e:
-                self.queue.defer(task, next_reset(self.now()), str(e)[:200])
-                rep.deferred.append((task["id"], task["job_type"], self._label(task), str(e)[:120]))
+                book()
+                if COMPANY_CAP_MSG in str(e):
+                    self._trip(task, rep, self.queue.company_calls(task["company_id"], task["fiscal_year"]))
+                else:                                               # the run's own budget: the task stays in the queue, due now; only the daily cap postpones work (below)
+                    self.queue.release(task, str(e)[:200])
+                    rep.released.append((task["id"], task["job_type"], self._label(task), str(e)[:120]))
             except RuntimeError as e:
+                book()
                 if "shared daily request cap" in str(e):
-                    self.queue.defer(task, next_reset(self.now()), str(e)[:200])
+                    self.queue.defer(task, next_reset(self.now()), "daily request cap (450) spent; " + str(e)[:150])
                     rep.deferred.append((task["id"], task["job_type"], self._label(task), "shared daily cap"))
                 else:
-                    self.queue.fail(task, f"{type(e).__name__}: {e}")
-                    rep.failed.append((task["id"], task["job_type"], self._label(task), str(e)[:160]))
+                    self._failed(task, e, rep)
             except Exception as e:   # noqa: BLE001 - a failed task is recorded, never dropped
-                self.queue.fail(task, f"{type(e).__name__}: {e}\n{traceback.format_exc()[-300:]}")
-                rep.failed.append((task["id"], task["job_type"], self._label(task), f"{type(e).__name__}: {e}"[:160]))
+                book()
+                self._failed(task, e, rep)
         rep.attempts = self.gemini.attempts if self.gemini else 0
         return rep
+
+    def _failed(self, task: dict, e: BaseException, rep: RunReport) -> None:
+        """A failed attempt. A temporary network error waits and tries again (up to 5 attempts); anything else has 3 attempts."""
+        transient = is_transient(e)
+        row = self.queue.fail(task, f"{type(e).__name__}: {e}" + ("" if transient else f"\n{traceback.format_exc()[-300:]}"), transient=transient)
+        if transient and row["state"] == "queued":
+            rep.retried.append((task["id"], task["job_type"], self._label(task), f"attempt {task['attempts']} of 5, next try {row['next_run_at'][11:16]} UTC: {type(e).__name__}"))
+        else:
+            rep.failed.append((task["id"], task["job_type"], self._label(task), (str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}")[:160]))
+
+    def _wait_retry(self, rep: RunReport) -> bool:
+        """Nothing is runnable but a task of this run waits for its network retry: wait for it (up to MAX_RETRY_WAIT) when the runner may sleep (the command line); the time is reported apart."""
+        if self.sleep is None:
+            return False
+        ids = None
+        if getattr(self, "only", None):
+            ids = {co["id"] for co in (self.companies.get_by_symbol(t, "US") for t in self.only) if co}
+        due = self.queue.next_wait(ids)                         # only tasks waiting for a network retry (a permanent failure is retried by a later run)
+        if due is None:
+            return False
+        wait = (due - self.now()).total_seconds()
+        if wait > MAX_RETRY_WAIT:
+            return False
+        self.sleep(max(1.0, wait) + 1.0)
+        rep.waited_seconds += max(1.0, wait) + 1.0
+        return True
+
+    def _trip(self, task: dict, rep: RunReport, calls: int) -> None:
+        """The company used its call limit for this annual report: a suspected loop. Its open tasks fail, the company is marked failed, the administrator is alerted. Not postponed to another day."""
+        label, cid = self._label(task), task["company_id"]
+        reason = f"חריגה ממספר הקריאות — חשד ללולאה ({calls} קריאות; הגבול {COMPANY_CALL_CAP} לדוח שנתי; {COMPANY_CAP_MSG})"
+        for t in self.queue.list(cid):
+            if t["state"] in ("queued", "running", "deferred_quota"):
+                self.queue.fail_for_good(t, reason)
+        self.companies.set_processing_state(cid, "failed", reason)
+        self.alert(label, reason, {"company_id": cid, "task": task["job_type"], "calls": calls})
+        rep.alerts.append((label, reason))
+        rep.failed.append((task["id"], task["job_type"], label, reason[:160]))
+
+    def alert(self, label: str, reason: str, detail: dict) -> None:
+        """An alert for the administrator: a row in ``support_tickets`` when the table exists, else a line marked ``admin_alert`` in the log (scripts/state/admin_alerts.log)."""
+        try:
+            self.client.table("support_tickets").insert({"kind": "admin_alert", "subject": f"{label}: {reason[:120]}", "body": json.dumps(detail, default=str)}).execute()
+            return
+        except Exception:   # noqa: BLE001 - the table does not exist yet (security stage): the log is the record
+            pass
+        line = f"{datetime.now(timezone.utc).isoformat()} admin_alert {label}: {reason} {json.dumps(detail, default=str)}"
+        print(line, file=sys.stderr)
+        try:
+            ALERT_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with ALERT_LOG.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass
+
+    def recover(self, rep: RunReport) -> None:
+        """K6d-2, automatic recovery at the start of every run (the manual and the scheduled one): (1) a task a dead process left `running` is queued again; (2) a company that says it is
+        `ai_in_progress` / `scored_partial` but has no open task behind it gets the tasks it still needs (``plan_completion``), or its final score when nothing is missing - so no company stays
+        half-done without a task that will finish it."""
+        for t in self.queue.recover_stale():
+            rep.recovered.append((t["id"], t["job_type"], self._label(t), t["state"]))
+        for co in self.companies.client.table("companies").select("*").in_("processing_state", ["ai_in_progress", "scored_partial"]).execute().data:
+            if getattr(self, "only", None) and co["symbol"] not in self.only:
+                continue
+            tasks = self.queue.list(co["id"])
+            if any(t["state"] in ("queued", "running", "deferred_quota", "failed") for t in tasks):          # a task that failed for good is looked at by a person, not re-planned on every run
+                continue
+            planned = self.plan_completion(co, PRIORITY["completion"])
+            if not planned and not co.get("profile") and not self.scores.latest_run(co["id"]):         # a shell that was never loaded (no profile, no score): load it
+                planned = [self.enqueue(co["id"], "initial_import", None, None, PRIORITY["completion"])[0]["id"]]
+            if not planned and self.scores.latest_run(co["id"]):
+                planned = [self.enqueue(co["id"], "score", None, "final", PRIORITY["completion"])[0]["id"]]
+            if planned:
+                rep.recovered.append((planned[0], "plan", co["symbol"], f"{len(planned)} task(s) planned for state {co['processing_state']}"))
 
     def after_ai(self, task: dict) -> None:
         """When the last open scoring AI task (C1, B, A) of a company is done: the score with the AI answers and D2 follow (both are idempotent), and the state goes back to scored_partial until that
@@ -171,7 +312,7 @@ class QueueRunner:
             return str(task["company_id"])
 
     def _next(self, rep: RunReport) -> Optional[dict]:
-        for t in self.queue.runnable():
+        for t in self.queue.runnable(self._turns):
             if getattr(self, "only", None) and self._label(t) not in self.only:
                 continue
             if t["job_type"] in AI_JOBS and t.get("skill") != "render" and not self.ai_allowed():       # a render-only background task needs no model budget
@@ -338,7 +479,7 @@ class QueueRunner:
             try:
                 K5 = self._meta_context(co, res)
                 import run_ai_k5b_extract as K5B
-                K5B.ENGINE_OF.setdefault(co["symbol"], K5.ENGINE_OF[co["symbol"]])
+                K5B.ENGINE_OF[co["symbol"]] = K5.ENGINE_OF[co["symbol"]]
                 items, _secs, _counts = K5B.b14_items(co["symbol"], K5.meta(co["symbol"]))
                 blocks = ["EXT-GENERAL"] if items else []
             except Exception:   # noqa: BLE001 - B14 detection needs the dictionary and the result; without them nothing is planned
@@ -385,7 +526,7 @@ class QueueRunner:
         S._paths()
         import run_ai_k5a as K5
         eng = S.runner_engine(co["profile"], co["symbol"])
-        K5.ENGINE_OF.setdefault(co["symbol"], eng)
+        K5.ENGINE_OF[co["symbol"]] = eng                      # K6d-2 fixes: assigned, not setdefault - the router's extraction pass of the same process had set "realestate" for VTR, which stayed after the router chose STANDARD
         K5.golden = lambda t, _r=res: _r
         return K5
 
@@ -517,7 +658,7 @@ class QueueRunner:
         K5 = self._meta_context(co, res)
         import run_ai_k5b_extract as K5B
         K5B.golden, K5B.meta = K5.golden, K5.meta
-        K5B.ENGINE_OF.setdefault(t, K5.ENGINE_OF[t])
+        K5B.ENGINE_OF[t] = K5.ENGINE_OF[t]
         out_root = ROOT / "scripts" / "ai_store" / "k6c" / "extraction"
         before = self.gemini.attempts
         K5B.main(["--companies", t, "--out-root", str(out_root)], client=self.gemini)

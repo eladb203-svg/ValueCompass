@@ -1,0 +1,132 @@
+# K6d-2 fixes after acceptance run 2 - 2026-10-31
+
+Database: test only. Production was not touched. Model: Gemini flash-lite. Deleted data: none.
+Tests: all pass (see the end). Golden files: not changed.
+
+## 1. The queue (decisions of 2026-10-29)
+
+| # | Rule | Where | Test |
+|---|---|---|---|
+| 1 | Company after company until it is finished. The turn of a company = the best priority among its open tasks, then its arrival (its oldest open task); fixed for the length of a run. Tasks of different companies do not mix. | `WorkQueueRepository.runnable(sticky)` | `test_companies_run_one_after_the_other_until_each_is_finished` |
+| 2 | `load <T>`, `score <T>` and `ai-queue --tickers T` run only the tasks of T. The rest of the queue belongs to the scheduler. | `scripts/vc.py` | `test_only_the_tasks_of_the_given_ticker_run` |
+| 3 | Limit per company = 40 request attempts per annual report (tasks of that fiscal year), counted per company, kept in each task's payload (`calls`). Over the limit: the company is `failed` with the reason "חריגה ממספר הקריאות — חשד ללולאה", its open tasks fail, the administrator is alerted. `support_tickets` does not exist yet (it is in the security spec), so the alert is a line marked `admin_alert` in `scripts/state/admin_alerts.log` and on stderr. No postponement to another day. | `QueueRunner._trip`, `alert` | `test_a_company_that_uses_its_call_limit...`, `test_calls_of_earlier_tasks_count...` |
+| 4 | `deferred_quota` only when the daily cap (450) is spent, with the reason. A spent run budget (`--budget`) leaves the task `queued`, due now (the attempt does not count). | `WorkQueueRepository.release`, runner | `test_the_daily_cap_defers_but_a_spent_run_budget_does_not`, `test_the_budget_stops_ai_tasks...` |
+| 5 | Temporary network error (ConnectError, ReadError, timeout, DNS, WinError 10054/10060, also inside a wrapper): back to the queue with a wait of 1, 2, 4, 8 minutes, up to 5 attempts; only a permanent error (3 attempts) or exhausted attempts make it `failed`. From the command line the run waits for a retry that is due within 15 minutes; the wait is reported separately (`waited for network retries`). | `is_transient`, `_failed`, `_wait_retry` | `test_a_temporary_network_error_waits...` (5 error types), `test_a_permanent_error...`, `test_the_run_waits_for_a_due_network_retry...`, `test_is_transient_sees_through_a_wrapper` |
+| 6 | Stay awake: `SetThreadExecutionState(ES_CONTINUOUS \| ES_SYSTEM_REQUIRED)` while `vc.py scheduler` runs (released when it stops), and in `load`, `score`, `ai-queue`. The screen turns off as usual. | `src/sched/awake.py` | `test_keep_awake_asks_windows_and_releases` |
+| 7 | AFG completed with the ordinary command (`vc.py ai-queue --tickers AFG --budget 40`): the deferred task was already due (10:00 Israel had passed), `ai_assess`, final score, D2 and the background text ran. AFG is `complete`, no manual step. | | |
+
+A note on item 3: the limit counts the attempts that were made, including the retries inside one call (the shared guard counts every attempt).
+
+## 2. Data bugs
+
+### 2.1 CFG, CET1 requirement 7.00 (found: a wrong entity, not a default)
+- The 10-K table lists the group (CFG: required 9.0, ratio 10.6) and its subsidiary bank (CBNA: required 7.0, ratio 12.3). Both were stored (`...|CFG...|0`, `...|CBNA...|1`). `to_reg` put them in one dictionary and the last row won: the subsidiary's requirement **and ratio** (7.0 / 12.3) replaced the group's (9.0 / 10.6). The "V9 computed 9.00 != stated 7.00" warning was this. My earlier statement that 7.00 was the documented default was wrong.
+- Fix (`src/scoring/ext_items.py`, banks only): one value per item - the entity named like the ticker, else the first one listed; two rows of the same entity keep the later one. Order of priorities as asked: the requirement stated in the filing, then 4.5 + SCB + G-SIB (V9), then the marked default. The filing states 9.0 for CFG (SCB 4.5 also gives 9.0), so V9 now agrees and the warning is gone.
+- Only CFG among the banks in test has duplicated entities (checked in `extraction_items`). Insurers were left as they were on purpose.
+- CFG before -> after: Buffett 70.35 -> 68.55, Graham 69.73 -> 64.62 (coverage 98% / 96% unchanged).
+- Tests: `tests/test_k6d2_entity_choice.py` (3).
+
+### 2.2 NKE, EBIT and interest
+- NKE has no `OperatingIncomeLoss` and no gross interest-expense tag; it has `InterestIncomeExpenseNonoperatingNet` (positive = net interest income; 161m in FY2024).
+- Fix (`sec_companyfacts.py`): when a year has no gross interest tag and a net line exists, interest expense = - net line (`DERIVED: ...`, stored `source_kind=derived`), and EBIT = pretax + interest expense (the existing derived formula) = pretax - net interest income. A net interest income gives a non-positive "interest expense", so the coverage state is `zero_interest` (the net line cannot tell the gross interest). A gross tag is never replaced.
+- Tests: `tests/test_k6d2_net_interest.py` (3: income, expense, gross tag wins).
+- Other companies in the local cache that this touches when reloaded: HBAN (2 yrs), PNC (2), NUCOR (1), AGNC (2), ABNB (5). Golden files were not changed (no golden is regenerated).
+- NKE before -> after: Buffett 69.83 -> 80.67 (coverage 61% -> 98%), Graham 80.99 -> 82.70 (83% -> 100%).
+
+### 2.3 VICI, "fewer than 5 years of net income" and EBITDAre
+- For a REIT the Graham series "net income" and "EPS" are normalized FFO (`_View.series`), so the message names a different thing than what is missing. The real cause: FFO needs the gains-on-sale line and VICI's XBRL has **no gain/loss on sale or disposal element at all** (checked: no such tag in any namespace of companyfacts), so FFO, normalized FFO and EBITDAre were empty in every year. The rule "gains on sale are not assumed zero" is deliberate (they decide FFO).
+- Fix (`realestate_facts.py`, `has_sale_gain_tag`): if the company's XBRL has no gain/loss-on-sale-or-disposal element with an annual value in any namespace, the missing line is 0, flagged `assumed_zero (no gain / loss on sale element ...)`. The company's own FFO reconciliation (AI extraction) still overrides it. **This narrows a deliberate rule; it needs your approval to stay.** Companies that tag any such element keep the old behaviour.
+- Test: `test_a_company_without_any_sale_gain_element...` in `tests/test_realestate.py`.
+- VICI before -> after: Buffett none (coverage 10%) -> 86.70 (81%); Graham none (10%) -> none (55%, below the 60% needed).
+
+### 2.4 AVB, "possibly delisted" (it is: the company merged)
+- SEC submissions of CIK 0000915912 (read from the cache, 2026-10-30): Form **25-NSE filed 2026-08-17**, Form **15-12G 2026-08-27**, **15-15D 2026-09-16**, merger communications (425) and an S-4 on the successor from May-June 2026; the entity has **no current ticker**. The entity of EQR (CIK 0000906107) was renamed **VIVMARK RESIDENTIAL (VMRK)** on 2026-08-12.
+- Fix: `resolve.delisting_reason` -> `unsupported` with the evidence ("Form 25-NSE filed ..., Form 15-12G ..., merger filings ...; no price and no score until a successor files its own annual report (E2)"). `CIK_OVERRIDE_STALE` marks AVB and EQR as stale: a warning is printed and E2 is no longer waived for them. A Form 25 for another class of security does not delist a company whose common ticker is still current (test).
+- AVB in test after `vc.py load AVB`: `unsupported`, with the reason above. Its history stays in the database.
+- Tests: `tests/test_pipeline_core.py` (3, including the replaced AVB test: the "manual map" feature is tested with a made-up ticker).
+
+### 2.5 AFG, investments and debt
+- Regulatory capital ratio (B 3.6.1, G 3.2.1): the 10-K says only "the capital ratios of all AFG insurance companies exceeded the RBC requirements" - no number. Correctly `not_disclosed`. **Not a bug.**
+- XBRL: AFG has `AvailableForSaleSecuritiesDebtSecurities` (11,052m = the fixed maturities already extracted), `EquitySecuritiesFvNi` (785m), mortgage loans (947m), `LongTermDebt` (1,820m, already a fact `debt_lt`), `DebtInstrumentCarryingAmount` (1,848m). There is **no `Investments` total tag**; a sum of these would be a partial numerator (Q8b says no), so no XBRL total was invented.
+- The balance sheet shows "Total cash and investments 17,182". The block EXT-INS-INV did not look at the balance sheet. Fix: the block now also reads the balance-sheet section (`X-BS`) and the item says "when only a total that includes cash is stated, report it with INCLUDES_CASH in the basis" (block version 2 -> 3). **Stored answers now belong to a skill version: a changed version is asked again** (`ask_block`).
+- Result: `inv_total` = 17,182m (INCLUDES_CASH) was extracted, but the block control `inv_sum` fails (the model returned the mortgage-loan line twice for FY2025: 947 and 791, 791 being FY2024's, so the categories sum to 17,723 vs 17,182, 3.1%) and the 12 rows of the block are `pending`. Rule not changed. So G 3.2.2 and G 3.7.3 are still missing; **this one is an extraction-quality problem (duplicate row), waiting for approval.**
+- Graham coverage of AFG: before 82% -> after 82% (score 72.39 unchanged); Buffett 88% (77.90) unchanged.
+
+### 2.6 REITs, Graham score (MAA, DLR, VICI, AVB)
+Total debt, a generic fallback (`realestate_facts.py`): a REIT without a hand-made debt entry and no `LongTermDebt` total now takes a tagged `NotesPayable` total, else the sum of at least two of SecuredDebt, UnsecuredDebt, SeniorNotes, LineOfCredit, ConvertibleDebt (flagged `SUM:`; the 9% interest plausibility check still applies). MAA: 5,405m (= secured 360 + unsecured 5,045); DLR: sum of four lines.
+
+| Graham criterion | MAA | DLR | VICI | AVB | What is missing | Source to complete it |
+|---|---|---|---|---|---|---|
+| 3.2.1 / 3.3.1 net debt, EBITDAre | fixed (debt total) | fixed (debt total) | fixed (gains) | had | XBRL, was a bug | done |
+| 3.2.2 debt maturities | missing | missing | missing | missing | year-1/2 maturities: AI rows rejected (`period_mismatch`, `quote_not_found`); XBRL tags exist for MAA only to FY2021 (years 2-5) and DLR to FY2023, none for AVB; VICI has them, but the criterion there needs committed undrawn facilities (pending approval) | text of the debt note (AI), or later XBRL tags; VICI/AVB/DLR undrawn facilities are `pending` |
+| 3.3.2 unencumbered NOI | missing | missing | missing | not computed | `not_disclosed` by the AI in all four | not in the 10-K as a ratio; needs the supplemental package (not a filing) |
+| 3.3.3 stabilized NOI | missing | missing | missing | missing | stabilized NOI `pending` (AVB 3, MAA 1) or `not_disclosed` (DLR, VICI) | 10-K MD&A text (AI), approval |
+| 3.5.4 / 3.8.2 owner earnings level, gap | missing | missing | missing | missing | maintenance capex: AI `not_disclosed` (MAA, AVB), `rejected` quote_not_found (DLR), `pending` (VICI) | text of the capital-expenditure section (AI), approval |
+| 3.7.1 occupancy | missing | missing | missing | missing | the extraction has the current and the prior year (2 values); the criterion needs 3 years | extraction from the two earlier 10-Ks (3 more calls per company); XBRL has no occupancy |
+| 3.7.2 same-property NOI growth | missing | missing | missing | missing | `not_disclosed` (MAA, DLR, VICI), 1 value (AVB) | MD&A text (AI), earlier 10-Ks |
+| 3.7.3 largest tenant (DLR) | - | missing | - | n/a | `not_disclosed` | 10-K risk factors / properties text |
+
+Result of the first pass (before section 4 below): the four stayed at Graham coverage 55-66%. Section 4 replaces this table's "missing" cells with the classification from the 10-K text itself and the fixes it led to.
+
+## 3. Acceptance run 3 (RF bank, ORI insurer, VTR healthcare REIT, GIS regular, FTNT technology)
+
+Preflight (printed, `scripts/state/acceptance_preflight_3.txt`): none of the five is in test or prod `companies`, in a CSV, in the golden files or in the cache. (KEY, CINF, MTB and HIG were refused by the same check - they are golden.) Log: `scripts/state/acceptance_run_4.log`. The computer stayed awake for the whole run (keep-awake on every `load`); one command per company, one after the other, `--budget 40`.
+
+| Company | Result | Model calls (limit 40) | Time | Buffett / Graham (coverage) | Missing |
+|---|---|---|---|---|---|
+| RF (bank) | complete | 18 | 8 m 14 s | 87.00 (96%) / 87.40 (94%) | B 3.6.5 + G 3.2.2 LCR: NR in the 10-K and the public sources (D12); B 3.7.3 AI insufficient evidence (rejected); G 3.7.3 RWA not extracted (EF) |
+| ORI (insurer) | complete | 17 | 6 m 00 s | 77.38 (88%) / 71.64 (85%) | B 3.6.1 + G 3.2.1: no numeric group capital ratio in the 10-K (NR, same wording as AFG); B 3.1.1 AI insufficient evidence |
+| VTR (healthcare REIT) | **failed at first, completed after a fix** | 9 + 16 | 13 m 21 s (+ ~4 m after the fix) | 44.29 (99%) / 41.71 (81%) | B 3.6.3, G 3.2.1-3.2.3, G 3.3.2: current assets / liabilities not reported (unclassified balance sheet) - NR |
+| GIS (regular) | complete | 16 | 4 m 22 s | 56.15 (100%) / 38.89 (100%) | nothing |
+| FTNT (technology) | complete | 14 | 3 m 28 s | 96.76 (100%) / 78.79 (100%) | nothing |
+
+Network waits: none in the data loads (no `RETRY` line). The 592 s "waited for network retries" of VTR was not a network wait (stall 2).
+
+Stalls (every place the run stopped or needed contact):
+1. **VTR, `ai_assess`: `KeyError: 'inputs'` (twice) - a bug.** The router's extraction pass of the same process had set `K5.ENGINE_OF['VTR'] = realestate`; the router then decided STANDARD (RE10/RE11: investment property 87% passes, rental revenue only 26% < 50% fails - a senior-housing operator; a decision by the rulebook, not a bug), but the helper kept the engine of the first pass and read the real-estate shape from a general result. Fix: the engine is assigned, not set once (`_meta_context`, `exec_extract`); `load_result` prefers the engine of the company's profile. VTR then finished with no manual step (`ai-queue --tickers VTR`): `ai_assess`, final score, D2, background.
+2. **Wait logic, a bug of my queue change:** the run waited 592 s for the retry of a task that had failed for a permanent reason (KeyError), as if it were a network error. Fix: only a task marked `[network]` is waited for; a permanent failure is retried by a later run.
+3. No other stall. No manual contact in RF, ORI, GIS, FTNT. In VTR the only action after the failure was a code fix and the ordinary `ai-queue` command.
+
+**Gate (two consecutive batches of 5 new companies, all final, no contact): not passed in this batch - 4 of 5.** VTR needed a code fix. A second batch of new companies on the fixed code is still needed, and since this batch was not clean the pair starts again.
+
+## 4. MAA, DLR, VICI: Graham data against the text of the 10-K (keyword search, no model)
+
+Method: the cached 10-K of FY2025 and the cached or downloaded earlier 10-Ks; patterns searched in the text; classification: (A) in the last report and not extracted / rejected, (B) only in earlier reports, (C) not in the 10-K at all (supplemental package only). Tool for the occupancy completion: `scripts/keyword_backfill.py`.
+
+| Item | Company | Class | What is written, where | Why it was not taken | What was fixed |
+|---|---|---|---|---|---|
+| Debt maturities (principal, years 1-2) | MAA | A | debt note: "Maturities 2026 $976,000, 2027 600,000 ..." (net of costs 975,516 / 598,907) | the model gave the period as the maturity year (2026, 2027); the check allowed only the report year and the two before it: `period_mismatch` | rule: year 1 and 2 maturities are valid for fy+1 / fy+2 and stored for the report year (`FORWARD_PERIOD`). Re-judged from the stored answers (no new call): rows for FY2025, `pending` - the block control (coverage band) is `na` because the committed undrawn facility is missing (below) |
+| same | DLR | A | debt note table: "Total Debt 2026 $904,683 / 2027 1,441,254" | same period rule **and** `quote_not_found`: the page text has zero-width spaces between the cells | both fixed (`normalize` drops zero-width characters; forward period); Graham 3.2.2 is now computed |
+| same | VICI | A | contractual obligations table: senior notes 2026 $1,750,000, 2027 1,500,000 (+ revolver) | period rule | fixed, rows `approved` |
+| Committed undrawn facility | DLR | A | "At December 31, 2025, approximately $3.3 billion was available under this facility" | the year was changed to FY2023 by the "newest column first" rule, which treated the sentence as a table row | rule: a sentence (10 or more words) is not a table row, the model's year stays |
+| same | MAA | A (derived) | revolver "$1.5 billion" capacity and "$5.0 million used for letters of credit" (two figures) | the model gave 1,495 (= 1,500 - 5): not in the quote, `number_not_in_quote` | **not changed** (a derived number the rule rejects; your decision) |
+| Recurring capital expenditures | DLR | A | MD&A table: "Recurring capital expenditures 343,925 / 305,712" | `quote_not_found` (zero-width spaces) | fixed; rows FY2025/FY2024 stored, `pending` (block control Q6 `na`: needs reported AFFO and OE) |
+| same | MAA | C | only a description of what recurring capital replacements are; no amount | not a figure in the 10-K (the supplemental has it) | true gap; the rulebook rule "OE proxy -> level item missing" applies |
+| same | VICI | C | only the cash-flow line "Capital expenditures (1,238)", total capex of a net lessor; no recurring / maintenance concept | not a maintenance figure | rows stay `pending`; true gap for this item |
+| Unencumbered NOI | all three | C | only covenants ("maintain total unencumbered assets of not less than 150%..."); no NOI, no share | not in the 10-K | **the backup exists in the engine** (`unencumbered_assets_share`, flagged) but its input is not in the 10-K either, so it is not triggered; a proxy from the Schedule III "encumbrances" column would be new, not in the rulebook |
+| Stabilized / same-property NOI | MAA | A | segment table: "Same Store NOI $1,304,264 / 1,322,186 / 1,339,810" (three years) | the model answered `not_disclosed`; the item asks for a growth percentage, the report shows levels | **not fixed**: growth is derivable by code (-1.4% in 2025); needs a derivation rule |
+| same | DLR | A | MD&A: "Stabilized" revenue 4,272,850 vs 4,028,165 and stabilized expense lines; no NOI line | same | not fixed: derivable (revenue - expenses of the stabilized portfolio); needs a rule |
+| same | VICI | C | "same-store" appears only for the Partner Property Growth Fund capital-improvement programme | no like-for-like NOI | true gap |
+| Occupancy, 3 years | DLR | A + B | "approximately 84.7% leased" (FY2025); 84.1, 81.7, 84.7, 83.6 in the earlier 10-Ks | model: `not_disclosed`; the criterion needs 3 years | completed by keyword search from five reports; rows `approved` by the block rule (bounds 0-100) |
+| same | MAA | B | "Same Store 278 communities 96,568 units 95.6%" (average physical occupancy) in each report | the model had only the last two years | completed from five reports |
+| same | VICI | B | "our properties are 100% leased" | only the last year | completed from three reports (FY2022 and FY2021 use other wording: no match, not forced) |
+
+Graham coverage before -> after (this section):
+
+| | before section 4 | after |
+|---|---|---|
+| DLR | 55% (no score) | 70% - **85.75** (Buffett 89.50, 83%) |
+| VICI | 55% (no score) | 70% - **79.17** (Buffett 86.70, 81%) |
+| MAA | 55% (no score) | 55% (no score; Buffett 73.22, 83%): still missing maturities (rows `pending`), unencumbered, stabilized NOI, recurring capex, same-store growth |
+
+The approval rules (nothing was changed): the maturity and capex rows of MAA and DLR are `pending` because the block control is `na` - it needs the undrawn facility (MAA: rejected, number not in the quote) and reported AFFO. A chain of controls, not a rule that rejects a correct figure.
+
+## 5. Open items
+
+1. A second clean pair of batches of 5 for the gate.
+2. Your approval of the narrowed rule on gains on sale (2.3).
+3. Derivation rules for same-store NOI growth from the stated levels (MAA) and from the stabilized portfolio (DLR).
+4. MAA committed undrawn facility (a derived figure the rule rejects).
+5. AFG: a duplicate mortgage-loan row blocks the investments block (2.5).
+6. Security stage (as agreed): `CIK_OVERRIDE` into a table `ticker_overrides`, an administrator ticket for an unknown ticker; `support_tickets` then replaces the `admin_alert` log.
+7. EQR / VMRK: the ticker EQR is stale (merger); the company must be loaded as VMRK once a successor annual report exists.

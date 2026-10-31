@@ -23,6 +23,7 @@ _DASHES = {"–": "-", "—": "-", "−": "-", "‐": "-", "‑": "-", "‒": "-
 def normalize(s: str) -> str:
     """Whitespace, quote-mark, bullet and lost-character normalization applied to both the quote and the text sent (check 3)."""
     s = unicodedata.normalize("NFKC", s)
+    s = s.translate({ord(c): None for c in "​‌‍⁠﻿"})          # K6d-2 fixes: zero-width spaces between table cells (DLR) hid every quote from the search
     s = re.sub(r"(?<=\w)�(?=\w)", "", s)
     s = s.replace("�", " ")
     s = s.translate({**{ord(c): None for c in _QUOTE_CHARS + _MARKS}, **{ord(c): " " for c in _BULLETS}})

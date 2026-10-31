@@ -74,6 +74,7 @@ def _label(year: int) -> str:
 def to_reg(kind: str, rows: list, fy_latest: int) -> dict:
     """Stored items -> the dict the engine reads (same shape as the CSV loaders): bank / insurance {item: {value, unit, ...}} (latest year; USD in millions), real estate {item: {year label: {...}}}."""
     reg: dict = {}
+    entity: dict = {}
     for r in rows:
         key, y = r["item_key"], r["year"]
         v, unit = r["value_full"], r["unit"]
@@ -102,7 +103,16 @@ def to_reg(kind: str, rows: list, fy_latest: int) -> dict:
             name = {"prior_year_dev": f"adverse_prior_year_dev:{_label(y)}", "inv_cash": "bs_cash", "inv_short_term": "bs_short_term", "inv_fixed_maturities": "bs_fixed_maturities",
                     "inv_equity": "bs_equity", "inv_illiquid_loans": "bs_illiquid_loans", "inv_real_estate": "bs_real_estate", "inv_other": "bs_other_invested",
                     "inv_total": "bs_total_investments", "inv_ig_fixed": "ig_fixed_income", "inv_ig_share": "ig_share_pct", "ldti_remeasurement": f"adverse_ldti_remeasurement:{_label(y)}"}.get(key, key)
-        reg[name] = {**row, "value": v, "unit": u, "period": _label(y)}
+        new = {**row, "value": v, "unit": u, "period": _label(y)}
+        # K6d-2 fixes: a capital table lists the group and its subsidiary bank (CFG and CBNA). One value per item is used: the group's - the entity named like the ticker, else the first one listed
+        # (the group comes first in the table). Before, the last row won: the subsidiary's requirement (7.0) and ratio (12.3) replaced the group's (9.0, 10.6).
+        basis = (r.get("basis") or "").strip().lower()
+        own = basis.startswith(str(r.get("ticker") or "").lower()) if basis else False
+        prev = entity.get(name)
+        if kind == "bank" and prev is not None and prev[1] != basis and not (own and not prev[2]):
+            continue                                                     # another entity of the same item: the earlier or the group's row stays
+        entity[name] = (new, basis, own)
+        reg[name] = new
     return reg
 
 

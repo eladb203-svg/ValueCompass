@@ -107,10 +107,10 @@ blocks:
 
   - skill_id: EXT-INS-INV
     block: B4
-    version: 1
+    version: 3
     profile: INSURANCE
     task: "Extract the investment portfolio by category and credit quality, catastrophe losses and whether asset-liability matching is disclosed."
-    sections: [X-INSINV]
+    sections: [X-INSINV, X-BS]
     items:
       - {key: inv_cash, def: "Cash within invested assets", unit: USD}
       - {key: inv_short_term, def: "Short-term investments", unit: USD}
@@ -119,7 +119,7 @@ blocks:
       - {key: inv_illiquid_loans, def: "Mortgage and other loans", unit: USD}
       - {key: inv_real_estate, def: "Real estate investments", unit: USD}
       - {key: inv_other, def: "Other invested assets", unit: USD}
-      - {key: inv_total, def: "Total investments as stated", unit: USD}
+      - {key: inv_total, def: "Total investments as stated. When the balance sheet states only a total that includes cash (for example 'Total cash and investments'), report that amount and write INCLUDES_CASH in the basis field", unit: USD}
       - {key: inv_ig_fixed, def: "Investment-grade fixed income (BBB-/Baa3 or better, NAIC 1-2); unrated is NOT investment grade", unit: USD}
       - {key: inv_ig_share, def: "Investment-grade share of fixed income, when stated instead of an amount", unit: percent}
       - {key: cat_loss_latest, def: "Catastrophe losses of the year", unit: USD}

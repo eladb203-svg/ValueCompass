@@ -530,7 +530,7 @@ def check_analysis(raw: str, inputs: dict) -> checks.CheckResult:
         for m, blk in models.items():
             if blk["value_text"] and blk["value_text"] not in v:
                 res.reasons.append(f"value_he_value_text_missing ({m})")
-            if blk["method_he"] not in v and blk["value_text"]:
+            if blk["value_text"] and blk["method_he"] not in v:
                 res.reasons.append(f"value_he_method_missing ({m})")
             if blk["buy_price_text"] is not None:
                 if "מחיר הקנייה" not in v or blk["buy_price_text"] not in v:

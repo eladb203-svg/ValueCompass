@@ -93,6 +93,8 @@ def score_display(model: str, q: dict) -> dict:
 
 def method_he(p: dict) -> str:
     key = p.get("method") or ("dcf" if "dcf" in p else None)
+    if key is None and p.get("fair_value", p.get("value")) is None:
+        return None                                       # K6d-2: no value could be computed (a missing input), so no method was chosen: the text says "not available" (d2_template)
     return glossary()["methods"][key]                    # an unknown method fails loudly: every profile has its own named method
 
 

@@ -19,4 +19,5 @@ def make_runner(budget: int = 0, rpm: int = 12, rpd: int = 450, client=None):
     if budget > 0:
         from src.ai.client import GeminiClient, RateLimiter
         gemini = GeminiClient(limiter=RateLimiter(rpm=rpm, rpd=rpd))
-    return QueueRunner(client, gemini=gemini, budget=budget, pipeline_factory=lambda: make_pipeline(False, client=client))
+    import time
+    return QueueRunner(client, gemini=gemini, budget=budget, pipeline_factory=lambda: make_pipeline(False, client=client), sleep=time.sleep)

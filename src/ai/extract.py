@@ -90,6 +90,8 @@ def ask_block(rep: Report, block: dict, client, calls: CallStore, items: Optiona
     """One extraction call (one retry on invalid JSON with another seed). Returns the stored call record; a stored record is returned without a call."""
     key_id = block["skill_id"] if part == 1 else f"{block['skill_id']}#{part}"          # B14 is asked in groups of at most 15 items: one stored call per group
     ex = None if force else calls.get(rep.ticker, rep.fiscal_year, key_id)
+    if ex is not None and ex.get("version") != block["version"]:        # K6d-2 fixes: the skill text changed (its version was raised): the stored answer belongs to the old text and is asked again
+        ex = None
     if ex is not None:
         ex["_cached"] = True
         return ex

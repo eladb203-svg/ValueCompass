@@ -76,6 +76,8 @@ def assign_year(item: dict, value: float, scale: int, unit: str, quote: str, tex
         if len(cands) > 1:                                                 # the same number in several columns: keep the model's year when one of the columns is that year
             return (ai_year, "header", neg) if ai_year in {hdr[c] for c in cands} else (None, "unresolved", neg)
         return hdr[col], "header", neg
+    if not hdr and len(re.findall(r"[A-Za-z]{3,}", qn)) >= 10:
+        return None, "unresolved", neg                                      # K6d-2 fixes: a sentence ("At December 31, 2025, approximately $3.3 billion was available ...") is not a table row: the model's year stays
     if not hdr and len(cells) in (2, 3) and len(cands) == 1 and not any(t[3] for t in cells):
         return fy - col, "column_order", neg                               # no header: the usual 10-K order, newest first; only when the value is in one column and no cell is empty
     return None, "unresolved", neg
@@ -111,6 +113,8 @@ def apply(res, it: dict, text_norm: str, fy: int, rule: Optional[str], window: i
     """Corrects ``res`` (an ext_checks.ItemResult of an accepted-so-far item) in place: year from the table columns, sign from the convention."""
     q = (it.get("quote") or {}).get("text")
     if not isinstance(q, str) or res.value_full is None or "number_not_in_quote" in res.reasons or "quote_not_found" in res.reasons:
+        return
+    if it.get("item_key") in ("debt_maturity_year1", "debt_maturity_year2"):           # K6d-2 fixes: the year in the table row is the maturity year, not the report year (see ext_checks.FORWARD_PERIOD)
         return
     v, sc, unit = float(it["value"]), int(it.get("scale") or 1), str(it.get("unit"))
     year, how, pneg = assign_year(it, v, sc, unit, q, text_norm, fy, res.year)

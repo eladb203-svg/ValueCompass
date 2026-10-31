@@ -131,6 +131,7 @@ def test_formatting_ranges_methods_lowest_and_gate():
     for k, v in m.items():
         assert D.method_he({"method": k} if k != "dcf" else {"dcf": {}}) == v
     import pytest
+    import pytest
     with pytest.raises(KeyError):
         D.method_he({"method": "unknown_method"})
     j = fake_j([8.0, 3.0])
@@ -201,3 +202,10 @@ def test_lenient_json_repair_for_the_hebrew_abbreviation_quote_and_list_text():
     assert repaired and "נדל״ן" in d["text_he"]
     d2, rep2 = C.parse_content_json('{"text_he": ["א.", "ב."], "competitors": []}')
     assert d2["text_he"] == "א. ב." and rep2 is False and C.parse_content_json("not json")[0] is None
+
+
+def test_a_model_with_no_value_and_no_method_does_not_break_the_analysis_input():
+    assert D.method_he({"state": "cannot_be_valued", "reason": "cash, debt or diluted shares missing", "fair_value": None}) is None
+    import pytest
+    with pytest.raises(KeyError):
+        D.method_he({"fair_value": 10.0})                                  # a value without a named method still fails loudly
