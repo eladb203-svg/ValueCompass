@@ -291,3 +291,27 @@ def test_property_test_single_implementation():
     out = R.property_test(1000.0, 800.0, 90.0, 100.0, None)
     assert out["confirmed"] is True and out["assignment"] == "INCOME_REAL_ESTATE"
     assert R.property_test(None, None, None, None, None)["assignment"] == "undetermined"
+
+
+# ------------------------------------------------------------------ decision 2026-10-31: SIC 6798 that is not a mortgage REIT is always INCOME_REAL_ESTATE
+OPERATING = dict(assets=1000.0, re_net=870.0, rental_revenue=250.0, revenue=1000.0)        # property 87% of assets, rent 25% of revenue (VTR, a senior-housing operator)
+
+
+def test_sic_6798_with_little_rent_is_income_real_estate_flagged_operating():
+    r = prof(data(6798, **OPERATING))
+    assert r.profile == "INCOME_REAL_ESTATE" and r.operating_reit and any("operating_reit" in x for y in r.per_year.values() for x in y["notes"])
+
+
+def test_sic_6798_with_mostly_rent_is_income_real_estate_not_operating():
+    r = prof(data(6798, assets=1000.0, re_net=870.0, rental_revenue=800.0, revenue=1000.0))
+    assert r.profile == "INCOME_REAL_ESTATE" and not r.operating_reit
+
+
+def test_sic_6798_with_property_below_half_of_assets_but_not_a_mortgage_reit_is_still_real_estate():
+    r = prof(data(6798, assets=1000.0, re_net=300.0, rental_revenue=800.0, revenue=1000.0, interest_income=10.0, mortgage_assets=100.0))
+    assert r.profile == "INCOME_REAL_ESTATE"
+
+
+def test_another_property_sic_still_fails_row_3_to_standard():
+    r = prof(data(6510, **OPERATING))
+    assert r.profile == "STANDARD" and not r.operating_reit

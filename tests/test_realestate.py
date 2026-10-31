@@ -303,3 +303,35 @@ def test_a_company_without_any_sale_gain_element_has_no_gain_line_and_a_company_
     assert has_sale_gain_tag({"facts": {"us-gaap": {"GainLossOnSaleOfProperties": fy}}})
     assert has_sale_gain_tag({"facts": {"us-gaap": {"GainLossOnDispositionOfAssets1": fy}}})
     assert not has_sale_gain_tag({"facts": {"us-gaap": {"GainLossOnSaleOfProperties": {"units": {"USD": [{"fp": "Q2", "val": 1}]}}}}})
+
+
+def test_operating_reit_noi_is_total_revenue_less_property_operating_expenses_and_flagged():
+    # most of the revenue is not rent (resident fees): rent-only NOI would subtract the operating expenses from the rent alone
+    ri = reit(rental_revenue=[250e6] * N, total_revenue=[1000e6] * N, prop_opex=[600e6] * N)
+    rent_only = derive_re(ri)
+    assert rent_only["noi"][-1] == pytest.approx(250e6 - 600e6)
+    ri.noi_method = "operating"
+    d = derive_re(ri)
+    assert d["noi"][-1] == pytest.approx(400e6) and d["noi_margin"][-1] == pytest.approx(0.4) and "operating_reit" in d["flags"]
+    assert "operating NOI" in d["noi_basis"][-1]
+
+
+def test_operating_noi_falls_back_to_cost_of_revenue_when_there_is_no_property_expense_line():
+    ri = reit(rental_revenue=[250e6] * N, total_revenue=[1000e6] * N, prop_opex=[None] * N, cost_of_revenue=[700e6] * N)
+    ri.noi_method = "operating"
+    d = derive_re(ri)
+    assert d["noi"][-1] == pytest.approx(300e6) and "cost of revenue" in d["noi_basis"][-1]
+
+
+def test_auto_config_detects_an_operating_reit_from_the_latest_year_only():
+    from src.pipeline.auto_config import is_operating_reit, reit_noi_method
+    assert is_operating_reit({"rental_revenue": {2024: 800.0, 2025: 250.0}, "revenue": {2024: 1000.0, 2025: 1000.0}})
+    assert not is_operating_reit({"rental_revenue": {2024: 250.0, 2025: 800.0}, "revenue": {2024: 1000.0, 2025: 1000.0}})
+    assert not is_operating_reit({}) and reit_noi_method(True, True) == ("operating", "xbrl")
+
+
+def test_auto_inputs_flag_an_operating_reit_in_the_result_flags():
+    from src.pipeline.auto_config import AutoInputs
+    a = AutoInputs("VTR", "realestate")
+    a.values["operating_reit"], a.sources["operating_reit"] = True, "xbrl"
+    assert "operating_reit" in a.flags()

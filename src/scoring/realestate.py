@@ -103,7 +103,24 @@ def derive_re(ri: REInputs) -> dict:
     # ---- NOI (RE13): always computed by us = rental + other property revenue - property operating expenses; company-reported NOI is a reconciliation input only
     d["noi_basis"], d["noi"] = [None] * n, [None] * n
     comps = ["prop_opex"] if ri.noi_method == "rental_less_opex" else ri.noi_method
+    if comps == "operating":
+        # operating REIT (decision 2026-10-31): most of the revenue is not rent (resident fees, operating revenue). NOI = property revenue (all operating revenue) - property operating expenses
+        # (the property-level expense line, else cost of revenue). The rent-only formula would subtract operating expenses from rent alone.
+        d["flags"].append("operating_reit")
+        cost = g("cost_of_revenue")
+        for i in range(n):
+            if total_rev[i] is None:
+                continue
+            ox_i, src = (opex[i], "property operating expenses") if opex[i] is not None else (cost[i], "cost of revenue (no property-level expense line)")
+            if ox_i is None:
+                continue
+            d["property_revenue"][i] = total_rev[i]
+            d["noi"][i] = total_rev[i] - ox_i
+            d["noi_basis"][i] = f"operating NOI: total revenue - {src} (operating_reit)"
+        comps = []
     for i in range(n):
+        if comps == []:
+            break
         if comps == "revenue_less_cost":
             if total_rev[i] is not None and g("cost_of_revenue")[i] is not None:
                 d["noi"][i] = total_rev[i] - g("cost_of_revenue")[i]

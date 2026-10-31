@@ -126,6 +126,21 @@ def tenk_filings(sec: SecClient, cik: str) -> list:
     return sorted(out, key=lambda x: x["report_date"], reverse=True)
 
 
+def discover_extension_elements(sec: SecClient, cik: str, pattern: str) -> list:
+    """K6d-2 fixes: the company-extension elements (any prefix except us-gaap / dei / srt) of the latest 10-K whose local name matches ``pattern`` (a regex), most used first - for a line the
+    company tags with its own element (VTR: ``vtr:GainLossOnDispositionOfRealEstate``)."""
+    k = next(iter(tenk_filings(sec, cik)), None)
+    if k is None:
+        return []
+    acc = k["accession"].replace("-", "")
+    raw = _get_raw(sec, f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}/{k['primary']}", f"{acc}_{k['primary']}")
+    counts: dict = {}
+    for m in re.finditer(r'<ix:nonFraction[^>]*name="([^":]+):([^"]+)"', raw):
+        if m.group(1).lower() not in ("us-gaap", "dei", "srt", "ifrs-full") and re.search(pattern, m.group(2), re.I):
+            counts[m.group(2)] = counts.get(m.group(2), 0) + 1
+    return [n for n, _ in sorted(counts.items(), key=lambda x: -x[1])]
+
+
 def extension_series(sec: SecClient, cik: str, local_names: list, kind: str, needed_ends: list, max_filings: int = 6,
                      segment_sum: bool = False) -> dict:
     """{end: Fact} for the first element of ``local_names`` found per fiscal-year end, reading 10-K filings newest first

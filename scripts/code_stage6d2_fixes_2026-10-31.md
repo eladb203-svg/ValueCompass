@@ -130,3 +130,36 @@ The approval rules (nothing was changed): the maturity and capex rows of MAA and
 5. AFG: a duplicate mortgage-loan row blocks the investments block (2.5).
 6. Security stage (as agreed): `CIK_OVERRIDE` into a table `ticker_overrides`, an administrator ticket for an unknown ticker; `support_tickets` then replaces the `admin_alert` log.
 7. EQR / VMRK: the ticker EQR is stale (merger); the company must be loaded as VMRK once a successor annual report exists.
+
+## 6. Decision of 2026-10-31: SIC 6798 that is not a mortgage REIT is always INCOME_REAL_ESTATE
+
+**Code**
+- `router.evaluate_year`: in row 3, a failing property test for SIC 6798 no longer gives STANDARD. The profile is INCOME_REAL_ESTATE; RE10/RE11 only set the NOI method: rental revenue below 50% of revenue -> `operating_reit` (field `operating_reit` on `YearResult` and `RouterResult`, a note in the reasons). Other property SICs (65xx) keep the old row 3.
+- NOI method (`auto_config.is_operating_reit`, `reit_noi_method(..., operating)`; engine `derive_re`): the engine did not support an operating NOI, so it was added. Operating NOI = **total revenue (all operating revenue: resident fees, operating revenue) - property operating expenses** (the property-level expense line, else cost of revenue, flagged); `noi_basis` says "operating NOI ... (operating_reit)", the result flags carry `operating_reit`. Decided from the latest year's rental share in the facts; REITs with hand-made entries (the golden set) are never switched.
+- Tests (8 new): router (operating / mostly rent / property below half but not a mortgage REIT / another SIC unchanged), operating NOI and its fallback, detection from the latest year only, the result flag.
+
+**Golden:** not changed and not affected: all ten golden REITs (AMT, ARE, BXP, EQIX, EQR, FRT, O, PLD, PSA, SPG) were already INCOME_REAL_ESTATE and are in the hand-made set; no golden company was STANDARD by RE10/RE11 (0 companies, 0 points).
+
+**REITs in test classified STANDARD by RE10/RE11:** only **VTR** (SIC 6798). VICI and DLR were already INCOME_REAL_ESTATE but through the SIC fallback; they were re-routed (reason now "row 3 -> INCOME_REAL_ESTATE" for VICI) and their scores did not change.
+
+**VTR before -> after** (healthcare REIT, rental income 26% of revenue, resident fees and services the rest)
+
+| | before (STANDARD) | after (INCOME_REAL_ESTATE, operating NOI) |
+|---|---|---|
+| Buffett | 44.29 (coverage 99%) | **90.90** (83%) |
+| Graham | 41.71 (81%) | no score (55%, below the 60% needed) |
+
+To get there one more gap had to be closed: from FY2022 Ventas tags the gain on real estate dispositions with its own element (`vtr:GainLossOnDispositionOfRealEstate`), so FFO was empty for 2022-2025 and the REIT profile first came out with no score at all (coverage 10%). A generic search of the company's own elements in the inline XBRL now finds it (`discover_extension_elements`; used for four years of VTR).
+
+What changed, criterion by criterion (full list: `python scripts/score_snapshot.py --diff scripts/state/snap_before_6798.json scripts/state/snap_after_6798.json`):
+- **Depreciation against FFO (the earnings base).** In STANDARD, depreciation of 1.1 bn (2025) against a net income of 0.25 bn hits every earnings criterion; as a REIT the base is normalized FFO (net income + real-estate depreciation - gains). Buffett 3.3.1 profitable years 2.0 -> 6.0 of 6, 3.3.2 EPS falls 3.0 -> 4.0 of 4, 3.3.4 weakest year 0.0 -> 2.0 of 2; Graham 3.4.1 profitable years 5.0 -> 9.0 of 9, 3.4.2 EPS falls 0.0 -> 1.5, 3.5.3 dividends / earnings 0.0 -> 1.32, 3.6.2 EPS rises 1.17 -> 0.33 (worse).
+- **Cash flow replaced by owner earnings (FFO less maintenance capital).** Buffett 3.5.1 years with positive FCF 0.0 of 5 -> CAGR of OE per share 8.0 of 8, 3.5.2 5.25 of 7, 3.7.4 payout 0.0 -> 2.0 (dividends / OE), 3.8.3 FCF growth 0.0 -> 3.0; Graham 3.8.1 0.0 -> 3.75 of 5, 3.8.3 0.0 -> 2.0.
+- **Leverage on EBITDAre instead of EBITDA / EBIT.** Buffett 3.6.1 net debt / EBITDAre 3.4 of 4 (before 0.0 of 3, ND/EBITDA 5.6x), 3.6.2 3.01 of 4 (before 0.0); Graham 3.2.1 (new) 5.48 of 7, 3.3.1 net debt / EBITDAre 5.18 of 7 (before debt / equity 1.92 of 5).
+- **NOI (operating).** Buffett 3.4.3 NOI margin range 4.24 of 5 (new).
+- **Operating margin -> FFO margin:** 3.2.2a 0.99 -> 0.68 of 1.5.
+- **No longer applicable:** 3.2.3 ROIC (not applicable to a REIT).
+- **Missing as a REIT (extraction / approval):** Buffett 3.4.1, 3.4.2 (NOI yield and same-property growth); Graham 3.3.3, 3.5.4 and the balance-sheet items 3.7.1-3.7.3, 3.8.2 (tangible equity and share-count items are not defined for the REIT model).
+
+The other REITs in test (MAA, DLR, VICI, AMT, O): unchanged scores. A note for decision: for VICI the rental share by the tags is below 50% only if its lease income counts as "rent" (it reports most income as sales-type and financing leases); VICI stays on the rent-based NOI because the facts the test reads were not below 50% in its latest year.
+
+Also fixed on the way: stray control characters (backspace) in a regex I had written, which silently made the extension search return nothing; the files were checked (`grep` for \x08 in `src` and `tests`: none left; two older scripts, `build_bank_regulatory.py` and `insurance_extraction_spec.py`, were not touched by this stage).

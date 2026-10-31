@@ -178,6 +178,7 @@ class YearResult:
     borderline: bool = False
     borderline_tests: dict = field(default_factory=dict)
     notes: list = field(default_factory=list)
+    operating_reit: bool = False             # SIC 6798, not a mortgage REIT, rental revenue < 50% of revenue: INCOME_REAL_ESTATE with the operating NOI method (decision 2026-10-31)
 
 
 @dataclass
@@ -196,6 +197,7 @@ class RouterResult:
     override_applied: Optional[dict]
     missing_inputs: list
     flags: list
+    operating_reit: bool = False
 
     def to_jsonable(self) -> dict:
         return asdict(self)
@@ -401,6 +403,13 @@ def evaluate_year(industry: str, fy: str, v: dict, w: dict, ctx: dict, rows=ROWS
             return _finish(YearResult(fy, row.order, None, tests, notes=notes))
         if out.result == "pass":
             return _finish(YearResult(fy, row.order, row.profile, tests, notes=notes))
+        if row.test == "property" and ctx.get("sic") == "6798":
+            # decision 2026-10-31: a company of SIC 6798 that is not a mortgage REIT is always INCOME_REAL_ESTATE. Tests RE10 / RE11 no longer move it to STANDARD; they set the NOI method:
+            # most of the revenue from rent -> NOI from rent (as before); most from operations (resident fees, hotel / operating revenue) -> operating NOI, flag operating_reit.
+            rs = out.tests.get("rental_revenue_share", (None, None))[0]
+            op = rs is not None and rs < PROPERTY_RENTAL_SHARE
+            return _finish(YearResult(fy, row.order, row.profile, tests, notes=notes + ["SIC 6798, not a mortgage REIT: INCOME_REAL_ESTATE always (decision 2026-10-31)"]
+                                      + (["operating_reit: rental revenue below 50% of revenue -> operating NOI method"] if op else []), operating_reit=op))
         target = row.on_fail.get(industry, row.on_fail.get("*"))
         if target is None or target == "next":
             continue
@@ -536,7 +545,8 @@ def route(data: RouterData, tables: Optional[Tables] = None, override: Optional[
           ai: Optional[AIAnswer] = None, window: int = WINDOW_YEARS) -> RouterResult:
     tables = tables or default_tables()
     cls = classify(data, tables, ai, override)
-    ctx = {"reports_cet1": data.values.get(data.years[-1], {}).get("reports_cet1") if data.years else None,
+    ctx = {"sic": str(data.sic) if data.sic else None,
+           "reports_cet1": data.values.get(data.years[-1], {}).get("reports_cet1") if data.years else None,
            "reports_lcr": data.values.get(data.years[-1], {}).get("reports_lcr") if data.years else None}
     per_year: dict = {}
     n = len(data.years)
@@ -569,7 +579,7 @@ def route(data: RouterData, tables: Optional[Tables] = None, override: Optional[
         reasons.append("classification pending: STANDARD until decided")
     bl = latest.borderline if latest else False
     return RouterResult(data.ticker, final, eff, cls.industry, cls, reasons, bl, latest.borderline_tests if latest else {}, {fy: asdict(y) for fy, y in per_year.items()},
-                        since, pending, applied, missing, flags)
+                        since, pending, applied, missing, flags, bool(latest and latest.operating_reit and final == "INCOME_REAL_ESTATE"))
 
 
 # ---------------------------------------------------------------- FactSet adapter (K2 structure)

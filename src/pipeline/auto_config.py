@@ -53,7 +53,7 @@ class AutoInputs:
         return [k for k, s in self.sources.items() if s == "default"]
 
     def flags(self) -> list:
-        return [f"auto_input_default:{k}" for k in self.defaults]
+        return [f"auto_input_default:{k}" for k in self.defaults] + (["operating_reit"] if self.values.get("operating_reit") else [])
 
     def as_list(self) -> list:
         return [{"name": k, "value": self.values[k], "source": self.sources[k]} for k in self.values]
@@ -91,9 +91,23 @@ def reit_utilization(asset_type: str) -> str:
     return {"communication towers": "not_applicable", "data centers": "leased_capacity"}.get(asset_type, "occupancy")
 
 
-def reit_noi_method(has_prop_opex: bool):
-    """The NOI is rental revenue less property operating expenses when the company reports them; otherwise total revenue less cost of revenue (flagged by the engine)."""
+def reit_noi_method(has_prop_opex: bool, operating: bool = False):
+    """The NOI is rental revenue less property operating expenses when the company reports them; otherwise total revenue less cost of revenue (flagged by the engine).
+    ``operating`` (decision 2026-10-31, an operating REIT: most of the revenue is not rent): operating NOI = property revenue (total, with resident fees / operating revenue) less property operating expenses."""
+    if operating:
+        return "operating", "xbrl"
     return (["prop_opex"], "xbrl") if has_prop_opex else ("revenue_less_cost", "default")
+
+
+OPERATING_RENTAL_SHARE = 0.50                  # as the router (RE10 / RE11): rental revenue below half of the revenue
+
+
+def is_operating_reit(facts: Optional[dict]) -> bool:
+    """Rental revenue / total revenue of the latest year below 50% (facts = {item_key: {fiscal year: value}}); False when either is missing."""
+    f = facts or {}
+    rent, rev = f.get("rental_revenue") or {}, f.get("revenue") or {}
+    years = sorted(set(rent) & set(rev))
+    return bool(years) and rev[years[-1]] > 0 and rent[years[-1]] / rev[years[-1]] < OPERATING_RENTAL_SHARE
 
 
 def business_text(ticker: str, name: str, client=None) -> str:
@@ -132,7 +146,10 @@ def derive(engine: str, ticker: str, company: dict, rows: list, client=None, fac
         a.values["asset_type"], a.sources["asset_type"] = typ, s
         a.values["utilization"], a.sources["utilization"] = reit_utilization(typ), s
         has = bool((facts or {}).get("property_opex"))
-        m, ms = reit_noi_method(has)
+        op = is_operating_reit(facts)
+        m, ms = reit_noi_method(has, op)
+        if op:
+            a.values["operating_reit"], a.sources["operating_reit"] = True, "xbrl"
         a.values["noi_method"], a.sources["noi_method"] = m, ms
     elif engine == "insurance":
         a.values["currency"], a.sources["currency"] = company.get("reporting_currency") or "USD", "xbrl"

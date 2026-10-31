@@ -265,6 +265,22 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
             if fact is not None and f[name][i] is None:
                 f[name][i] = fact.val
                 log[name][lab] = {"tag": fact.tag, "value": fact.val, "filed": str(fact.filed)}
+    # K6d-2 fixes: gains on sale in a company-extension element (VTR from FY2022: vtr:GainLossOnDispositionOfRealEstate) - found in the inline XBRL of the 10-K instead of by a hand table
+    if "gains_sale" not in RE_EXT.get(ticker, {}) and any(v is None and f["net_income"][i] is not None for i, v in enumerate(f["gains_sale"])):
+        miss_ends = [e for e, v in zip(ends, f["gains_sale"]) if v is None]
+        try:
+            names = ix.discover_extension_elements(sec, cik, r"(Gain|Loss).*(Dispos|Sale)|(Dispos|Sale).*(Gain|Loss)")
+            got = ix.extension_series(sec, cik, names, "flow", miss_ends) if names else {}
+        except Exception as exc:  # noqa: BLE001
+            got, names = {}, []
+            problems.append(f"gains_sale: extension element search failed ({type(exc).__name__}: {exc})")
+        for i, (end, lab) in enumerate(zip(ends, labels)):
+            fact = got.get(end)
+            if fact is not None and f["gains_sale"][i] is None:
+                f["gains_sale"][i] = fact.val
+                log["gains_sale"][lab] = {"tag": fact.tag, "value": fact.val, "filed": str(fact.filed)}
+        if got:
+            problems.append(f"gains_sale: company-extension element {names[:2]} used in {len(got)} years (found in the inline XBRL)")
     # total revenue: when no revenue tag exists, lease income stands in (flagged)
     miss_rev = [lab for i, lab in enumerate(labels) if f["total_revenue"][i] is None and f["rental_revenue"][i] is not None]
     for i, lab in enumerate(labels):
