@@ -191,3 +191,34 @@ def test_keep_awake_asks_windows_and_releases(monkeypatch):
     with awake.keep_awake() as ok:
         assert ok
     assert calls == [awake.ES_CONTINUOUS | awake.ES_SYSTEM_REQUIRED, awake.ES_CONTINUOUS]
+
+
+def test_a_direct_load_retries_a_temporary_network_error_like_the_queue():
+    from src.pipeline.net_retry import with_network_retry
+    calls, slept = {"n": 0}, []
+
+    def load():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise type("ReadError", (Exception,), {})("[WinError 10054] reset")
+        return "loaded"
+
+    out, waited = with_network_retry(load, sleep=slept.append, log=lambda m: None)
+    assert out == "loaded" and slept == [60, 120] and waited == 180
+
+    def bad():
+        raise ValueError("a bug")
+    with pytest.raises(ValueError):
+        with_network_retry(bad, sleep=slept.append, log=lambda m: None)
+
+
+def test_a_direct_load_gives_up_after_five_attempts():
+    from src.pipeline.net_retry import with_network_retry
+    n = {"c": 0}
+
+    def down():
+        n["c"] += 1
+        raise type("ConnectError", (Exception,), {})("down")
+    with pytest.raises(Exception):
+        with_network_retry(down, sleep=lambda s: None, log=lambda m: None)
+    assert n["c"] == 5

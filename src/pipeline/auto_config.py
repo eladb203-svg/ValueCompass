@@ -106,8 +106,13 @@ def is_operating_reit(facts: Optional[dict]) -> bool:
     """Rental revenue / total revenue of the latest year below 50% (facts = {item_key: {fiscal year: value}}); False when either is missing."""
     f = facts or {}
     rent, rev = f.get("rental_revenue") or {}, f.get("revenue") or {}
-    years = sorted(set(rent) & set(rev))
-    return bool(years) and rev[years[-1]] > 0 and rent[years[-1]] / rev[years[-1]] < OPERATING_RENTAL_SHARE
+    years = sorted(y for y, v in rev.items() if v)
+    if not years:
+        return False
+    last = years[-1]
+    if rent.get(last) is None:                                      # no lease income at all in the latest year (a hotel REIT: HST): all of the revenue is operating
+        return rev[last] > 0 and not rent
+    return rev[last] > 0 and rent[last] / rev[last] < OPERATING_RENTAL_SHARE
 
 
 def business_text(ticker: str, name: str, client=None) -> str:

@@ -29,6 +29,7 @@ BANK_FIELDS: dict = {
         "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"]),
     "_pretax_dom": ("flow", "USD", ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic"]),
     "_pretax_for": ("flow", "USD", ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign"]),
+    "_tax": ("flow", "USD", ["IncomeTaxExpenseBenefit"]),
     "eps": ("flow", "USD/shares", ["EarningsPerShareDiluted"]),
     "shares_dil": ("flow", "shares", ["WeightedAverageNumberOfDilutedSharesOutstanding"]),
     "shares_basic": ("flow", "shares", ["WeightedAverageNumberOfSharesOutstandingBasic"]),
@@ -197,6 +198,12 @@ def build_bank_series(sec: SecClient, ticker: str, splits: list, n_years: int = 
         if f["pretax"][i] is None and f["_pretax_dom"][i] is not None and f["_pretax_for"][i] is not None:
             f["pretax"][i] = f["_pretax_dom"][i] + f["_pretax_for"][i]
             log["pretax"][lab] = {"tag": "DERIVED: domestic + foreign", "value": f["pretax"][i]}
+    # K6d-2 fixes: no pretax-income tag (ZION): pretax = net income (with the non-controlling share) + income tax expense
+    for i, lab in enumerate(labels):
+        base = f["_profit_loss"][i] if f["_profit_loss"][i] is not None else f["net_income"][i]
+        if f["pretax"][i] is None and base is not None and f["_tax"][i] is not None:
+            f["pretax"][i] = base + f["_tax"][i]
+            log["pretax"][lab] = {"tag": "DERIVED: net income + income tax expense (no pretax-income tag)", "value": f["pretax"][i]}
     # preferred dividends fallback: net income - net income to common
     for i, lab in enumerate(labels):
         if f["pref_div"][i] is None and f["net_income"][i] is not None and f["ni_common"][i] is not None:

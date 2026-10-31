@@ -30,6 +30,9 @@ RE_FIELDS: dict = {
     "total_revenue": ("flow", "USD", ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax"]),
     "rental_revenue": ("flow", "USD", ["OperatingLeaseLeaseIncome", "LeaseIncome"]),
     "other_property_revenue": ("flow", "USD", []),
+    # K6d-2 fixes (2026-11-01): income from a lease of any kind - operating, direct financing or sales-type - is rent. Only revenue from the company's own operations (resident fees, hotel revenue) is not.
+    "_financing_lease_income": ("flow", "USD", ["SalesTypeAndDirectFinancingLeasesRevenue", "SalesTypeLeaseRevenue", "SalesTypeLeaseInterestIncome", "DirectFinancingLeaseRevenue",
+                                                 "DirectFinancingLeaseInterestIncome"]),
     "prop_opex": ("flow", "USD", ["DirectCostsOfLeasedAndRentedPropertyOrEquipment", "CostOfOtherPropertyOperatingExpense"]),
     "re_tax": ("flow", "USD", ["RealEstateTaxExpense", "RealEstateTaxesAndInsurance"]),
     "repairs": ("flow", "USD", ["CostOfPropertyRepairsAndMaintenance"]),
@@ -46,7 +49,8 @@ RE_FIELDS: dict = {
                                  "OtherDepreciationAndAmortization"]),
     "re_depr": ("flow", "USD", ["SECScheduleIIIRealEstateAccumulatedDepreciationDepreciationExpense"]),
     "gains_sale": ("flow", "USD", ["GainLossOnSaleOfProperties", "GainsLossesOnSalesOfInvestmentRealEstate", "GainLossOnSaleOfPropertyPlantEquipment",
-                                   "GainLossOnDispositionOfAssets", "GainLossOnDispositionOfAssets1", "GainLossOnSaleOfOtherAssets"]),
+                                   "GainLossOnDispositionOfAssets", "GainLossOnDispositionOfAssets1", "GainLossOnSaleOfOtherAssets",
+                                   "DisposalGroupNotDiscontinuedOperationGainLossOnDisposal"]),
     "impairment": ("flow", "USD", ["ImpairmentOfRealEstate", "AssetImpairmentCharges", "ImpairmentOfLongLivedAssetsHeldForUse"]),
     "debt_extinguishment": ("flow", "USD", ["GainsLossesOnExtinguishmentOfDebt"]),
     "transaction_costs": ("flow", "USD", ["BusinessCombinationAcquisitionRelatedCosts"]),
@@ -130,7 +134,7 @@ DEBT_PARTS: dict = {
     "AMT": (["LongTermDebtAndCapitalLeaseObligations", "LongTermDebtCurrent"], []),
 }
 # K6d-2 fixes: a ticker without a hand-made entry above whose balance sheet has no single debt total (MAA: NotesPayable = secured + unsecured; DLR: senior notes + line of credit + secured + unsecured)
-GENERIC_DEBT_TOTAL = ["NotesPayable"]                                                         # a tagged total of the notes (secured + unsecured) when it is there
+GENERIC_DEBT_TOTAL = ["NotesPayable", "DebtAndCapitalLeaseObligations", "DebtInstrumentCarryingAmount"]                                                         # a tagged total of the notes (secured + unsecured) when it is there
 GENERIC_DEBT_PARTS = ["SecuredDebt", "UnsecuredDebt", "SeniorNotes", "LineOfCredit", "ConvertibleDebt"]       # else the sum of at least two of these
 # NOI is always computed by us (RE13): property revenue (rental + other) - property operating expenses; the expense components differ by filer.
 # components: fields subtracted from property revenue. "revenue_less_cost" = total revenue - cost of revenue (data centers: no property-level data, proxy, flagged).
@@ -281,6 +285,29 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
                 log["gains_sale"][lab] = {"tag": fact.tag, "value": fact.val, "filed": str(fact.filed)}
         if got:
             problems.append(f"gains_sale: company-extension element {names[:2]} used in {len(got)} years (found in the inline XBRL)")
+    if ticker not in NOI_COMPONENTS:                # the hand-made set keeps its rental line as it was prepared
+        for i, lab in enumerate(labels):
+            fin = f["_financing_lease_income"][i]
+            if fin is not None:
+                f["rental_revenue"][i] = (f["rental_revenue"][i] or 0.0) + fin
+                prev = (log["rental_revenue"].get(lab) or {}).get("tag")
+                log["rental_revenue"][lab] = {"tag": "SUM: " + (f"{prev} + " if prev else "") + str((log["_financing_lease_income"].get(lab) or {}).get("tag")) + " (lease income of any kind is rent)",
+                                              "value": f["rental_revenue"][i]}
+    # K6d-2 fixes: a year without a gain-on-sale value between years that have one, in a company whose statements carry the line (HST 2024: no sale that year, the line is blank in the 10-K of that year
+    # and in the next one): zero, flagged. Years before the first or after the last value stay missing.
+    assumed: dict = {}
+    gs = f["gains_sale"]
+    have = [i for i, v in enumerate(gs) if v is not None]
+    if len(have) >= 3:
+        gap = [i for i in range(have[0], have[-1] + 1) if gs[i] is None and f["net_income"][i] is not None]
+        for i in gap:
+            gs[i] = 0.0
+            log["gains_sale"][labels[i]] = {"tag": "assumed_zero (the line is reported in earlier and later years, blank this year)", "value": 0.0}
+        if gap:
+            assumed.setdefault("gains_sale", []).extend(labels[i] for i in gap)
+            problems.append("gains_sale: blank between reported years, assumed_zero in " + ", ".join(labels[i] for i in gap))
+    f.pop("_financing_lease_income", None)         # a helper series, not a fact of its own
+    log.pop("_financing_lease_income", None)
     # total revenue: when no revenue tag exists, lease income stands in (flagged)
     miss_rev = [lab for i, lab in enumerate(labels) if f["total_revenue"][i] is None and f["rental_revenue"][i] is not None]
     for i, lab in enumerate(labels):
@@ -313,19 +340,21 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
             if parts and (len(parts) >= 2 or ticker == "AMT"):
                 f["debt_total"][i] = sum(v for _, v in parts)
                 log["debt_total"][lab] = {"tag": "SUM: " + " + ".join(t for t, _ in parts), "value": f["debt_total"][i]}
-    if ticker not in DEBT_PARTS:
-        for i, (end, lab) in enumerate(zip(ends, labels)):
-            if f["debt_total"][i] is not None:
-                continue
-            tot = next((fa for fa in (_match(parts_series.get(t, {}), end) for t in GENERIC_DEBT_TOTAL) if fa is not None), None)
-            if tot is not None:
-                f["debt_total"][i] = tot.val
-                log["debt_total"][lab] = {"tag": f"{tot.tag} (no LongTermDebt total; the notes total is used)", "value": tot.val}
-                continue
-            parts = [(t, fa.val) for t in GENERIC_DEBT_PARTS for fa in [_match(parts_series.get(t, {}), end)] if fa is not None]
-            if len(parts) >= 2:
-                f["debt_total"][i] = sum(v for _, v in parts)
-                log["debt_total"][lab] = {"tag": "SUM: " + " + ".join(t for t, _ in parts), "value": f["debt_total"][i]}
+    def fill_generic_debt():
+        if ticker not in DEBT_PARTS:
+            for i, (end, lab) in enumerate(zip(ends, labels)):
+                if f["debt_total"][i] is not None:
+                    continue
+                tot = next((fa for fa in (_match(parts_series.get(t, {}), end) for t in GENERIC_DEBT_TOTAL) if fa is not None), None)
+                if tot is not None:
+                    f["debt_total"][i] = tot.val
+                    log["debt_total"][lab] = {"tag": f"{tot.tag} (no LongTermDebt total; the notes total is used)", "value": tot.val}
+                    continue
+                parts = [(t, fa.val) for t in GENERIC_DEBT_PARTS for fa in [_match(parts_series.get(t, {}), end)] if fa is not None]
+                if len(parts) >= 2:
+                    f["debt_total"][i] = sum(v for _, v in parts)
+                    log["debt_total"][lab] = {"tag": "SUM: " + " + ".join(t for t, _ in parts), "value": f["debt_total"][i]}
+    fill_generic_debt()
     # plausibility of the total debt: a year whose tagged total implies an interest rate above 9% is a component, not the total -> missing (flagged)
     bad = []
     for i, lab in enumerate(labels):
@@ -336,9 +365,12 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
             f["debt_total"][i] = None
     if bad:
         problems.append("debt_total: implausible (interest / debt above 9%, probably a component tag), set missing in " + ", ".join(bad))
+    if ticker not in DEBT_PARTS and any(v is None for v in f["debt_total"]):
+        fill_generic_debt()           # a component tag was set missing above (HST: LongTermDebt 1.3 bn of 5.1 bn): the notes total / the sum of components stands in
+    
     # zero-if-absent (flagged, as T10 in the general model); gains on sale are NOT assumed zero (they decide FFO) - except when the company's XBRL has no gain / loss on sale or disposal
     # element at all (VICI: a lessor that sells nothing; K6d-2 fixes, 2026-10-30): then the line does not exist and is 0, flagged; the company's own FFO reconciliation (AI extraction) overrides it
-    assumed: dict = {}
+    # (assumed is created above)
     if not has_sale_gain_tag(facts):
         labs = []
         for i, lab in enumerate(labels):

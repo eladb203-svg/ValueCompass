@@ -158,8 +158,9 @@ def guard_share_scale(f: dict, labels: list, log: dict, problems: list, fields: 
             if any(lo <= v / r <= hi for r in refs):
                 continue
             action, new = None, None
-            for k, name in ((1000.0, "rescaled x1000"), (1 / 1000.0, "rescaled /1000")):
-                if any(lo <= v * k / r <= hi for r in refs) and any(SCALE_RATIO[0] <= (r / v if k > 1 else v / r) <= SCALE_RATIO[1] for r in refs):
+            for k, name in ((1000.0, "rescaled x1000"), (1 / 1000.0, "rescaled /1000"), (1e6, "rescaled x1e6"), (1e-6, "rescaled /1e6")):      # x1e6: a count reported in millions (HST FY2017-2020: 739.1)
+                band = SCALE_RATIO if abs(k) in (1000.0, 1 / 1000.0) else (SCALE_RATIO[0] * 1000.0, SCALE_RATIO[1] * 1000.0)
+                if any(lo <= v * k / r <= hi for r in refs) and any(band[0] <= (r / v if k > 1 else v / r) <= band[1] for r in refs):
                     action, new = name, v * k
                     break
             if action is None:

@@ -163,3 +163,55 @@ What changed, criterion by criterion (full list: `python scripts/score_snapshot.
 The other REITs in test (MAA, DLR, VICI, AMT, O): unchanged scores. A note for decision: for VICI the rental share by the tags is below 50% only if its lease income counts as "rent" (it reports most income as sales-type and financing leases); VICI stays on the rent-based NOI because the facts the test reads were not below 50% in its latest year.
 
 Also fixed on the way: stray control characters (backspace) in a regex I had written, which silently made the extension search return nothing; the files were checked (`grep` for \x08 in `src` and `tests`: none left; two older scripts, `build_bank_regulatory.py` and `insurance_extraction_spec.py`, were not touched by this stage).
+
+## 7. Review of the VTR score (Buffett 90.90), the rent definition, network retry in `load` (2026-11-01)
+
+### 7.1 Owner earnings (OE) of VTR, MAA, DLR
+How OE is built for a REIT: `OE = normalized FFO - straight-line rent adjustment - maintenance capex - income-preserving TI/LC` (rulebook C.B3.5-RE). When any of the three deductions is missing, the engine does **not** compute OE: it uses normalized FFO per share, `metric_basis = FFO_PROXY` (flagged), and the rulebook allows that **only for growth and stability sub-items; level-based sub-items (dividend coverage) are Missing** (FFO proxy rule; Graham 3.5 card: "Missing when OE is a proxy").
+
+All three are on the proxy, for all 5 years: straight-line rent (not tagged, `not_disclosed` by the AI), maintenance capex (MAA, VTR `not_disclosed`; DLR: the 2025/2024 figures 343.9 / 305.7 m exist but are `pending` and two years are not the five that OE needs) and TI/LC (VTR `not_disclosed`; MAA and DLR `NA` by the asset type). So in the three of them "OE" = normalized FFO, without any maintenance deduction.
+
+Item by item (the proxy rule against the code):
+
+| Item | Kind | Rule | Code before | Now |
+|---|---|---|---|---|
+| Buffett 3.5.1 OE per share growth | growth | allowed with flag | scored, `FFO_PROXY` | same |
+| Buffett 3.5.2 OE per share stability | stability | allowed with flag | scored, `FFO_PROXY` | same |
+| Buffett 3.8.3 smoothed OE growth | growth | allowed with flag | scored, `FFO_PROXY` | same |
+| Graham 3.8.1 OE stability | stability | allowed with flag | scored, `FFO_PROXY` | same |
+| Graham 3.8.3 per-share discipline | share CAGR, else OE per share growth | growth: allowed with flag | scored, `FFO_PROXY` | same |
+| Graham 3.5.4 dividends / OE | level | Missing | Missing | same |
+| Graham 3.8.2 reported vs economic | level (gap) | Missing | Missing | same |
+| **Buffett 3.7.4 dividends / OE** | **level** | **Missing** (general proxy rule; the Buffett card line says "(FFO proxy flag)", which contradicts the proxy rule and Graham 3.5.4 - I applied the proxy rule) | **scored on FFO** (VTR, MAA, DLR, VICI: 2.0 of 2) | **Missing** |
+
+So one item did not match: Buffett 3.7.4 was scored on FFO. Fixed (`b37`). Effect: VTR 90.90 -> **89.92**, MAA 73.22 -> 72.99, DLR 89.50 -> 88.52, VICI 86.70 -> 89.37 (its coverage fell 81% -> 73%, the other items moved because the score is the points over the covered weight). AMT and O have a full OE and did not change. Golden: the ten golden REITs all have a full OE (`metric_basis OE`), so none changes.
+
+The remaining VTR numbers on the proxy: 3.5.1 = 8.0 of 8 comes from a normalized-FFO-per-share CAGR of 12.5% (from the FY2021 base, depressed by the pandemic, to FY2025); 3.5.2 5.25 of 7 (one decline of more than 5%); 3.8.3 3.0 of 3 (smoothed growth 10.8%); Graham 3.8.1 3.75 of 5; 3.8.3 2.0 of 2. MAA: 3.5.1 1.49 (CAGR 1.5%), 3.5.2 3.5, 3.8.3 0.37. DLR: 3.5.1 6.29 (CAGR 6.3%), 3.5.2 5.25, 3.8.3 2.53. VTR's high growth score is therefore a FFO recovery effect, flagged `FFO_PROXY`, not a verified owner-earnings growth.
+
+### 7.2 Rent includes financing and sales-type leases
+Decision: lease income of any kind (operating, direct financing, sales-type) is rent; only revenue from the company's own operations (resident fees, hotel revenue) is not. The provider now adds `SalesTypeAndDirectFinancingLeasesRevenue`, `SalesTypeLeaseRevenue`, `SalesTypeLeaseInterestIncome`, `DirectFinancingLeaseRevenue` and `DirectFinancingLeaseInterestIncome` to `rental_revenue` (tag log `SUM: ... (lease income of any kind is rent)`), for tickers outside the hand-made set. VICI: rent 2,125 of 4,006 m = 53% in FY2025 (before: 5 years of a small operating-lease line), so it is **not** an operating REIT and keeps the rent-based NOI; the earlier note in section 6 is settled. Its router reason is now "row 3 -> INCOME_REAL_ESTATE". Test: `test_financing_and_sales_type_lease_income_is_rent...` (the 50% test on 2,125/4,006 against VTR's 1,497/5,834).
+
+### 7.3 Network retry in `load` / `--job repair`
+`src/pipeline/net_retry.py`: a temporary network error (also wrapped) waits 60, 120, 240, 480 s and tries again, 5 attempts, other errors at once; the waited time is printed ("waited for network retries"). Used by `vc.py load` for every job. Tests: success after two failures (waits 60 + 120), a bug is not retried, five attempts then the error.
+
+## 8. Acceptance run 4 (ZION bank, THG insurer, HST hotel REIT, HRL regular, ANET technology) - 2026-10-31/11-01
+
+Preflight (`scripts/state/acceptance_preflight_4.txt`): all five new (test, prod, CSV, golden, cache). Log: `scripts/state/acceptance_run_5.log`. Computer awake, one `load` per company, `--budget 40`, company after company.
+
+| Company | Result | Calls (limit 40) | Time | Buffett / Graham at the end of the run |
+|---|---|---|---|---|
+| ZION | complete, no failed task | 19 | 7:06 | 82.72 (71%) / 80.87 (93%) |
+| THG | complete | 16 | 5:13 | 79.86 (90%) / 87.03 (75%) |
+| HST | complete | 21 | 6:03 | no score (39%) / no score (33%) |
+| HRL | complete | 16 | 4:44 | 69.11 (98%) / 70.21 (100%) |
+| ANET | complete | 16 | 3:36 | 95.71 (98%) / 86.07 (96%) |
+
+**Stalls: none.** No failed or retried task, no network wait, no manual contact, no code change in the middle; every company reached `complete` by itself. By the gate's definition this batch is clean: **5 of 5**. The gate asks for two such batches in a row; run 3 was not clean (VTR), so this is **the first of the pair**. The code changed after the run (below), so the second batch has to run on the new code.
+
+What the missing data showed afterwards (bugs in the data layer, not stalls), all fixed and checked on test:
+1. **HST - no score (coverage 39%).** (a) The total debt: the chain took `LongTermDebt` (1.3 bn), the plausibility check dropped it, nothing replaced it, so net debt and EBITDAre were empty; the generic fallback now also tries `DebtAndCapitalLeaseObligations` and `DebtInstrumentCarryingAmount` after the check. (b) Share counts reported in millions (739.1 in FY2017-2020) were dropped by the scale guard, which knew only x1000; it now also rescales x1e6. (c) The gain on disposals in FY2019 sits in `DisposalGroupNotDiscontinuedOperationGainLossOnDisposal`: added to the chain. (d) FY2024 has no gain line (no sale; the line is blank in that year's 10-K and the next one): a year between reported years is zero, flagged `assumed_zero` (new, narrow - **needs your approval like the gains rule of 2.3**). (e) A hotel REIT has no lease income at all: `is_operating_reit` is true when no lease income exists in any year, so the operating NOI method is used. After the fixes: HST Buffett **91.15** (81%), Graham no score (55%, the same extraction gaps as the other REITs).
+2. **ZION - Buffett coverage 71%.** No pretax-income tag: PPNR-based items and Graham 3.8.2 were missing; pretax is now derived as net income + income tax expense (`DERIVED`, stored as derived). After: Buffett 79.68 (96%), Graham 79.51 (96%). Left: B 3.1.5 (AI insufficient evidence), LCR (B 3.6.5, G 3.2.2) not reported numerically - real gaps.
+3. THG: B 3.6.1 and G 3.2.1 (no numeric group capital ratio in the 10-K, real); G 3.2.2 and G 3.7.3 (balance-sheet categories: the block control `inv_sum` of the earlier AFG finding; the skill now also reads the balance sheet from this version on, THG was extracted before it); G 3.7.2 (credit-quality share not extracted).
+4. HRL: B 3.7.3 (AI insufficient evidence). ANET: B 3.1.3, G 3.1.3, G 3.8.3 (AI insufficient evidence). Real AI answers, counted as missing by rule R16.
+
+Calls this stage: the shared daily counter stood at 92 before this run and 180 after it (limit 450).

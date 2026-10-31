@@ -623,13 +623,17 @@ def b37(ri, d):
     gd, v = _gd(ri, d), _View(ri, d)
     gd["fcf"] = d["norm_ffo"]  # Rulebook C.B3.7 variants / CL5 (H-04): the denominator of 3.7.3 is always the normalized FFO, also when OE exists (3.7.4 below uses OE itself)
     items = B.c37(v, gd)
-    # 4 distributions: dividends / OE (FFO proxy flagged), <=100% = 2, >=150% = 0
+    # 4 distributions: dividends / OE, <=100% = 2, >=150% = 0 (level-based: Missing on the FFO proxy, see below)
     a4 = [(1.0, 2), (1.5, 0)]
     div = tail(ri.series("dividends"), 5)
     base = tail(d["oe"], 5) if all(x is not None for x in tail(d["oe"], 5)) else tail(d["norm_ffo"], 5)
     basis = "OE" if base is not None and all(x is not None for x in tail(d["oe"], 5)) else "FFO_PROXY"
     pairs = [(a, b) for a, b in zip(div, base) if a is not None and b is not None]
-    new = (miss("4", "Distributions supported by owner earnings", 2, "fewer than 3 paired years of dividends and OE / normalized FFO", a4) if len(pairs) < 3 else
+    # K6d-2 fixes (2026-11-01): dividends / OE is a level-based sub-item. The FFO proxy is allowed only for growth and stability sub-items (rulebook, FFO proxy rule; the Graham 3.5 card says the same:
+    # "Missing when OE is a proxy"), so with the proxy this sub-item is Missing - not scored on FFO.
+    new = (miss("4", "Distributions supported by owner earnings", 2, "OE is a proxy (maintenance capex / TI-LC not extracted): level item missing by rule (FFO proxy: growth and stability only)", a4,
+                inputs={"metric_basis": "FFO_PROXY"}) if basis == "FFO_PROXY" else
+           miss("4", "Distributions supported by owner earnings", 2, "fewer than 3 paired years of dividends and OE", a4) if len(pairs) < 3 else
            (zero("4", "Distributions supported by owner earnings", 2, None, a4, "", "dividends / OE", {"metric_basis": basis}, ["total_base_nonpositive"]) if sum(b for _, b in pairs) <= 0 else
             thresholded("4", "Distributions supported by owner earnings", 2, sum(a for a, _ in pairs) / sum(b for _, b in pairs), a4, "", "dividends / OE (5y)",
                         {"metric_basis": basis}, ["FFO_PROXY"] if basis == "FFO_PROXY" else [])))

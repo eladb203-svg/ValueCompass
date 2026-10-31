@@ -21,7 +21,7 @@ def snap(tickers):
             if r["criterion_key"] == "total" or r["detail_level"] == "criterion":
                 continue
             ev = r["evidence"] or {}
-            items[f"{r['model'][0]}{r['criterion_key']}.{r['sub_criterion_key']}"] = {"pts": r["criterion_score"], "max": r["max_score"], "state": ev.get("state"), "metric": ev.get("metric"), "label": ev.get("metric_label"), "note": ev.get("note")}
+            items[f"{r['model'][0]}{r['criterion_key']}.{r['sub_criterion_key']}"] = {"pts": r["criterion_score"], "max": r["max_score"], "state": ev.get("state"), "metric": ev.get("metric"), "label": ev.get("metric_label"), "note": ev.get("note"), "flags": ev.get("flags"), "basis": (ev.get("inputs") or {}).get("metric_basis") if isinstance(ev.get("inputs"), dict) else None}
         out[t] = {"profile": co["profile"], "summary": s, "items": items}
     return out
 

@@ -50,3 +50,12 @@ def test_a_gross_interest_tag_is_never_replaced_by_the_net_line():
     r = SC.build_inputs(sec, "TST", "STANDARD", [], 5)
     assert r["f"]["interest_expense"][-1] == 15.0 and r["f"]["ebit"][-1] == 145.0
 
+
+
+def test_share_counts_reported_in_millions_are_rescaled_by_a_million():
+    from src.providers.sec_companyfacts import guard_share_scale
+    f = {"shares_dil": [743.7e6, 739.1, 740.6, 710.3e6]}
+    log = {"shares_dil": {}}
+    problems: list = []
+    guard_share_scale(f, ["FY2016", "FY2017", "FY2018", "FY2019"], log, problems, ("shares_dil",))
+    assert f["shares_dil"][1] == 739.1e6 and f["shares_dil"][2] == 740.6e6

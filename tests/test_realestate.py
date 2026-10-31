@@ -335,3 +335,22 @@ def test_auto_inputs_flag_an_operating_reit_in_the_result_flags():
     a = AutoInputs("VTR", "realestate")
     a.values["operating_reit"], a.sources["operating_reit"] = True, "xbrl"
     assert "operating_reit" in a.flags()
+
+
+def test_financing_and_sales_type_lease_income_is_rent_so_a_net_lessor_is_not_an_operating_reit():
+    from src.pipeline.auto_config import is_operating_reit
+    from src.providers.realestate_facts import build_realestate_series
+    from tests.test_rulebook_k3 import _FakeSec
+    sec = _FakeSec({"NetIncomeLoss": ("USD", True), "Assets": ("USD", False), "Revenues": ("USD", True), "SalesTypeLeaseInterestIncome": ("USD", True)})
+    out = build_realestate_series(sec, "TST", [], n_years=5)
+    assert out["f"]["rental_revenue"] == out["f"]["_financing_lease_income"] if "_financing_lease_income" in out["f"] else out["f"]["rental_revenue"][-1] is not None
+    assert "SalesTypeLeaseInterestIncome" in out["tag_log"]["rental_revenue"]["FY2025"]["tag"] and "rent" in out["tag_log"]["rental_revenue"]["FY2025"]["tag"]
+    # the same lessor by the 50% test: lease income of every kind over revenue
+    assert not is_operating_reit({"rental_revenue": {2025: 2125.0}, "revenue": {2025: 4006.0}})
+    assert is_operating_reit({"rental_revenue": {2025: 1497.0}, "revenue": {2025: 5834.0}})        # resident fees: not rent
+
+
+def test_a_reit_with_no_lease_income_at_all_is_an_operating_reit_but_a_gap_in_the_latest_year_only_is_not():
+    from src.pipeline.auto_config import is_operating_reit
+    assert is_operating_reit({"revenue": {2024: 5000.0, 2025: 5100.0}})                                           # hotel REIT, no rental tag in any year
+    assert not is_operating_reit({"rental_revenue": {2023: 800.0}, "revenue": {2024: 1000.0, 2025: 1000.0}})     # rent exists in an earlier year: unknown, not operating
