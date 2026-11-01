@@ -19,20 +19,21 @@ subtitle: "2026-11-01_10-20 · English (source of truth) · approved"
 
 ### 1.1 Registration modes
 
-There are two modes. The admin chooses one in the settings (`registration_mode`).
+There are two modes. The admin chooses one in the settings (`registration_mode`). **The default is "open with approval" (decided 2026-11-01).**
 
 | Mode | Flow |
 |---|---|
-| **Invite** (default) | **Invitation:** the admin enters an email on the admin page. Supabase Auth sends an invitation link, and the user sets a password. **Self-sign-up is blocked.** |
-| **Open with approval** | **Sign-up:** anyone can sign up and verify the email. The account starts as `pending`. **Approval:** the admin approves → `active`, or rejects → `disabled`. A pending user sees only "ממתין לאישור מנהל". |
+| **Open with approval** (default) | **Request:** anyone with the link fills a sign-up form: name and email only, **no password**. The form calls `signup-request` (no sign-in; limited to 5 per IP and 3 per email per day). It saves a `signup` request; **no account is created yet**. **Admin:** receives an email and sees the request on the admin page; approves or rejects. **On approval:** `admin-invite` sends a Supabase invitation to that email; the user opens the link, sets a password and enters for the first time (`active`). **On rejection:** the request closes; no email. |
+| **Invite only** | The admin enters an email on the admin page and the invitation is sent directly. There is no sign-up form. |
 
-- **Email verification:** required in both modes.
-- **When a user signs up** in open mode, the admin receives an email.
+- **Why no password in the form:** an account is created only from the emailed link, so nobody can open an account with someone else's email address.
+- **Supabase Auth settings:** "Allow new users to sign up" stays **off** in both modes, because accounts are created only by invitation. The sign-up form does not need it.
+- **Email verification:** the invitation link verifies the email.
 
 ### 1.2 Sign-in
 
 - **Method:** email and password, through Supabase Auth.
-- **Password:** at least 10 characters (Auth setting).
+- **Password:** at least 8 characters, with a lowercase letter, an uppercase letter, a digit and a symbol (Auth setting).
 - **Reset:** by email link.
 - **Session:** the Supabase default with refresh. Sign-out from the menu.
 - **Google sign-in:** later, before opening to the public (decision of 2026-10-23).
@@ -118,6 +119,8 @@ There are two modes. The admin chooses one in the settings (`registration_mode`)
 - **When:** the admin replied to a request, or changed its status; a stock the user requested finished processing ("המניה X מוכנה"), or failed with a reason.
 - **Screen (K7):** a bell icon in the top bar with the unread count; the "My requests" screen from the menu.
 - **The admin** still receives an email for each new request.
+
+**Requests table (decided 2026-11-01):** one table, `support_tickets`, holds all requests: support, bug report, and company request (`type=company_request`); not the logs table. A regular request's status is changed only by the admin (`admin-tickets`). A company request's status is set automatically by the runner: `in_progress` when loading starts, `done` when the stock is complete, `failed` with a reason; every change notifies the user. Retention: a closed request is deleted 180 days after closing (weekly cleanup); an open one is never deleted; notifications are deleted 180 days after creation.
 
 ## 4. Adding a company
 

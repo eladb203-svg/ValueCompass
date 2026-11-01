@@ -87,9 +87,9 @@
 
 ## 6. הגדרות Auth ב-test — מה שלא ניתן להחיל מכאן
 `supabase/config.toml` מכיל הכל (`supabase config push`), אבל אין CLI. ידנית בדשבורד של **הפרויקט (test ואחר כך ייצור)**:
-1. Authentication → Sign In / Providers → **Allow new users to sign up = כבוי** (הרשמה עצמית חסומה).
+1. Authentication → Sign In / Providers → **Allow new users to sign up = כבוי** (נשאר כבוי בשני המצבים: חשבון נוצר רק מהזמנה; טופס ההרשמה עובר דרך `signup-request` ולא דרך Auth).
 2. אותו מסך → Email → **Confirm email = דלוק**.
-3. Authentication → Policies (Password) → **Minimum password length = 10**; מומלץ גם Require lowercase, uppercase, digits.
+3. Authentication → Policies (Password) → **Minimum password length = 8**, ו-Password requirements = **אות קטנה + אות גדולה + ספרה + סימן** (עדכון 1.1).
 4. Authentication → Email Templates → Invite user / Reset password / Confirm signup: הדבק את `supabase/templates/*.html` וכתבו את הנושא מ-`config.toml` (עברית).
 5. Authentication → URL Configuration → Site URL = כתובת האתר (K7).
 6. "Leaked password protection" מופיע כאזהרה — זמין בתוכנית Pro.
@@ -111,6 +111,9 @@
 | 11 | משתמש לא משנה role/status | עבר | PATCH/POST ישיר ו-`admin-users` — 403, הפרופיל לא השתנה. בנוסף ב-SQL (טרנזקציה שבוטלה, עם הרשאת עדכון זמנית ופוליסה פתוחה): הטריגר חוסם שינוי role, status ו-invited_by ("role and status are changed by the admin only") ומתיר שינוי שם |
 | 12 | חיפוש שלא מצא מפעיל request-company | עבר | `smart-search` עם `ZZZZQ` → `not_found` + `request` עם סיבה וטופס דיווח. **נתמך (הכנסה לתור) נבדק רק בבדיקות Deno שלא הורצו** ובטריגרים (13), כדי לא להכניס משימה לתור ולא לעורר את המריץ של השיחה השנייה |
 | 13 | הודעות רק למשתמש הנכון | עבר | פנייה `company_request` של A: מעברים data_loaded → complete יוצרים `company_started`, `company_ready`; תשובת מנהל וסגירה על פנייה רגילה: `ticket_reply`, `ticket_status`; B — אין הודעות; `notifications-read` מסמן רק של הקורא (חברת בדיקה זמנית נמחקה) |
+| 15 | `signup-request` בלי התחברות | עבר | בקשה נשמרה (`type=signup`, `user_id` ריק, `status=open`), מספר משתמשי Auth לא השתנה |
+| 16 | אישור/דחייה | ראו הערה | מנהל דוחה → `closed` בלי הזמנה; לא-מנהל — 403; אישור → `inviteUserByEmail`, הבקשה `done`, המשתמש המוזמן `active` עם השם מהטופס (הטריגר נבדק ב-SQL: מוזמן → active + שם). **בהרצות שבהן המכסה של שליחת המייל ב-Supabase (SMTP מובנה) הייתה מלאה** ההזמנה נכשלה ב-"email rate limit exceeded" והבקשה נשארה פתוחה (זו ההתנהגות הנכונה, בדיקה 16b). 16 מלאה תלויה במכסת המייל — ראו סעיף 11 |
+| 17 | הגבלת קצב | עבר | אותו מייל: 3 עוברות והרביעית 429; כתובת אחת: אחרי 5 בקשות השישית 429 (הפלטפורמה קובעת את כתובת הלקוח האמיתית; כותרת מזויפת לא עוזרת לעקוף) |
 | 14 | שמירה 180 יום | עבר | פנייה סגורה בת 181 יום נמחקה; סגורה בת 179 נשארה; פתוחה ישנה (181) נשארה; הודעה בת 181 נמחקה, בת 179 נשארה |
 בדיקות SQL נוספות (טרנזקציה שבוטלה): מייל מוזמן השווה ל-admin_email → admin+active; מוזמן אחר → user+active, `invited_by` נקבע, ו-`role` שהוזרק במטא-דאטה **לא** נשמר; לא מוזמן במצב invite → disabled; לא מוזמן במצב open → pending.
 **ניקוי:** משתמשי הבדיקה, פניות, הודעות, חברת הבדיקה ושורת ביקורת אחת שנשארה מריצה שהופסקה — נמחקו. `app_settings` חזר ל-`invite` ו-`200`.
@@ -135,18 +138,27 @@
 1. **התקנת Supabase CLI** (`scoop install supabase` או מהאתר) — לפריסה ול-`config push`.
 2. **התקנת PostgreSQL client tools** (`pg_dump`) ואישור להתקין Deno (`pip install deno`, או מ-deno.com) להרצת בדיקות הפונקציות.
 3. **מחרוזת חיבור ישירה לייצור** → `SUPABASE_PROD_DB_URL` ב-`.env` (Supabase → Project Settings → Database → Connection string, URI; בחר "Session pooler" אם אין IPv4). אז הגיבוי השבועי יתחיל (בהרצת cleanup של יום ראשון) ואפשר לבדוק dump+שחזור לאמיתי.
-4. **סודות לפונקציות** (`supabase secrets set --project-ref <ref> NAME=…`): `SEC_USER_AGENT` (חובה ל-request-company; SEC חוסמת בלי), `SITE_URL`, ואופציונלי: `RESEND_API_KEY`, `EMAIL_FROM`, `GEMINI_SEARCH_KEY` (+ `GEMINI_SEARCH_MODEL`) לחיפוש חכם. בלי המפתחות האחרונים: חיפוש רגיל ובלי מייל — כפי שנקבע.
-5. **הגדרות Auth** (סעיף 6), בעיקר: חסימת הרשמה, אימות מייל, סיסמה 10.
+4. **סודות לפונקציות** (`supabase secrets set --project-ref <ref> NAME=…`): `SEC_USER_AGENT` (חובה ל-request-company; SEC חוסמת בלי) — **אותו ערך כמו `SEC_USER_AGENT` ב-`.env`** (זהות המנהל; הוא לא סוד, אבל לא נרשם כאן), למשל PowerShell: `$v = (Get-Content .env | Where-Object { $_ -like "SEC_USER_AGENT=*" }) -replace "^SEC_USER_AGENT=",""; supabase secrets set --project-ref <ref> "SEC_USER_AGENT=$v"`, `SITE_URL`, ואופציונלי: `RESEND_API_KEY`, `EMAIL_FROM`, `GEMINI_SEARCH_KEY` (+ `GEMINI_SEARCH_MODEL`) לחיפוש חכם. בלי המפתחות האחרונים: חיפוש רגיל ובלי מייל — כפי שנקבע.
+5. **הגדרות Auth** (סעיף 6), בעיקר: חסימת הרשמה, אימות מייל, סיסמה מינימום 8 עם אות קטנה/גדולה/ספרה/סימן. **ומומלץ SMTP משלך** (Resend) ל-Auth: ל-SMTP המובנה של Supabase יש מגבלת קצב נמוכה, והיא גרמה ל"email rate limit exceeded" בבדיקה 16.
 6. **הזמנת המנהל הראשון** מהדשבורד (סעיף 2, הערה 2).
 7. החלטה: האם משתמשים לא מחוברים שלא מצליחים להיכנס יכולים לפנות (נדחה ל-K7).
 
 ## 10. רשימה מוכנה לייצור (לפי הסדר; לא בוצע)
 1. מוזג הענף ל-main אחרי השער של ק6ד-2 (ואימות שאין מיגרציה שיוצרת מחדש `v_display_metrics`/`v_fin_*` עם `security_invoker=true`).
 2. גיבוי ידני של הייצור לפני: `supabase db dump --data-only` (או pg_dump).
-3. הרצת מיגרציות 120100, 120200, 120400, 120500, 120600, 120700, 120800 על הייצור **בסדר הזה**, אחת-אחת; אחרי כל אחת: `VC_DB_TARGET=prod python scripts/vc.py status <טיקר>` (קריאה בלבד) ו-`scripts/security_privileges_check.sql`.
+3. הרצת מיגרציות 120100, 120200, 120400, 120500, 120600, 120700, 120800, 140000 על הייצור **בסדר הזה**, אחת-אחת; אחרי כל אחת: `VC_DB_TARGET=prod python scripts/vc.py status <טיקר>` (קריאה בלבד) ו-`scripts/security_privileges_check.sql`.
 4. אחרי מיגרציה 1 בייצור: לבדוק מי הם המשתמשים הקיימים; המיגרציה מסמנת את כולם `active`.
-5. פריסת 14 הפונקציות: `supabase functions deploy <שם> --project-ref zwpftrjryxyymrxsprqh --no-verify-jwt` לכל אחת (portfolio-save, portfolio-delete, watchlist-add, watchlist-remove, broker-import, support-send, profile-update, account-delete, request-company, smart-search, notifications-read, admin-invite, admin-users, admin-tickets). לפרוס מחדש גם ב-test את 9 החסרות ואת request-company.
+5. פריסת 15 הפונקציות (14 + `signup-request`, **זו עם `--no-verify-jwt` חובה**; בטופס ההרשמה אין התחברות): `supabase functions deploy <שם> --project-ref zwpftrjryxyymrxsprqh --no-verify-jwt` לכל אחת (signup-request, portfolio-save, portfolio-delete, watchlist-add, watchlist-remove, broker-import, support-send, profile-update, account-delete, request-company, smart-search, notifications-read, admin-invite, admin-users, admin-tickets). לפרוס מחדש גם ב-test את 9 החסרות ואת request-company.
 6. סודות, הגדרות Auth, הזמנת מנהל (סעיפים 6, 9).
 7. הרצת `scripts/security_acceptance.py` מול הייצור — **לא** (יוצר משתמשים); להתאים לריצה מצומצמת או להריץ ידנית את 1, 2, 6, 10 עם משתמשי בדיקה זמניים.
 8. הפעלת הגיבוי השבועי (`SUPABASE_PROD_DB_URL`), `cleanup.apply: true` לאחר אישור.
 9. לפני פתיחה לציבור: Google sign-in, TOTP למנהל, הערת הפרטיות.
+
+## 11. עדכון מפרט 1.1 (2026-11-01): הרשמה פתוחה עם אישור
+1. **מיגרציה 9** (`20261101140000_security_signup_requests.sql`, rollback מצורף): `registration_mode` ברירת מחדל `open`; `support_tickets` מקבלת `type=signup` (סטטוסים open/done/closed), `user_id` יכול להיות ריק רק לסוג הזה, ועמודות `signup_name`, `signup_email`, `ip_hash` (כתובת ה-IP נשמרת כ-SHA-256 בלבד); הטריגר של ההודעות מדלג על בקשה בלי בעלים. הוחלה על test.
+2. **`signup-request`** (חדשה, בלי JWT): שם + מייל, 5 ליום ל-IP ו-3 ליום למייל, פועלת רק כש-`registration_mode=open`, לא יוצרת חשבון, שולחת מייל למנהל דרך Resend אם יש מפתח. נפרסה ל-test.
+3. **`admin-tickets`**: פעולה `signup_decision` (`approve`/`reject`). אישור קורא לאותו עוזר הזמנה של `admin-invite` (`inviteUser`), רושם ביקורת ורק אז מסמן `done`; אם ההזמנה נכשלת הבקשה נשארת פתוחה. דחייה → `closed`, בלי מייל. שינוי סטטוס רגיל של בקשת signup נחסם. נפרסה ל-test. `admin-invite` עודכנה לאותו עוזר (קוד בלבד, **לא נפרסה** מחדש ב-test).
+4. **`config.toml`** והוראות סעיף 6: סיסמה מינימום 8 עם קטנה/גדולה/ספרה/סימן; "Allow new users to sign up" נשאר כבוי.
+5. **`SEC_USER_AGENT`**: בסעיף 9 פקודה שקוראת את הערך מה-`.env`. לא הגדרתי סוד בפרויקט מכאן (אין CLI).
+6. **בדיקות**: 3 בדיקות Deno חדשות (לא הורצו, אין Deno); בקבלה 15, 16, 17 (למעלה). שורות ההוראות על מצב `invite` בסעיפים 2-3 נכונות רק למצב invite, שעדיין נתמך (`registration_mode=invite`).
+7. **הערה לבדיקות**: סקריפט הקבלה מניח עכשיו `open` ומצפה ל-`pending` בבדיקה 0a. בבדיקה 16 הוא מזמין כתובת עם כינוי של המייל שלך (`eladb203+vcsec1@gmail.com`), כי Auth דוחה דומיין `.invalid`; ההרצות שלי שלחו לך כמה הודעות הזמנה ל-Gmail שאפשר להתעלם מהן; המשתמש נמחק בסוף.

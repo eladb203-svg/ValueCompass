@@ -12,6 +12,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -83,11 +84,12 @@ def main():
             s, t = http("POST", "/auth/v1/token?grant_type=password", PUB, body={"email": email, "password": PASSWORD})
             assert s == 200, (k, s, t)
             users[k]["token"] = t["access_token"]
-        # the sign-up trigger: invite mode without an invitation -> disabled (self-sign-up cannot become active)
+        # the sign-up trigger: open mode (the default) without an invitation -> pending; it can never become active by itself
+        s, mode = svc("GET", "/rest/v1/app_settings?key=eq.registration_mode&select=value")
         s, p = svc("GET", f"/rest/v1/user_profiles?id=eq.{users['a']['id']}&select=role,status")
-        record("0a", "Sign-up trigger, invite mode, no invitation", p == [{"role": "user", "status": "disabled"}], f"profile={p}")
+        record("0a", "Default registration_mode is open; sign-up trigger without an invitation -> pending", mode == [{"value": "open"}] and p == [{"role": "user", "status": "pending"}], f"mode={mode}; profile={p}")
         s, a = user_call(users["a"]["token"], "GET", "/rest/v1/v_stocks?limit=1")
-        record("0b", "Disabled user sees nothing", a == [], f"v_stocks={a}")
+        record("0b", "Pending user sees nothing", a == [], f"v_stocks={a}")
         for k, st, role in (("pending", "pending", "user"), ("a", "active", "user"), ("b", "active", "user"), ("admin", "active", "admin")):
             svc("PATCH", f"/rest/v1/user_profiles?id=eq.{users[k]['id']}", {"status": st, "role": role})
         # the trigger with a real invitation flag (invited_at) is checked in SQL by the report (admin_email -> admin)
@@ -226,7 +228,42 @@ def main():
         ids = sorted(r["id"] for r in left)
         record(14, "Closed ticket 181 days old deleted; old open ticket stays; notifications 180 days", ids == sorted([t_closed_young, t_open_old]) and [r["text"] for r in nl] == ["ret-young"],
                f"retention={out}; remaining tickets={ids} (closed-young, open-old); remaining notifications={[r['text'] for r in nl]}")
+
+        # 15-17 sign-up requests (no sign-in)
+        def signup(name, email, ip):
+            return http("POST", "/functions/v1/signup-request", PUB, body={"name": name, "email": email}, headers={"x-forwarded-for": ip})
+        e1, e2, e3 = ("eladb203+vcsec1@gmail.com", "eladb203+vcsec2@gmail.com", "sec-req3@test.invalid")
+        codes = [signup("R", e3, "198.51.100.1")[0] for _ in range(4)]            # 3 rows of this caller, the 4th is refused by the e-mail limit
+        profiles_before = len(svc("GET", "/auth/v1/admin/users?per_page=200")[1]["users"])
+        s1, b1 = signup("Dana Test", e1, "203.0.113.1")
+        s_t, tick = svc("GET", f"/rest/v1/support_tickets?signup_email=eq.{quote(e1)}&select=id,type,status,user_id,signup_name")
+        users_after = svc("GET", "/auth/v1/admin/users?per_page=200")[1]["users"]
+        record(15, "signup-request without sign-in creates a request and no account", s1 == 200 and len(tick) == 1 and tick[0]["type"] == "signup" and tick[0]["status"] == "open" and tick[0]["user_id"] is None
+               and len(users_after) == profiles_before and not any(u["email"] == e1 for u in users_after), f"status={s1}; ticket={tick}; auth users {profiles_before} -> {len(users_after)}")
+        signup("Rot Test", e2, "203.0.113.2")
+        _, t2 = svc("GET", f"/rest/v1/support_tickets?signup_email=eq.{quote(e2)}&select=id")
+        ad = users["admin"]["token"]
+        sa, _ = fn(users["a"]["token"], "admin-tickets", {"action": "signup_decision", "ticket_id": tick[0]["id"], "decision": "approve"})
+        sr, _ = fn(ad, "admin-tickets", {"action": "signup_decision", "ticket_id": t2[0]["id"], "decision": "reject"})
+        sap, bap = fn(ad, "admin-tickets", {"action": "signup_decision", "ticket_id": tick[0]["id"], "decision": "approve"})
+        _, st = svc("GET", f"/rest/v1/support_tickets?id=in.({tick[0]['id']},{t2[0]['id']})&select=id,status&order=id")
+        au = svc("GET", "/auth/v1/admin/users?per_page=200")[1]["users"]
+        inv1 = [u for u in au if u["email"] == e1]
+        inv2 = [u for u in au if u["email"] == e2]
+        _, prof1 = svc("GET", f"/rest/v1/user_profiles?id=eq.{inv1[0]['id']}&select=role,status,full_name") if inv1 else (0, None)
+        part_ok = sa == 403 and sr == 200 and {r["id"]: r["status"] for r in st}.get(t2[0]["id"]) == "closed" and not inv2 and (sap == 200 or (sap == 400 and {r["id"]: r["status"] for r in st}.get(tick[0]["id"]) == "open" and not inv1))
+        record("16b", "Non-admin refused; rejection closes without an invitation; a failed invitation leaves the request open", part_ok, f"non-admin={sa}, reject={sr}, approve={sap} {bap if sap != 200 else ''}; statuses={st}")
+        record(16, "Approval creates an invitation (invited user active, name kept); rejection closes without one; non-admin refused", sa == 403 and sr == 200 and sap in (200,)
+               and {r["id"]: r["status"] for r in st} == {tick[0]["id"]: "done", t2[0]["id"]: "closed"} and len(inv1) == 1 and inv1[0].get("invited_at") and not inv2
+               and prof1 == [{"role": "user", "status": "active", "full_name": "Dana Test"}], f"non-admin={sa}, reject={sr}, approve={sap} {bap if sap != 200 else ''}; statuses={st}; invited e1={bool(inv1)} (invited_at={inv1[0].get("invited_at") if inv1 else None}), e2={bool(inv2)}; profile={prof1}")
+        # rows of this caller so far: e3 x3, e1, e2 = 5 -> a new email from the same address is refused by the IP limit (the platform sets the real client address; a forged header does not help)
+        code_ip = signup("R", "sec-ip@test.invalid", "192.0.2.77")[0]
+        record(17, "Rate limit: 3 per email and 5 per IP per day", codes == [200, 200, 200, 429] and code_ip == 429, f"same email x4 -> {codes}; 6th request from the same address (new email) -> {code_ip}")
     finally:
+        svc("DELETE", "/rest/v1/support_tickets?type=eq.signup")
+        for u in svc("GET", "/auth/v1/admin/users?per_page=200")[1].get("users", []):
+            if u["email"] in ("eladb203+vcsec1@gmail.com", "eladb203+vcsec2@gmail.com"):
+                svc("DELETE", f"/auth/v1/admin/users/{u['id']}")
         for k, u in users.items():                                               # remove everything this run created
             uid = u["id"]
             for t in ("user_notifications", "support_tickets", "user_watchlist"):

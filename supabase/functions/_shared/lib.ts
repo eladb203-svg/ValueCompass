@@ -92,3 +92,37 @@ export async function emailAdmin(deps: Deps, subject: string, text: string): Pro
     return r.ok;
   } catch { return false; }
 }
+
+export const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Like `handle`, for a function with no sign-in (signup-request): CORS, POST only, JSON body, generic 500. `ip` is the caller's address. */
+export function handlePublic(fn: (c: { req: Request; body: any; ip: string; deps: Deps }) => Promise<Response>) {
+  return async (req: Request, deps: Deps): Promise<Response> => {
+    if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+    if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
+    try {
+      let body: any = {};
+      try { body = await req.json(); } catch { body = {}; }
+      if (body === null || typeof body !== "object" || Array.isArray(body)) body = {};
+      const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim() || "unknown";
+      return await fn({ req, body, ip, deps });
+    } catch (_e) {
+      return json(500, { error: "server_error" });
+    }
+  };
+}
+
+export async function sha256Hex(s: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Sends the Supabase invitation (the user sets a password from the link and becomes `active` by the sign-up trigger). -> {ok, userId?, message?} */
+export async function inviteUser(deps: Deps, adminId: string, email: string, name?: string) {
+  const redirectTo = deps.env("SITE_URL");
+  const data: any = { invited_by: adminId };
+  if (name) data.full_name = name;
+  const r = await deps.db.auth.admin.inviteUserByEmail(email, { data, ...(redirectTo ? { redirectTo } : {}) });
+  if (r.error) return { ok: false, message: String(r.error.message ?? "").slice(0, 200) };
+  return { ok: true, userId: (r.data?.user?.id ?? null) as string | null };
+}

@@ -4,11 +4,12 @@ project_id = "valuecompass"
 
 [auth]
 site_url = "http://localhost:3000"
-# Invite mode: nobody can sign up on their own. The admin invites by email (admin-invite). To open registration later: enable_signup = true and app_settings.registration_mode = 'open'.
+# "Allow new users to sign up" stays OFF in both registration modes (spec 1.1, update 2026-11-01): an account is created only from an invitation.
+# The sign-up form calls the signup-request function, which saves a request; the admin's approval sends the invitation (admin-tickets -> invite).
 enable_signup = false
 enable_anonymous_sign_ins = false
-minimum_password_length = 10
-password_requirements = "lower_upper_letters_digits"
+minimum_password_length = 8
+password_requirements = "lower_upper_letters_digits_symbols"
 
 [auth.email]
 enable_signup = true            # the email provider itself stays on (invited users set their password); the global enable_signup above blocks self-sign-up

@@ -10,6 +10,7 @@ import { handler as supportSend } from "../support-send/index.ts";
 import { handler as smartSearch } from "../smart-search/index.ts";
 import { handler as requestCompany } from "../request-company/index.ts";
 import { handler as notificationsRead } from "../notifications-read/index.ts";
+import { handler as signupRequest } from "../signup-request/index.ts";
 import { handler as brokerImport, mapHeader } from "../broker-import/index.ts";
 
 /** A tiny in-memory stand-in for the supabase-js query builder (eq / in / is / ilike / gte / neq / order / limit / select / insert / update / delete). */
@@ -37,7 +38,7 @@ class Q {
     let out: any[] = [];
     if (this.op === "insert") {
       const items = Array.isArray(this.payload) ? this.payload : [this.payload];
-      for (const it of items) { const row = { id: this.db.next++, ...it }; rows.push(row); out.push(row); }
+      for (const it of items) { const row = { id: this.db.next++, created_at: "2026-11-01T00:00:00.000Z", ...it }; rows.push(row); out.push(row); }
     } else if (this.op === "update") { out = hit(); out.forEach((r) => Object.assign(r, this.payload)); }
     else if (this.op === "delete") { out = hit(); for (const r of out) rows.splice(rows.indexOf(r), 1); }
     else out = hit().slice(0, this.lim);
@@ -190,6 +191,51 @@ Deno.test("admin-tickets: status values follow the ticket type; the change is au
   assertEquals((await call(adminTickets, deps, "tAdmin", { action: "update", ticket_id: 1, status: "closed", reply: "fixed" })).status, 200);
   assertEquals((await call(adminTickets, deps, "tAdmin", { action: "update", ticket_id: 2, status: "failed", reason: "no 10-K" })).status, 200);
   assertEquals([db.t("support_tickets")[1].fail_reason, db.t("admin_audit_log").length], ["no 10-K", 2]);
+});
+
+const signup = (deps: Deps, body: any, ip = "1.1.1.1") =>
+  signupRequest(new Request("http://x/", { method: "POST", headers: { "x-forwarded-for": ip }, body: JSON.stringify(body) }), deps);
+
+Deno.test("signup-request: no sign-in -> a request is saved, no account, admin emailed; closed mode refuses; bad input refused", async () => {
+  const { db, deps } = world();
+  db.tables.app_settings = [{ key: "registration_mode", value: "open" }, { key: "admin_email", value: "adm@x" }];
+  deps.env = (k) => (k === "RESEND_API_KEY" ? "k" : undefined);
+  const sent: any[] = [];
+  deps.fetch = ((_u: string, init: any) => { sent.push(JSON.parse(init.body)); return Promise.resolve({ ok: true }); }) as any;
+  assertEquals((await signup(deps, { name: "Dana", email: " Dana@X.com " })).status, 200);
+  const t = db.t("support_tickets")[0];
+  assertEquals([t.type, t.signup_email, t.signup_name, t.user_id ?? null, t.status ?? "open", t.ip_hash.length], ["signup", "dana@x.com", "Dana", null, "open", 64]);
+  assertEquals([db.t("user_profiles").length, sent.length, sent[0].to], [4, 1, ["adm@x"]]);   // no profile added; one email, to the admin
+  assertEquals((await signup(deps, { name: "", email: "a@b.co" })).status, 400);
+  assertEquals((await signup(deps, { name: "x", email: "nope" })).status, 400);
+  db.t("app_settings")[0].value = "invite";
+  assertEquals((await signup(deps, { name: "Dana", email: "d2@x.com" })).status, 403);
+});
+
+Deno.test("signup-request: 3 per email and 5 per IP in 24 hours", async () => {
+  const { db, deps } = world();
+  db.tables.app_settings = [{ key: "registration_mode", value: "open" }];
+  for (let i = 0; i < 3; i++) assertEquals((await signup(deps, { name: "E", email: "e@x.com" }, "9.9.9." + i)).status, 200);
+  assertEquals((await signup(deps, { name: "E", email: "e@x.com" }, "9.9.9.9")).status, 429);
+  for (let i = 0; i < 2; i++) assertEquals((await signup(deps, { name: "F", email: `f${i}@x.com` }, "7.7.7.7")).status, 200);
+  assertEquals((await signup(deps, { name: "F", email: "f9@x.com" }, "7.7.7.7")).status, 200);
+  assertEquals((await signup(deps, { name: "F", email: "f8@x.com" }, "7.7.7.7")).status, 200);
+  assertEquals((await signup(deps, { name: "F", email: "f7@x.com" }, "7.7.7.7")).status, 200);
+  assertEquals((await signup(deps, { name: "F", email: "f6@x.com" }, "7.7.7.7")).status, 429);
+});
+
+Deno.test("admin-tickets: approving a sign-up request invites the email; rejecting closes it without an email; non-admin refused; decided twice -> 409", async () => {
+  const { db, deps } = world();
+  const invited: string[] = [];
+  db.auth.admin.inviteUserByEmail = ((e: string) => { invited.push(e); return Promise.resolve({ data: { user: { id: "u1" } }, error: null }); }) as any;
+  db.tables.support_tickets = [{ id: 1, type: "signup", status: "open", signup_name: "Dana", signup_email: "d@x.com" }, { id: 2, type: "signup", status: "open", signup_name: "Rot", signup_email: "r@x.com" }];
+  assertEquals((await call(adminTickets, deps, "tA", { action: "signup_decision", ticket_id: 1, decision: "approve" })).status, 403);
+  assertEquals((await call(adminTickets, deps, "tAdmin", { action: "update", ticket_id: 1, status: "closed" })).status, 400);
+  assertEquals((await call(adminTickets, deps, "tAdmin", { action: "signup_decision", ticket_id: 1, decision: "approve" })).status, 200);
+  assertEquals((await call(adminTickets, deps, "tAdmin", { action: "signup_decision", ticket_id: 2, decision: "reject" })).status, 200);
+  assertEquals((await call(adminTickets, deps, "tAdmin", { action: "signup_decision", ticket_id: 1, decision: "reject" })).status, 409);
+  assertEquals([invited, db.t("support_tickets").map((t) => t.status)], [["d@x.com"], ["done", "closed"]]);
+  assertEquals(db.t("admin_audit_log").map((a) => a.action), ["invite", "signup_approve", "signup_reject"]);
 });
 
 Deno.test("notifications-read marks only the caller's", async () => {
