@@ -16,6 +16,7 @@ from .checks import normalize, parse_json, MIN_QUOTE_CHARS
 SCALES = (1, 1000, 1000000, 1000000000)
 UNITS = ("USD", "percent", "count", "ratio", "sq_ft", "MW")
 STATES = ("value", "NA", "not_disclosed")
+COMPONENTS = "components"          # K6d-2 fixes: the answer of an item with a derivation hint when the figure is not stated: the components, each with its quote; the CODE computes the number
 # items that the report text rarely carries because the company publishes them in the supplemental package (an 8-K, not downloaded): not_disclosed is flagged
 SUPPLEMENTAL_ITEMS = ("acquisition_yield", "development_yield", "acquisition_invested", "development_invested", "unencumbered_noi_share", "unencumbered_assets_share",
                       "same_property_noi_growth", "largest_tenant_share", "occupancy", "maint_capex", "ti_lc", "straight_line_rent_affo", "stabilized_noi", "stabilized_value",
@@ -184,6 +185,88 @@ def salvage_items(raw: str) -> Optional[dict]:
     return {"skill_id": sid.group(1) if sid else None, "items": items} if items else None
 
 
+def _same_noi_growth(c: dict) -> tuple:
+    cur, prior = c["revenue_current"] - c["expense_current"], c["revenue_prior"] - c["expense_prior"]
+    if prior <= 0 or cur <= 0 or c["expense_current"] >= c["revenue_current"]:
+        return None, "NOI of the pool is not positive"
+    return (cur / prior - 1) * 100.0, f"NOI = revenues - property expenses = {c['revenue_current']:,.0f} - {c['expense_current']:,.0f} and {c['revenue_prior']:,.0f} - {c['expense_prior']:,.0f}; growth = current / prior - 1 (CL22)"
+
+
+def _ig_share(c: dict) -> tuple:
+    low = c["non_investment_grade"] + c.get("non_rated", 0.0)
+    if c["total_fixed_income"] <= 0 or not 0 <= low < c["total_fixed_income"]:
+        return None, "amounts do not fit the portfolio total"
+    return (1 - low / c["total_fixed_income"]) * 100.0, f"1 - (non-investment grade {c['non_investment_grade']:,.0f} + non-rated {c.get('non_rated', 0.0):,.0f}) / fixed income {c['total_fixed_income']:,.0f}"
+
+
+def _gross_profit(c: dict) -> tuple:
+    return c["revenue"] - c["cost_of_revenue"], f"revenue {c['revenue']:,.0f} - cost of revenue {c['cost_of_revenue']:,.0f}"
+
+
+# item -> (unit of the result, {component: required?}, formula). The model returns the components with quotes; the number is computed here.
+DERIVATIONS = {
+    "same_property_noi_growth": ("percent", {"revenue_current": True, "revenue_prior": True, "expense_current": True, "expense_prior": True}, _same_noi_growth),
+    "inv_ig_share": ("percent", {"non_investment_grade": True, "non_rated": False, "total_fixed_income": True}, _ig_share),
+    "gross_profit": ("USD", {"revenue": True, "cost_of_revenue": True}, _gross_profit),
+}
+
+
+def derive_item(it: dict, keys: dict, text_norm: str, fy: int) -> ItemResult:
+    """An item answered with ``value_state = "components"``: every component needs its quote, found verbatim in the text, containing its number (the same checks as a stated figure); the value is computed by the
+    formula of the item. A missing required component, a quote not found or a result outside what the formula accepts rejects the item. The row is flagged ``derived`` and its quote holds every component quote."""
+    res = ItemResult(False, it)
+    key = it.get("item_key")
+    spec = DERIVATIONS.get(key)
+    if spec is None or key not in keys:
+        res.reasons.append("derivation_not_defined")
+        return res
+    unit, req, formula = spec
+    res.year, assumed = period_year(str(it.get("period") or ""), fy)
+    if assumed:
+        res.flags.append("period_assumed_fiscal_year")
+    if not (fy - 2 <= res.year <= fy):
+        res.reasons.append("period_mismatch")
+    comps = it.get("components")
+    if not isinstance(comps, list) or it.get("value") is not None:
+        res.reasons.append("value_state_inconsistent")                      # the model must not give a final number with the components
+        return res
+    vals, quotes = {}, []
+    for c in comps:
+        name = c.get("name") if isinstance(c, dict) else None
+        if name not in req:
+            res.reasons.append(f"component_unknown:{name}")
+            continue
+        sc = c.get("scale")
+        v = c.get("value")
+        q = c.get("quote") if isinstance(c.get("quote"), dict) else {}
+        qn = normalize(q.get("text") or "")
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or sc not in SCALES:
+            res.reasons.append(f"component_malformed:{name}")
+        elif len(qn) < MIN_QUOTE_CHARS or "..." in qn or qn not in text_norm:
+            res.reasons.append(f"component_quote_not_found:{name}")
+        elif not number_in_quote(float(v), int(sc), "USD", q["text"])[0]:
+            res.reasons.append(f"component_number_not_in_quote:{name}")
+        else:
+            vals[name] = float(v) * int(sc)
+            quotes.append(q["text"])
+    for name, needed in req.items():
+        if needed and name not in vals and not any(r.endswith(":" + name) for r in res.reasons):
+            res.reasons.append(f"component_missing:{name}")
+    if res.reasons:
+        return res
+    value, how = formula(vals)
+    if value is None:
+        res.reasons.append("derivation_rejected:" + how)
+        return res
+    it["value"], it["unit"], it["scale"], it["value_state"] = round(value, 6), unit, 1, "value"
+    it["quote"] = {"text": " || ".join(quotes), "section": (comps[0].get("quote") or {}).get("section")}
+    it["basis"] = f"derived by code from components: {how}"
+    res.flags.append("derived")
+    res.value_full = it["value"]
+    res.ok = True
+    return res
+
+
 def check_reply(raw: str, block: dict, text_sent: str, fy: int, items: Optional[list] = None) -> tuple:
     """-> (results, reasons): the item results of one block call, and call-level reasons (invalid_json, skill_id_mismatch)."""
     d = parse_json(raw)
@@ -210,7 +293,7 @@ def check_reply(raw: str, block: dict, text_sent: str, fy: int, items: Optional[
     tn = normalize(text_sent)
     from .prompt import extraction_signs
     signs, _ = extraction_signs()
-    return [check_item(it, keys, tn, fy, rule=signs.get(it.get("item_key")) if isinstance(it, dict) else None) for it in its], reasons
+    return [derive_item(it, keys, tn, fy) if isinstance(it, dict) and it.get("value_state") == COMPONENTS else check_item(it, keys, tn, fy, rule=signs.get(it.get("item_key")) if isinstance(it, dict) else None) for it in its], reasons
 
 
 # ---------------------------------------------------------------- block controls

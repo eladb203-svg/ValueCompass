@@ -76,6 +76,8 @@ def build(tmp_path):
     c.tables["work_queue"] = [{"id": 1, "state": "done", "updated_at": ago(31), "company_id": 1}, {"id": 2, "state": "failed", "updated_at": ago(29), "company_id": 1},
                              {"id": 3, "state": "queued", "updated_at": ago(300), "company_id": 1}, {"id": 4, "state": "deferred_quota", "updated_at": ago(300), "company_id": 1},
                              {"id": 5, "state": "failed", "updated_at": ago(45), "company_id": 2}]
+    c.tables["data_gap_review"] = [{"id": 1, "company_id": 1, "state": "fixed", "closed_at": ago(181)}, {"id": 2, "company_id": 1, "state": "genuine", "closed_at": ago(179)},
+                                   {"id": 3, "company_id": 2, "state": "open", "closed_at": None}, {"id": 4, "company_id": 2, "state": "genuine", "closed_at": ago(400)}]
     c.tables["filing_periods"] = [{"company_id": 1, "fiscal_year": 2014, "accession": "0000004977-15-000001"}, {"company_id": 1, "fiscal_year": 2025, "accession": "0000004977-26-000005"}]
     (tmp_path / "000000497715000001_ko-20141231.htm").write_text("old filing" * 100, encoding="utf-8")
     (tmp_path / "000000497726000005_ko-20251231.htm").write_text("new filing", encoding="utf-8")
@@ -87,7 +89,7 @@ def test_the_plan_lists_exactly_what_the_rules_select_and_changes_nothing(tmp_pa
     before = {t: list(v) for t, v in c.tables.items()}
     plan = CL.plan_cleanup(c, NOW, tmp_path)
     ids = {t: sorted(p.id for p in v) for t, v in plan.rows.items()}
-    assert ids == {"ai_texts": [1], "company_business_profiles": [1], "ai_assessments": [1], "score_runs": [1], "data_update_log": [1, 3], "work_queue": [1, 5]}
+    assert ids == {"ai_texts": [1], "company_business_profiles": [1], "ai_assessments": [1], "score_runs": [1], "data_update_log": [1, 3], "work_queue": [1, 5], "data_gap_review": [1, 4]}
     assert plan.rows["score_runs"][0].children == 3 and [p["fiscal_year"] for p in plan.files] == [2014] and plan.total_bytes() > 1000
     assert c.tables == before and (tmp_path / "000000497715000001_ko-20141231.htm").exists()           # the plan only reads
     text_ = CL.render_plan(plan, {1: "KO", 2: "MSFT"})
@@ -97,7 +99,7 @@ def test_the_plan_lists_exactly_what_the_rules_select_and_changes_nothing(tmp_pa
 def test_apply_deletes_the_plan_and_open_tasks_and_current_data_stay(tmp_path):
     c = build(tmp_path)
     done = CL.apply_plan(c, CL.plan_cleanup(c, NOW, tmp_path))
-    assert done == {"ai_texts": 1, "company_business_profiles": 1, "ai_assessments": 1, "score_runs": 1, "data_update_log": 2, "work_queue": 2, "sec_cache_files": 1}
+    assert done == {"ai_texts": 1, "company_business_profiles": 1, "ai_assessments": 1, "score_runs": 1, "data_update_log": 2, "work_queue": 2, "data_gap_review": 2, "sec_cache_files": 1}
     assert [r["id"] for r in c.tables["score_runs"]] == [2, 3] and {d["run_id"] for d in c.tables["score_details"]} == {2, 3} and [v["id"] for v in c.tables["valuations"]] == [2]
     assert [r["id"] for r in c.tables["work_queue"]] == [2, 3, 4] and [r["id"] for r in c.tables["ai_assessments"]] == [2] and [r["id"] for r in c.tables["ai_texts"]] == [2]
     assert not (tmp_path / "000000497715000001_ko-20141231.htm").exists() and (tmp_path / "000000497726000005_ko-20251231.htm").exists()
@@ -114,5 +116,5 @@ def test_the_job_defaults_to_the_plan_and_deletes_only_with_apply(tmp_path):
     assert out.status == "no_change" and out.detail["apply"] is False and out.deleted == 0 and len(c.tables["score_runs"]) == 3
     assert "score_runs: 1 row(s)" in (tmp_path / "state").glob("cleanup_plan_*.txt").__next__().read_text(encoding="utf-8")
     out = jr.run("cleanup", apply=True)
-    assert out.status == "success" and out.deleted == 9 and len(c.tables["score_runs"]) == 2                  # 8 rows and 1 cache file
-    assert [r.get("update_scope") for r in c.tables["data_update_log"]][-2:] == ["sched:cleanup", "sched:cleanup"] and c.tables["data_update_log"][-1]["records_deleted"] == 9
+    assert out.status == "success" and out.deleted == 11 and len(c.tables["score_runs"]) == 2                  # 10 rows and 1 cache file
+    assert [r.get("update_scope") for r in c.tables["data_update_log"]][-2:] == ["sched:cleanup", "sched:cleanup"] and c.tables["data_update_log"][-1]["records_deleted"] == 11

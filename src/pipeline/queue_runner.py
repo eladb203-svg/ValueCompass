@@ -384,15 +384,24 @@ class QueueRunner:
             raise RuntimeError(f"scoring failed: {out.detail}")
         out.result = self.priced_result(cid, ticker, out)
         run_id, w = self.scores.write_result(cid, out.result)
+        gaps = self.gap_review(cid)
         self.enqueue_peer_renders(co)
         if stage == "first":
             self.companies.set_processing_state(cid, "scored_partial")
             planned = self.plan_ai(co, out, task["priority"])
             self.enqueue(cid, "score", None, "final", task["priority"])
             self.enqueue(cid, "analysis", None, None, task["priority"])
-            return {"run_id": run_id, "write": w, "ai_pending": out.ai_pending, "planned": planned}
+            return {"run_id": run_id, "write": w, "ai_pending": out.ai_pending, "planned": planned, "gaps": gaps}
         self.companies.set_processing_state(cid, "complete" if out.ai_pending == 0 else "scored_partial")
-        return {"run_id": run_id, "write": w, "ai_pending": out.ai_pending}
+        return {"run_id": run_id, "write": w, "ai_pending": out.ai_pending, "gaps": gaps}
+
+    def gap_review(self, company_id: int) -> dict:
+        """K6d-2 fixes: the criteria that stay Missing after this score go to the review list (``data_gap_review``); no model call, and a failure here never fails the score."""
+        try:
+            from src.ai import gap_review as GR
+            return GR.refresh(self.client, company_id)
+        except Exception as e:   # noqa: BLE001
+            return {"error": f"{type(e).__name__}: {e}"}
 
     def priced_result(self, company_id: int, ticker: str, out) -> dict:
         """The result priced at the latest stored price (``market_snapshot``): the engines read the price file of the earlier stages, which is not refreshed (K6d-1). A stale price (E1) gives no price

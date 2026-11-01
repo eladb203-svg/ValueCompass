@@ -240,6 +240,12 @@ class Pipeline:
         self._provisional = bool(res.router_needs)
         if not self.dry_run:
             self._write_profile(cid, final, rr, fs, resolved)
+            if raw.get("wide_conflicts"):                # K6d-2 fixes: two candidates of the wide XBRL search that disagree leave the year missing and go to the review list
+                try:
+                    from src.ai import gap_review as GR
+                    GR.record_conflicts(self.client, cid, raw["wide_conflicts"])
+                except Exception as e:   # noqa: BLE001
+                    res.warnings.append(f"data_gap_review: conflicts not recorded ({type(e).__name__}: {e})")
             before = (self.companies.get_by_id(cid) or {}).get("processing_state")
             if res.rows_written or R._rank(before) < R._rank("data_loaded"):          # a repeated load that changes nothing leaves the state (and updated_at) alone
                 self.companies.set_processing_state(cid, "data_loaded")

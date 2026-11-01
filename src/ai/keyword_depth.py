@@ -39,6 +39,16 @@ IG_SENTENCES = (
     (r"[Tt]otal investment grade\s+[\d,\.]+\s+[\d,\.]+\s+(\d{2,3})\s?%", False),
     (r"[Nn]on-investment[- ]grade [^.%]{0,100}?(?:represented|representing|was|were|of)\s*(?:approximately )?(\d{1,2}(?:\.\d)?)\s?%", True),     # the complement
 )
+# same-property table without an NOI line (REXR): revenues and property expenses of the same pool, current and prior year -> NOI = revenues - property expenses
+SAME_ANCHOR = r"[Ss]ame[- ](?:[Pp]roperty|[Ss]tore)"
+SAME_REV = r"(?:TOTAL REVENUES|Total revenues|Rental (?:income|revenues?)|Rental and other (?:income|revenues?))\s+\$?\s*([\d,]{5,})\s+\$?\s*([\d,]{5,})"
+SAME_EXP = r"(?:Property|Real estate|Property operating) (?:operating )?expenses?\s+\$?\s*([\d,]{4,})\s+\$?\s*([\d,]{4,})"
+# tenants: "no single tenant ... more than X%" is a ceiling (bound=max); "10 largest tenants ... Y%" is a separate item
+TENANT_CAP = r"no (?:single |one )?tenants?[^.%$]{0,100}?(?:more than|greater than|in excess of|exceeding|over) (\d{1,2}(?:\.\d+)?)\s?%"
+TENANT_TOP10 = r"(?:10|ten) largest tenants[^.%$]{0,120}?(\d{1,2}(?:\.\d+)?)\s?%"
+# insurers: investment-grade share from amounts - "non-investment grade bonds totaled $148 million while non-rated ... $90 million"
+NONIG = r"non-investment[- ]grade[^.$]{0,80}?\$\s?([\d,\.]+)\s+(million|billion)"
+NONRATED = r"non-rated[^.$]{0,100}?\$\s?([\d,\.]+)\s+(million|billion)"
 UNENC = r"unencumbered (?:asset|property) value[^$]{0,120}\$\s?([\d,\.]+)[^$]{0,200}?total (?:asset|property) value[^$]{0,120}\$\s?([\d,\.]+)"
 
 
@@ -78,6 +88,44 @@ def same_noi_rows(texts: dict) -> list:
                 if prior > 0 and cur > 0 and abs(cur / prior - 1) <= 0.5:
                     out.append((y, texts[y][0], round((cur / prior - 1) * 100, 4), texts[y][1][m.start():m.end()], "same-property NOI growth derived: current / prior - 1 (both levels in the quote)"))
                 break
+        else:
+            t = same_table(texts[y][1])
+            if t:
+                out.append((y, texts[y][0], t[0], t[1], t[2]))
+    return out
+
+
+def same_table(text: str) -> Optional[tuple]:
+    """The same-property table with revenues and property expenses but no NOI line -> (growth in percent, quote, basis) or None. NOI = revenues - property expenses for each of the two years;
+    growth = current / prior - 1 (rulebook CL22). The quote runs from the revenue line to the end of the expense line, so both lines are in it."""
+    for a in re.finditer(SAME_ANCHOR, text):
+        win = text[a.start():a.start() + 3500]
+        r = re.search(SAME_REV, win)
+        if not r:
+            continue
+        e = re.search(SAME_EXP, win[r.end():r.end() + 900])
+        if not e:
+            continue
+        rc, rp, ec, ep = _num(r.group(1)), _num(r.group(2)), _num(e.group(1)), _num(e.group(2))
+        cur, prior = rc - ec, rp - ep
+        if prior > 0 and cur > 0 and ec < rc and ep < rp and abs(cur / prior - 1) <= 0.5:
+            quote = win[r.start():r.end() + e.end()]
+            return (round((cur / prior - 1) * 100, 4), quote,
+                    f"same-property NOI derived: NOI = revenues - property expenses = {rc:,.0f} - {ec:,.0f} = {cur:,.0f} and {rp:,.0f} - {ep:,.0f} = {prior:,.0f}; growth = current / prior - 1 (CL22)")
+    return None
+
+
+def tenant_rows(texts: dict) -> list:
+    """[(item, year, accession, value, quote, basis, bound)] - the ceiling of the largest tenant and the share of the 10 largest tenants, from the sentence of the report."""
+    out = []
+    for y in sorted(texts):
+        t = texts[y][1]
+        m = re.search(TENANT_CAP, t, re.I)
+        if m and 0 < _num(m.group(1)) <= 100:
+            out.append(("largest_tenant_share", y, texts[y][0], _num(m.group(1)), t[m.start():m.end()], "upper bound (bound=max): no single tenant above this share of annualized base rent; the largest tenant is at or below it", True))
+        m = re.search(TENANT_TOP10, t, re.I)
+        if m and 0 < _num(m.group(1)) <= 100:
+            out.append(("top10_tenants_share", y, texts[y][0], _num(m.group(1)), t[m.start():m.end()], "share of annualized base rent of the 10 largest tenants", False))
     return out
 
 
@@ -101,7 +149,7 @@ def _row(ticker: str, item: str, skill: str, block: str, y: int, acc: str, value
             "approval_reason": "block rule: automatic when the bounds control passes; the quote is found in the report text as written"}
 
 
-def build_rows(ticker: str, texts: dict, have_unenc_value: bool, have_same_noi_years: set, have_occupancy_years: set) -> list:
+def build_rows(ticker: str, texts: dict, have_unenc_value: bool, have_same_noi_years: set, have_occupancy_years: set, have_tenant_years: Optional[dict] = None) -> list:
     """The rows to add. An item/year the model already answered with a value is left alone; ``not_disclosed`` is replaced."""
     rows = []
     for y, acc, v, q, b in occupancy_rows(texts):
@@ -110,6 +158,10 @@ def build_rows(ticker: str, texts: dict, have_unenc_value: bool, have_same_noi_y
     for y, acc, v, q, b in same_noi_rows(texts):
         if y not in have_same_noi_years:
             rows.append(_row(ticker, "same_property_noi_growth", "EXT-RE-OPS", "B5", y, acc, v, q, b, True))
+    have_tenant_years = have_tenant_years or {}
+    for item, y, acc, v, q, b, bound in tenant_rows(texts):
+        if y not in have_tenant_years.get(item, set()):
+            rows.append(_row(ticker, item, "EXT-RE-OPS", "B5", y, acc, v, q, b, False))
     if not have_unenc_value:
         for y, acc, v, q, b in unencumbered_rows(texts):
             rows.append(_row(ticker, "unencumbered_assets_share", "EXT-RE-UNENC", "B9", y, acc, v, q, b, True))
@@ -137,7 +189,7 @@ def run(client, item_store, sec, ticker: str, n: int = 5) -> dict:
     have = lambda key: {r["year"] for r in rows_db if r.get("item_key") == key and r.get("state") == "value" and r.get("model") != "keyword-search"}   # noqa: E731
     unenc_value = any(r.get("item_key") in ("unencumbered_noi_share", "unencumbered_assets_share") and r.get("state") == "value" and r.get("model") != "keyword-search" for r in rows_db)
     texts = reports(sec, ticker, n)
-    rows = build_rows(ticker, texts, unenc_value, have("same_property_noi_growth"), have("occupancy"))
+    rows = build_rows(ticker, texts, unenc_value, have("same_property_noi_growth"), have("occupancy"), {k: have(k) for k in ("largest_tenant_share", "top10_tenants_share")})
     stats = item_store.upsert_rows(rows, "ai_controls") if rows else {}
     return {"reports": sorted(texts), "rows": len(rows), "by_item": {k: sum(1 for r in rows if r["item_key"] == k) for k in {r["item_key"] for r in rows}}, "upsert": stats}
 
@@ -161,11 +213,62 @@ def ig_share_rows(texts: dict) -> list:
     return out
 
 
+def _amount(num: str, unit: str) -> float:
+    return _num(num.rstrip(".")) * (1e9 if unit.lower() == "billion" else 1e6)
+
+
+def ig_amount_rows(texts: dict, totals: dict) -> list:
+    """[(year, accession, investment-grade share in percent, quote, basis)] where the report gives only the amounts of non-investment-grade (and non-rated) bonds: share = 1 - (non-IG + non-rated) / total
+    fixed income. ``totals`` = {year: (amount in USD, where it comes from)}; a year without a total gives no row (the item stays missing). The non-rated part is counted as not investment grade (the cautious reading)."""
+    out = []
+    for y in sorted(texts):
+        if y not in totals:
+            continue
+        t = texts[y][1]
+        a = re.search(NONIG, t, re.I)
+        if not a:
+            continue
+        b = re.search(NONRATED, t[a.start():a.end() + 400], re.I)
+        low = _amount(a.group(1), a.group(2)) + (_amount(b.group(1), b.group(2)) if b else 0.0)
+        total, src = totals[y]
+        if total > 0 and 0 <= low < total:
+            end = a.start() + (b.end() if b else a.end() - a.start())
+            share = round((1 - low / total) * 100, 4)
+            out.append((y, texts[y][0], share, t[a.start():end], f"investment-grade share derived: 1 - (non-investment grade{' + non-rated' if b else ''} = {low / 1e6:,.0f} m) / fixed income {total / 1e6:,.0f} m ({src})"))
+    return out
+
+
+def fixed_income_totals(item_rows: list, facts_json: dict, years: list) -> dict:
+    """{fiscal year: (USD, source)} - the fixed-income total of the report (an extracted row of the investments block), else the XBRL fair value of debt securities of the year."""
+    out = {}
+    for r in item_rows:
+        if r.get("item_key") in ("inv_fixed_maturities", "inv_total_fixed_income") and r.get("state") == "value" and r.get("value_full") and r.get("year") in years and r.get("approval_status") != "rejected":
+            out.setdefault(r["year"], (float(r["value_full"]), f"report: {r['item_key']} of the investments block"))
+    from datetime import date
+    gaap = (facts_json or {}).get("facts", {}).get("us-gaap", {})
+    for tag in ("AvailableForSaleSecuritiesDebtSecurities", "DebtSecuritiesAvailableForSaleExcludingAccruedInterest"):
+        for e in gaap.get(tag, {}).get("units", {}).get("USD", []):
+            if e.get("form") in ("10-K", "10-K/A") and e.get("fp") == "FY" and "start" not in e:
+                y = date.fromisoformat(e["end"]).year
+                if y in years and y not in out:
+                    out[y] = (float(e["val"]), f"XBRL {tag}")
+    return out
+
+
 def run_insurer(client, item_store, sec, ticker: str, n: int = 3) -> dict:
     """The insurer step: the investment-grade share where the model returned none for the year."""
     rows_db = item_store.rows_for(ticker)
     have = {r["year"] for r in rows_db if r.get("item_key") == "inv_ig_share" and r.get("state") == "value" and r.get("model") != "keyword-search"}      # the engine uses the share when no total fixed income was extracted
     texts = reports(sec, ticker, n)
     rows = [_row(ticker, "inv_ig_share", "EXT-INS-INV", "B4", y, acc, v, q, b, "100 -" in b) for y, acc, v, q, b in ig_share_rows(texts) if y not in have]
+    done = {r["year"] for r in rows} | have
+    if any(y not in done for y in texts):                                # K6d-2 fixes (RLI): only amounts of non-investment-grade bonds -> the share from the fixed-income total
+        try:
+            from src.pipeline.resolve import resolve
+            facts_json = sec.companyfacts(resolve(sec, ticker).cik)
+        except Exception:  # noqa: BLE001 - the XBRL total is a second source; the report's own total may be enough
+            facts_json = {}
+        totals = fixed_income_totals(rows_db, facts_json, list(texts))
+        rows += [_row(ticker, "inv_ig_share", "EXT-INS-INV", "B4", y, acc, v, q, b, True) for y, acc, v, q, b in ig_amount_rows(texts, totals) if y not in done]
     stats = item_store.upsert_rows(rows, "ai_controls") if rows else {}
     return {"reports": sorted(texts), "rows": len(rows), "upsert": stats}

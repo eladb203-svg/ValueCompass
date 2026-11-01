@@ -391,6 +391,10 @@ def build_inputs(sec: SecClient, ticker: str, profile: str, splits: list, n_year
             if any("[sum of segment members]" in str(tag_log[name][l]["tag"]) for l in filled):
                 flags.append(f"{name}_segment_sum (exhaustive segment members summed; approved convention)")
 
+    from .xbrl_wide import fill as wide_fill
+    wide_conflicts = wide_fill(sec, cik, ticker, f, tag_log, labels, ends, problems, split_factor)     # K6d-2 fixes: per-class / close-named company elements of the 10-K inline XBRL for the years still missing
+    for c in wide_conflicts:
+        problems.append(f"wide_search_conflict: {c['field']} {c['end']}: {c['reason']}")
     n = len(ends)
     # shares reported in millions (e.g. MCD): rescale values below 100k
     assumed_extra: dict = {}
@@ -668,4 +672,4 @@ def build_inputs(sec: SecClient, ticker: str, profile: str, splits: list, n_year
 
     return {"cik": cik, "name": title, "ends": ends, "labels": labels, "f": f, "tag_log": tag_log,
             "assumed_zero": assumed, "sbc_state": sbc_state, "first_annual_report": first_report, "problems": problems, "flags": flags,
-            "used_tags": used_tags}
+            "used_tags": used_tags, "wide_conflicts": wide_conflicts}

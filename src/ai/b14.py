@@ -15,6 +15,8 @@ SECTION_OF = {"income statement": "X-IS", "balance sheet": "X-BS", "cash-flow st
 COVERED = {"RE": {"maint_capex", "straight_line", "ti_lc_total", "mat_year1", "mat_year2", "nci_op", "nci_lp", "nci_redeemable", "fx_unrealized", "gains_sale", "gains_re_entities", "impairment",
                   "debt_extinguishment"}}
 COUNT_FIELDS = re.compile(r"^shares")
+# K6d-2 fixes: derivation hints of B14 items (the code of ``ext_checks.DERIVATIONS`` computes the number from the components the model returns, each with its quote)
+DERIVATION_HINTS = {"gross_profit": "if no gross profit line is stated, return the components revenue and cost_of_revenue of the income statement, each with its quote; the code computes the difference"}
 
 
 def dictionary_path() -> Path:
@@ -78,7 +80,8 @@ def b14_items(rows: list, kind: str, series: dict, labels: list) -> tuple:
             asked += len(miss)
             if miss:
                 unit = "count" if COUNT_FIELDS.match(f) else "USD"
-                items.append({"key": f, "def": f"{row['item']}: {row['definition']} ({row['statement']}) - needed for {', '.join(miss)}", "unit": unit, "section": st})
+                items.append({"key": f, "def": f"{row['item']}: {row['definition']} ({row['statement']}) - needed for {', '.join(miss)}", "unit": unit, "section": st,
+                              **({"derivation_hints": DERIVATION_HINTS[f]} if f in DERIVATION_HINTS else {})})
                 if st not in secs:
                     secs.append(st)
     return items, secs, {"needed": needed, "covered_by_tags": needed - asked, "asked": asked}

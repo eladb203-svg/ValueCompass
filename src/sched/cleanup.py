@@ -9,6 +9,7 @@ What is kept and what goes (everything else - financial facts, filing periods, t
   company_business_profiles                  per company only the latest (fiscal year, then id)
   data_update_log                            rows older than 90 days
   work_queue                                 'done' / 'failed' tasks whose last change is older than 30 days (open tasks are never deleted)
+  data_gap_review                            rows closed (fixed / genuine) more than 180 days ago (open rows are never deleted)
   SEC filings cache on disk                  filing documents of a fiscal year older than the 10-year window of the company (outside the database)
 
 ``plan_cleanup`` only reads and returns the plan; ``apply_plan`` deletes exactly that plan. The scheduled job and ``vc.py cleanup`` default to the plan only (``--apply`` deletes).
@@ -24,9 +25,9 @@ from typing import Optional
 
 from src.ai.db_stores import select_all
 
-LOG_DAYS, QUEUE_DAYS, WINDOW_YEARS = 90, 30, 10
+LOG_DAYS, QUEUE_DAYS, WINDOW_YEARS, GAP_DAYS = 90, 30, 10, 180
 CHUNK = 100
-DELETE_ORDER = ("ai_texts", "company_business_profiles", "ai_assessments", "score_runs", "data_update_log", "work_queue")
+DELETE_ORDER = ("ai_texts", "company_business_profiles", "ai_assessments", "score_runs", "data_update_log", "work_queue", "data_gap_review")
 
 
 def version_key(v) -> tuple:
@@ -159,6 +160,10 @@ def plan_cleanup(client, now: Optional[datetime] = None, filings_dir: Optional[P
     q_cut = (now - timedelta(days=QUEUE_DAYS)).isoformat()
     for r in client.table("work_queue").select("*").in_("state", ["done", "failed"]).lt("updated_at", q_cut).execute().data:
         plan.rows["work_queue"].append(Planned(r["id"], r.get("company_id"), f"{r['state']} task older than {QUEUE_DAYS} days", size_of(r)))
+
+    g_cut = (now - timedelta(days=GAP_DAYS)).isoformat()
+    for r in client.table("data_gap_review").select("*").in_("state", ["fixed", "genuine"]).lt("closed_at", g_cut).execute().data:
+        plan.rows["data_gap_review"].append(Planned(r["id"], r.get("company_id"), f"{r['state']} review row closed more than {GAP_DAYS} days ago ({str(r['closed_at'])[:10]})", size_of(r)))
 
     if filings_dir is not None and Path(filings_dir).exists():
         periods = select_all(client, "filing_periods", order="company_id")

@@ -349,9 +349,36 @@ def approvals_command(a) -> int:
     return 0
 
 
+def gaps_command(a) -> int:
+    """`vc.py gaps [--family X] [--state S] [--refresh [--ticker T ...]]`: the review list of data gaps (table data_gap_review), grouped by family with the number of companies in each."""
+    from src.ai import gap_review as GR
+    from src.db import get_supabase_client
+    client = get_supabase_client()
+    if a.refresh:
+        cos = client.table("companies").select("id,symbol").execute().data
+        want = {t.upper() for t in a.ticker} if a.ticker else None
+        tot = Counter()
+        for c in sorted(cos, key=lambda c: c["symbol"]):
+            if want and c["symbol"] not in want:
+                continue
+            try:
+                tot.update(GR.refresh(client, c["id"]))
+            except Exception as e:   # noqa: BLE001 - a company without a score has nothing to list
+                print(f"  {c['symbol']}: {type(e).__name__}: {e}")
+        print("refresh:", dict(tot))
+    groups = GR.grouped(client, a.family, a.state)
+    for fam, states, n_co, items in groups:
+        print(f"{fam}: {n_co} companies, {sum(states.values())} items {dict(states)}")
+        for tk, key, st, reason in items:
+            print(f"   {tk:<6}{key:<10}{st:<8}{reason[:110]}")
+    if not groups:
+        print("(no rows)")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=("load", "audit", "status", "score", "ai-queue", "queue", "texts", "glossary", "profile", "render", "terms", "scheduler", "cleanup", "approvals"))
+    ap.add_argument("command", choices=("load", "audit", "status", "score", "ai-queue", "queue", "texts", "glossary", "profile", "render", "terms", "scheduler", "cleanup", "approvals", "gaps"))
     ap.add_argument("arg", nargs="?", help="ticker, or the sub-command of queue / texts / glossary")
     ap.add_argument("arg2", nargs="?", help="id of a text / number of a proposal / ticker for queue status")
     ap.add_argument("--job", choices=JOBS, default="initial_import")
@@ -370,13 +397,18 @@ def main(argv=None) -> int:
     ap.add_argument("--status", action="store_true", help="scheduler: last/next run of every job")
     ap.add_argument("--once", help="scheduler: run this job now")
     ap.add_argument("--apply", action="store_true", help="cleanup / scheduler --once cleanup / approvals recheck: really write (default: only list)")
-    ap.add_argument("--ticker", nargs="*", help="approvals recheck: one company")
+    ap.add_argument("--ticker", nargs="*", help="approvals recheck / gaps --refresh: these companies")
+    ap.add_argument("--family", help="gaps: only this family")
+    ap.add_argument("--state", choices=("open", "fixed", "genuine"), help="gaps: only this state")
+    ap.add_argument("--refresh", action="store_true", help="gaps: first rebuild the rows from the latest score of every company (or --ticker)")
     a = ap.parse_args(argv)
     print(f"[database target: {db_target()}]", flush=True)
     if a.command in ("scheduler", "cleanup"):
         return scheduler_command(a)
     if a.command == "approvals":
         return approvals_command(a)
+    if a.command == "gaps":
+        return gaps_command(a)
     if a.command == "audit":
         resolved, plans = make_pipeline(True).audit(a.arg)
         print(A.render(resolved, plans))

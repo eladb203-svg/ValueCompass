@@ -92,7 +92,11 @@ def build_extraction_prompt(block: dict, ctx: dict, sections: dict, items: Optio
     sent = [(sid, sections[sid]) for sid in block["sections"] if sections.get(sid)]
     text = "\n\n".join(f"[{sid}]\n{t}" for sid, t in sent)
     its = items if items is not None else block["items"]
-    table = "\n".join(f"{i['key']} — {i['def']} — expected unit {i['unit']}" for i in its)
+    table = "\n".join(f"{i['key']} — {i['def']} — expected unit {i['unit']}" + (f" — derivation hint: {i['derivation_hints']}" if i.get("derivation_hints") else "") for i in its)
+    if any(i.get("derivation_hints") for i in its):
+        table += ("\nDERIVATION HINTS: where an item with a hint is NOT stated as a figure but its components are in the text, return value = null, value_state = \"components\" and "
+                  "\"components\": [{\"name\": \"<component named in the hint>\", \"value\": <number as stated>, \"scale\": 1 | 1000 | 1000000 | 1000000000, \"quote\": {\"text\": \"<exact quote containing it>\", \"section\": \"<section>\"}}]. "
+                  "Give every component with its own quote. Never compute the final number; the code computes it.")
     if block.get("classes"):
         table += "\nCLASSES:\n" + "\n".join(f"{k}: {v}" for k, v in block["classes"].items())
     prompt = extraction_template().format(

@@ -183,6 +183,10 @@ def build_bank_series(sec: SecClient, ticker: str, splits: list, n_years: int = 
     if cover:
         flags.append("shares_out_cover_page")
         problems.append("shares_out: balance-sheet tag missing, cover-page count used in " + ", ".join(cover))
+    from .xbrl_wide import fill as wide_fill
+    wide_conflicts = wide_fill(sec, cik, ticker, f, log, labels, ends, problems, split_factor)       # K6d-2 fixes: per-class / close-named company elements for the years still missing
+    for c in wide_conflicts:
+        problems.append(f"wide_search_conflict: {c['field']} {c['end']}: {c['reason']}")
     from .sec_companyfacts import guard_share_scale
     if guard_share_scale(f, labels, log, problems, SHARE_COUNTS):
         flags.append("share_scale_guard")
@@ -276,6 +280,6 @@ def build_bank_series(sec: SecClient, ticker: str, splits: list, n_years: int = 
     for k in [k for k in f if k.startswith("_")]:
         f.pop(k)
         log.pop(k, None)
-    return {"cik": cik, "name": title, "sic": sub.get("sic"), "sic_description": sub.get("sicDescription"),
+    return {"wide_conflicts": wide_conflicts, "cik": cik, "name": title, "sic": sub.get("sic"), "sic_description": sub.get("sicDescription"),
             "ends": ends, "labels": labels, "f": f, "tag_log": log, "first_annual_report": first_report,
             "flags": flags, "problems": problems, "assumed": assumed}

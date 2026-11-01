@@ -251,6 +251,10 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
             vals.append(v)
             lg[lab] = {"tag": fact.tag, "value": v, "filed": str(fact.filed), **({"split_adjust_factor": fac} if fac != 1.0 else {})}
         f[name], log[name] = vals, lg
+    from .xbrl_wide import fill as wide_fill
+    wide_conflicts = wide_fill(sec, cik, ticker, f, log, labels, ends, problems, split_factor)       # K6d-2 fixes: per-class / close-named company elements for the years still missing
+    for c in wide_conflicts:
+        problems.append(f"wide_search_conflict: {c['field']} {c['end']}: {c['reason']}")
     from .sec_companyfacts import guard_share_scale
     if guard_share_scale(f, labels, log, problems, SHARE_COUNTS):
         flags.append("share_scale_guard")
@@ -416,5 +420,5 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
     if cover:
         flags.append("shares_out_cover_page")
         problems.append("shares_out: balance-sheet tag missing, cover-page count used in " + ", ".join(cover))
-    return {"cik": cik, "name": title, "sic": sub.get("sic"), "sic_description": sub.get("sicDescription"), "ends": ends, "labels": labels, "f": f,
+    return {"wide_conflicts": wide_conflicts, "cik": cik, "name": title, "sic": sub.get("sic"), "sic_description": sub.get("sicDescription"), "ends": ends, "labels": labels, "f": f,
             "tag_log": log, "first_annual_report": first_report, "flags": flags, "problems": problems, "assumed": assumed}

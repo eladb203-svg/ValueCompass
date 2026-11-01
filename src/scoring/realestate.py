@@ -778,8 +778,10 @@ def g37(ri, d):
     if ri.asset_type in ("residential", "self-storage"):
         items.append(not_applicable("3", "Tenant concentration", 2, note=f"{ri.asset_type}: tenants are individuals, concentration is economically irrelevant (interpretation of 'not applicable only when economically irrelevant'; to be confirmed)"))
         return items
+    lt_row = (ri.reg.get("largest_tenant_share") or {}).get(ri.fy[-1]) or (ri.reg.get("largest_tenant_share") or {}).get(ri.fy[-1][2:]) or {}
+    bound = "bound=max" in str(lt_row.get("note") or "")                    # K6d-2 fixes: "no single tenant above X%" is a ceiling: scored at X (the largest tenant is at or below it)
     items.append(miss("3", "Tenant concentration", 2, "largest tenant share not extracted (AI extraction needed)", a3) if lt is None else
-                 thresholded("3", "Tenant concentration", 2, lt, a3, "", "largest independent tenant share of rent / NOI", {}))
+                 thresholded("3", "Tenant concentration", 2, lt, a3, "", "largest independent tenant share of rent / NOI" + (" (ceiling stated by the company: bound=max)" if bound else ""), {}, ["bound_max"] if bound else None))
     return items
 
 
