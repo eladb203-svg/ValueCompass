@@ -16,8 +16,10 @@ from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from dotenv import dotenv_values
+
 ROOT = Path(__file__).resolve().parents[1]
-ENV = dict(l.strip().split("=", 1) for l in (ROOT / ".env").read_text(encoding="utf8").splitlines() if "=" in l and not l.startswith("#"))
+ENV = dotenv_values(ROOT / ".env")                                     # python-dotenv only; values are never printed
 URL = ENV["SUPABASE_TEST_URL"].rstrip("/")
 SERVICE = ENV["SUPABASE_TEST_SECRET_KEY"]
 PUB = os.environ["VC_TEST_PUBLISHABLE_KEY"]
@@ -259,6 +261,28 @@ def main():
         # rows of this caller so far: e3 x3, e1, e2 = 5 -> a new email from the same address is refused by the IP limit (the platform sets the real client address; a forged header does not help)
         code_ip = signup("R", "sec-ip@test.invalid", "192.0.2.77")[0]
         record(17, "Rate limit: 3 per email and 5 per IP per day", codes == [200, 200, 200, 429] and code_ip == 429, f"same email x4 -> {codes}; 6th request from the same address (new email) -> {code_ip}")
+
+        # 18 a real invitation through Auth (inviteUserByEmail = POST /auth/v1/invite): the profile must end active; admin only for the admin e-mail
+        ADM_EMAIL, USR_EMAIL = "eladb203+vcsecadm@gmail.com", "eladb203+vcsec3@gmail.com"
+        s_, old_admin = svc("GET", "/rest/v1/app_settings?key=eq.admin_email&select=value")
+        svc("PATCH", "/rest/v1/app_settings?key=eq.admin_email", {"value": ADM_EMAIL})
+        try:
+            r_adm = svc("POST", "/auth/v1/invite", {"email": ADM_EMAIL, "data": {"full_name": "Adm Test", "invited_by": users["admin"]["id"]}})
+            r_usr = svc("POST", "/auth/v1/invite", {"email": USR_EMAIL, "data": {"full_name": "Usr Test", "invited_by": users["admin"]["id"], "role": "admin"}})
+            got = {}
+            for em, r_ in ((ADM_EMAIL, r_adm), (USR_EMAIL, r_usr)):
+                if r_[0] == 200:
+                    got[em] = svc("GET", f"/rest/v1/user_profiles?id=eq.{r_[1]['id']}&select=role,status,full_name,invited_by")[1]
+            ok18 = (r_adm[0] == 200 and r_usr[0] == 200
+                    and got[ADM_EMAIL] == [{"role": "admin", "status": "active", "full_name": "Adm Test", "invited_by": users["admin"]["id"]}]
+                    and got[USR_EMAIL] == [{"role": "user", "status": "active", "full_name": "Usr Test", "invited_by": users["admin"]["id"]}])
+            record(18, "Real invitation: admin e-mail -> admin+active; any other -> user+active (role in metadata ignored)", ok18,
+                   f"invite statuses={r_adm[0]},{r_usr[0]}; messages={[r_[1].get('msg') or r_[1].get('message') for r_ in (r_adm, r_usr) if r_[0] != 200]}; profiles={got}")
+        finally:
+            svc("PATCH", "/rest/v1/app_settings?key=eq.admin_email", {"value": old_admin[0]["value"]})
+            for u in svc("GET", "/auth/v1/admin/users?per_page=200")[1].get("users", []):
+                if u["email"] in (ADM_EMAIL, USR_EMAIL):
+                    svc("DELETE", f"/auth/v1/admin/users/{u['id']}")
     finally:
         svc("DELETE", "/rest/v1/support_tickets?type=eq.signup")
         for u in svc("GET", "/auth/v1/admin/users?per_page=200")[1].get("users", []):

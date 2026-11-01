@@ -146,7 +146,7 @@
 ## 10. רשימה מוכנה לייצור (לפי הסדר; לא בוצע)
 1. מוזג הענף ל-main אחרי השער של ק6ד-2 (ואימות שאין מיגרציה שיוצרת מחדש `v_display_metrics`/`v_fin_*` עם `security_invoker=true`).
 2. גיבוי ידני של הייצור לפני: `supabase db dump --data-only` (או pg_dump).
-3. הרצת מיגרציות 120100, 120200, 120400, 120500, 120600, 120700, 120800, 140000 על הייצור **בסדר הזה**, אחת-אחת; אחרי כל אחת: `VC_DB_TARGET=prod python scripts/vc.py status <טיקר>` (קריאה בלבד) ו-`scripts/security_privileges_check.sql`.
+3. הרצת מיגרציות 120100, 120200, 120400, 120500, 120600, 120700, 120800, 140000, 150000 על הייצור **בסדר הזה**, אחת-אחת; אחרי כל אחת: `VC_DB_TARGET=prod python scripts/vc.py status <טיקר>` (קריאה בלבד) ו-`scripts/security_privileges_check.sql`.
 4. אחרי מיגרציה 1 בייצור: לבדוק מי הם המשתמשים הקיימים; המיגרציה מסמנת את כולם `active`.
 5. פריסת 15 הפונקציות (14 + `signup-request`, **זו עם `--no-verify-jwt` חובה**; בטופס ההרשמה אין התחברות): `supabase functions deploy <שם> --project-ref zwpftrjryxyymrxsprqh --no-verify-jwt` לכל אחת (signup-request, portfolio-save, portfolio-delete, watchlist-add, watchlist-remove, broker-import, support-send, profile-update, account-delete, request-company, smart-search, notifications-read, admin-invite, admin-users, admin-tickets). לפרוס מחדש גם ב-test את 9 החסרות ואת request-company.
 6. סודות, הגדרות Auth, הזמנת מנהל (סעיפים 6, 9).
@@ -162,3 +162,19 @@
 5. **`SEC_USER_AGENT`**: בסעיף 9 פקודה שקוראת את הערך מה-`.env`. לא הגדרתי סוד בפרויקט מכאן (אין CLI).
 6. **בדיקות**: 3 בדיקות Deno חדשות (לא הורצו, אין Deno); בקבלה 15, 16, 17 (למעלה). שורות ההוראות על מצב `invite` בסעיפים 2-3 נכונות רק למצב invite, שעדיין נתמך (`registration_mode=invite`).
 7. **הערה לבדיקות**: סקריפט הקבלה מניח עכשיו `open` ומצפה ל-`pending` בבדיקה 0a. בבדיקה 16 הוא מזמין כתובת עם כינוי של המייל שלך (`eladb203+vcsec1@gmail.com`), כי Auth דוחה דומיין `.invalid`; ההרצות שלי שלחו לך כמה הודעות הזמנה ל-Gmail שאפשר להתעלם מהן; המשתמש נמחק בסוף.
+
+## 12. עדכון שני (אחרי 1.1): Deno, פריסה, באג ההזמנה
+**א. בדיקות Deno.** הותקן בסביבת הפרויקט (`pip install deno` ב-`..aluecompass\.venv`). `python -m deno test --allow-env --allow-net supabase/functions/_tests/` (עם בדיקת טיפוסים): **17 עברו, 0 נכשלו.** בדרך תוקנו שני דברים: ה-Fake של בדיקות החזיר את שורות הטבלה עצמן במקום עותקים (כך ש-`before` בביקורת נראה כמו `after`), וטיפוס ההחזרה של `inviteUser` (שגיאת TS). אין שינוי התנהגות בפונקציות.
+**ב. פריסה — נחסם חלקית.**
+- הסביבה בלי Node (`npx` לא קיים) ובלי טוקן CLI (`supabase login` אינטראקטיבי; אין `SUPABASE_ACCESS_TOKEN` ב-`.env`). לכן לא ניתן לפרוס דרך `npx supabase` ולא להגדיר סודות. סודות אי אפשר גם דרך חיבור ה-MCP.
+- נסיתי דרך חיבור ה-MCP; הצליחו בגרסה הנוכחית **`signup-request`, `admin-tickets`, `account-delete`** (+ מהשלב הקודם `notifications-read`, `portfolio-save`, `smart-search`, `admin-users`; `request-company` בגרסה ישנה). אחר כך החיבור הפסיק להגיב, ועצרתי. **ב-test לא כל 15 הפונקציות בגרסה הנוכחית.**
+- הוכן `scripts/deploy_functions.ps1`: פורס את כל 15 עם `--no-verify-jwt` ומגדיר `SEC_USER_AGENT` מה-`.env` דרך python-dotenv וקובץ זמני שנמחק, בלי להדפיס. הרצה: `npx supabase login` פעם אחת (ודורש Node), ואז `.\scripts\deploy_functions.ps1 -ProjectRef wbhxjcegoobkbnjnuise`. אותו סקריפט משמש אחר כך את הייצור.
+**ג. כלל `.env`.** נשמר כהנחיה קבועה. סקריפט הקבלה קורא את `.env` דרך `python-dotenv` בלבד (ורץ עם ה-venv). אין עוד `source .env`.
+**ד. באג ההזמנה (מיגרציה 10, `20261101150000_security_invite_update_trigger.sql`, rollback מצורף).** Supabase מכניס את השורה ל-`auth.users` ורק אחר כך קובע `invited_at`, ולכן טריגר ה-INSERT ראה `null` והמשתמש המוזמן יצא `disabled` — זה גם הסביר את כשלון בדיקת הפרופיל ב-16. הטריגר החדש `on_auth_user_invited` (AFTER UPDATE OF invited_at, רק במעבר מ-null לערך) מעדכן את הפרופיל: `active`; `admin` רק למייל השווה ל-`app_settings.admin_email`; `invited_by` והשם מהמטא-דאטה; ורק אם הפרופיל עדיין `disabled`/`pending` ואין בו שינוי של מנהל ביומן הביקורת (שורת `invite` עצמה לא נחשבת שינוי). הוחל על test.
+- **תיקון הנתונים ב-test:** `eladb203@gmail.com` היה `user/disabled`. הרצתי על השורה הקיימת null ואז החזרה של אותו `invited_at` כדי להפעיל את הטריגר האמיתי: עכשיו **`admin` + `active`**.
+- **סימולציה ב-SQL (טרנזקציה שבוטלה):** מייל השווה ל-admin_email → admin+active עם שם ו-invited_by; מייל אחר עם `role=admin` במטא-דאטה → user+active (ה-role מהמטא-דאטה לא נשמר); פרופיל שיש עליו שינוי מנהל ביומן → לא נוגעים.
+**ה. בדיקה 18 (הזמנה אמיתית דרך `/auth/v1/invite`).** נכתבה ב-`security_acceptance.py` (הזמנה למייל מנהל זמני ולמשתמש רגיל, הערך `admin_email` מוחזר בסוף, המשתמשים נמחקים). **טרם עברה**: מכסת השליחה של ה-SMTP המובנה ב-Supabase מלאה (`email rate limit exceeded`, 429) — כמו בבדיקה 16. יש להריץ מחדש כשהמכסה מתאפסת: `..aluecompass\.venv\Scripts\python.exe scripts\security_acceptance.py` (עם `VC_TEST_PUBLISHABLE_KEY`). הפתרון הקבוע: SMTP של Resend (סעיף ו).
+**ו. לפני פתיחה למשתמשים (נרשם):**
+1. **Site URL וקישור ההזמנה:** `Authentication → URL Configuration → Site URL` והסוד `SITE_URL` ל-`redirectTo` של ההזמנה צריכים להצביע על עמוד קביעת הסיסמה — **נבנה ב-ק7**. עד אז קישור ההזמנה לא נוחת על מסך מתאים.
+2. **SMTP של Resend + תבניות בעברית** (`supabase/templates/*.html`) ב-Auth — **לפני פתיחה למשתמשים**, וגם כדי שבדיקות 16 ו-18 יעברו בלי מגבלת המכסה.
+**ז. בדיקת "נמצאה ונתמכת" ב-`request-company`:** לא הורצה, לפי ההנחיה — רק אחרי שהצ'אט של מנה 8/9 מסתיים ו-`work_queue` ריק מהמשימות שלו.

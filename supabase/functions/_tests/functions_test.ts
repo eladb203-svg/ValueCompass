@@ -42,6 +42,7 @@ class Q {
     } else if (this.op === "update") { out = hit(); out.forEach((r) => Object.assign(r, this.payload)); }
     else if (this.op === "delete") { out = hit(); for (const r of out) rows.splice(rows.indexOf(r), 1); }
     else out = hit().slice(0, this.lim);
+    out = out.map((r) => ({ ...r }));                       // like the real client: the caller gets copies, not the stored rows
     return one ? { data: out[0] ?? null, error: null } : { data: out, error: null };
   }
 }

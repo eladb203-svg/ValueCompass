@@ -118,11 +118,11 @@ export async function sha256Hex(s: string): Promise<string> {
 }
 
 /** Sends the Supabase invitation (the user sets a password from the link and becomes `active` by the sign-up trigger). -> {ok, userId?, message?} */
-export async function inviteUser(deps: Deps, adminId: string, email: string, name?: string) {
+export async function inviteUser(deps: Deps, adminId: string, email: string, name?: string): Promise<{ ok: boolean; userId: string | null; message?: string }> {
   const redirectTo = deps.env("SITE_URL");
   const data: any = { invited_by: adminId };
   if (name) data.full_name = name;
   const r = await deps.db.auth.admin.inviteUserByEmail(email, { data, ...(redirectTo ? { redirectTo } : {}) });
-  if (r.error) return { ok: false, message: String(r.error.message ?? "").slice(0, 200) };
+  if (r.error) return { ok: false, userId: null, message: String(r.error.message ?? "").slice(0, 200) };
   return { ok: true, userId: (r.data?.user?.id ?? null) as string | null };
 }
