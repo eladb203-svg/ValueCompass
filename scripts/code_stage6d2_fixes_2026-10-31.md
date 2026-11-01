@@ -215,3 +215,80 @@ What the missing data showed afterwards (bugs in the data layer, not stalls), al
 4. HRL: B 3.7.3 (AI insufficient evidence). ANET: B 3.1.3, G 3.1.3, G 3.8.3 (AI insufficient evidence). Real AI answers, counted as missing by rule R16.
 
 Calls this stage: the shared daily counter stood at 92 before this run and 180 after it (limit 450).
+
+## 9. Approvals, rulebook note, REIT sanity check (2026-11-01)
+
+**Approved by you and recorded:** (a) gain on sale = 0 when the company's XBRL has no gain / loss on sale or disposal element at all (VICI); (b) a year without a gain value between years that have one = 0 (HST FY2024). Both are stored as `status = assumed_zero`, `source_kind = derived` in `financial_facts` (checked: HST 2024, VICI 2024-2025) and listed in the load output as `gains_sale: ... assumed_zero in ...` (`data_problems` of the result).
+
+**Rulebook correction to make (Buffett 3.7.4, INCOME_REAL_ESTATE):** EN line 638 now reads `Σ dividends / Σ OE: ≤100% = 2, ≥150% = 0 (FFO proxy **flag**)`; HE line 637 `... (**סימון** כשחלופת FFO)`. Per the FFO proxy rule (EN lines 499 and 1342, HE 498 and 1336) and the Graham 3.5 card (EN 939) it should read: `... **Missing** when OE is a proxy (FFO_PROXY: the proxy is allowed only for growth and stability sub-items)`. The code already does this (`b37`). I did not edit the rulebook files.
+
+### REIT sanity check (report only, no rule changed)
+Tables: `scripts/state/reit_sanity.md`, `reit_sanity_criteria.txt`, `reit_sanity_exai.md` (scripts `reit_sanity.py`, `reit_sanity_criteria.py`, `reit_sanity_exai.py`). Format: score / coverage / points earned on `FFO_PROXY` items.
+
+| source | company | Buffett | Graham |
+|---|---|---|---|
+| golden | AMT | 78.3 / 83% / 0 | 92.1 / 75% / 0 |
+| golden | ARE | 77.7 / 98% / 0 | 82.7 / 86% / 0 |
+| golden | BXP | 56.0 / 83% / 0 | 55.4 / 75% / 0 |
+| golden | EQIX | 93.9 / 83% / 0 | 98.6 / 75% / 0 |
+| golden | EQR | 85.6 / 92% / 0 | 86.8 / 86% / 0 |
+| golden | FRT | 78.7 / 98% / 0 | 78.5 / 85% / 0 |
+| golden | O | 79.4 / 83% / 0 | 84.8 / 86% / 0 |
+| golden | PLD | 77.9 / 98% / 0 | 94.7 / 75% / 0 |
+| golden | PSA | 76.7 / 98% / 0 | 85.8 / 85% / 0 |
+| golden | SPG | 70.6 / 94% / 0 | 79.0 / 81% / 0 |
+| test | VTR | 89.9 / 81% / 16.2 of 72.6 (22%, 3 items) | none / 55% / 5.8 of 44.6 (13%) |
+| test | VICI | 89.4 / 73% / 16.2 of 63.9 (25%) | 79.2 / 70% / 5.8 of 65.3 (9%) |
+| test | HST | 91.2 / 81% / 16.2 of 74.9 (22%) | none / 55% / 3.8 of 52.1 (7%) |
+| test | DLR | 88.5 / 81% / 14.1 of 66.8 (21%) | 85.8 / 70% / 5.8 of 66.3 (9%) |
+| test | MAA | 73.0 / 81% / 5.4 of 55.6 (10%) | none / 55% / 2.5 of 61.8 (4%) |
+| test | AMT | 76.2 / 83% / 0 | 85.9 / 75% / 0 |
+| test | O | 88.6 / 83% / 0 | 84.8 / 86% / 0 |
+
+**Are the new ones consistently high?** Buffett: yes for four of five. VTR, VICI, HST and DLR are 88.5-91.2 (mean 89.8) against a golden mean of 77.5 (range 56.0-93.9); MAA (73.0) is not. Graham: no. VICI 79.2 and DLR 85.8 are inside the golden range (55.4-98.6, mean 83.8); the other three have no Graham score.
+
+**Where it comes from** (measured, nothing changed):
+1. **AI answers.** The golden results still had the AI questions pending; the database results have them, and all seven REITs earned 17 of 17 AI points. On the golden basis (without the AI items) the Buffett scores fall: VTR 89.9 -> 87.2, VICI 86.1, HST 88.8, DLR 85.2, MAA 65.2, AMT 70.2, O 85.7 (a drop of 2.4 to 7.8 points). The same effect lifts the re-scored AMT and O, which are not new companies.
+2. **Method and data drift since the golden run:** O is 79.4 in the golden file and 85.7 on the same basis in the database (+6). So of the 12 points between the new four and the golden mean, about 6-8 are not specific to the new companies.
+3. **The growth criterion (3.8).** New REITs 82-100% of the available points (VTR 100%, HST 100%, DLR 94%, VICI 90%) against a golden mean of 53% (33-87%). The five-year window is FY2021-2025; for VTR, HST, DLR and VICI the start is the pandemic and acquisition years, so revenue and FFO per share grow strongly from a low base (VTR normalized FFO per share CAGR 12.5%). The largest genuine difference, and a base effect, not a data error.
+4. **Margin criterion (3.2):** 33-48% against 16%; 3 of its points are AI items.
+5. **Coverage is lower, 73-81% against 83-98%:** Buffett 3.4 (return on capital: NOI yield, same-property growth) is missing for all of them, as are 3.6.3 and 3.7.4. The score is a share of the covered points; the missing criterion is around 76% for golden REITs, so it moves the scores little.
+6. **FFO_PROXY is not the cause.** 21-25% of the earned Buffett points of VTR, VICI, HST and DLR come from proxy items (growth and stability), but taking them out leaves the scores about where they are (VTR 89.9 -> 89.8, VICI 89.4 -> 89.1, HST 91.2 -> 91.4); for MAA the proxy items pull the score down (73.0 against 80.7 without them).
+
+## 10. Acceptance run, batch 5 (FHN bank, SIGI insurer, EXR storage REIT, SJM regular, NTAP technology) - 2026-11-01
+
+Preflight: `scripts/state/acceptance_preflight_5.txt` (all new; WRB was refused: golden). Log: `scripts/state/acceptance_run_6.log`.
+
+| Company | Result | Calls (limit 40) | Time | Buffett / Graham (coverage) |
+|---|---|---|---|---|
+| FHN | complete | 17 | 6:06 | 76.08 (98%) / 77.54 (96%) |
+| SIGI | complete | 17 | tasks done in 7 min; the process ended 2 h 35 min later (below) | 82.27 (90%) / 85.46 (60%) |
+| EXR | complete | 23 | 4:57 | 69.10 (81%) / 76.72 (70%) |
+| SJM | complete | 18 | 3:52 | 41.08 (98%) / 31.90 (97%) |
+| NTAP | complete | 16 | 4:01 | 90.82 (100%) / 75.90 (100%) |
+
+**(a) Without contact: 5 of 5.** No failed or retried task, no network wait, no manual action.
+Unexplained time in SIGI: its last task was written at 23:11 UTC (01:11 Israel), seven minutes after the start; the process printed its report at 03:46. No task was waiting and there is no `RETRY` line. The most likely cause is the computer going to sleep despite the keep-awake request (the clock jumped with no activity); I could not confirm it.
+
+**(b) Every missing item classified. Result: not clean - two companies have items that are bugs.**
+
+| Company | Item | Class | Evidence |
+|---|---|---|---|
+| FHN | B 3.6.5, G 3.2.2 LCR | real - not reported | no numeric LCR in the 10-K (D12) |
+| NTAP | none | - | 100% / 100% |
+| SJM | B 3.7.1 P/E, 5 years | real - not relevant | diluted EPS is negative in FY2023, FY2025 and FY2026 (-0.86, -11.57, -1.30): fewer than 3 valid P/E years |
+| SJM | G 3.7.3 tangible BVPS | real - not relevant | goodwill and intangibles exceed equity: negative tangible equity |
+| SIGI | B 3.6.1, G 3.2.1 capital ratio | real - not reported | the 10-K mentions RBC only in general terms, no numeric ratio |
+| SIGI | **B 3.6.3, G 3.3.2 financial debt** | **BUG - in XBRL, not pulled** | `LongTermDebt` is tagged 2019-2024 (about 0.5 bn) but only FY2024 reached the facts (`financial_debt`: 1 of 10 years); FY2025 is tagged by instrument (notes by member), no total |
+| SIGI | **G 3.2.2, G 3.7.3 balance-sheet categories** | **BUG - in the report, not extracted / blocked** | the 10-K states "Total investments and cash"; the investments block (the AFG finding of 2.5: duplicate rows and the `inv_sum` control) leaves the rows pending |
+| SIGI | **G 3.7.2 investment-grade share** | **BUG - in the report, not extracted** | the credit-quality passages are in the 10-K (21 "investment grade / NAIC" passages) |
+| EXR | B 3.6.3 economic LTV | real - not reported | no fair value of real estate in the 10-K |
+| EXR | B 3.7.4, G 3.5.4, G 3.8.2 | real by rule | OE is the FFO proxy: no recurring capex amount in the 10-K (only the words), so level items are Missing by the rulebook |
+| EXR | G 3.7.3 largest tenant | real - not relevant | self-storage: individual customers, no tenant disclosure |
+| EXR | **B 3.4.2, G 3.7.2 same-property NOI growth** | **BUG - in the report, not extracted** | "Total same-store net operating income $1,884,797 / $1,917,206" (2025 / 2024): -1.7% |
+| EXR | **G 3.3.2 unencumbered** | **BUG - in the report, not extracted; the rulebook backup is not triggered** | "unencumbered asset value $30,247,545 and total asset value $35,894,312" (84%); the backup (unencumbered assets share) exists in the engine, but the AI returned `not_disclosed` |
+| EXR | **G 3.7.1 occupancy (3 years)** | **BUG - in the report and in earlier reports, not extracted** | "average occupancy for our same-store pool for 2025 was 93.7%"; the earlier 10-Ks are in the cache |
+| EXR | B 3.4.1 NOI yield / proxy | short history, partly a consequence of the above | the property operating expense is tagged only for FY2023-2025, the NOI proxy needs a longer series |
+| EXR | G 3.3.3 | real by rule | needs a stabilized portfolio with economic value |
+
+**Gate: not passed.** (a) holds, (b) does not: six items (SIGI financial debt, investment categories, credit-quality share; EXR same-store NOI, unencumbered share, occupancy history) exist in XBRL or in the report and were not taken. They are the same two families as before: REIT depth items (same-property NOI, unencumbered assets share, occupancy history - done by hand for MAA, DLR, VICI with `scripts/keyword_backfill.py`, not part of the pipeline) and the insurer investments block. A batch can be called clean only after these are in the pipeline, not patched by hand per company.
