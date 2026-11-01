@@ -390,7 +390,10 @@ def main(argv=None) -> int:
     if a.command == "load":
         p = make_pipeline(a.dry_run, offline=(a.job == "repair"))
         before = p.companies.get_by_symbol(a.arg.upper(), "US")
-        res = p.load(a.arg, a.job)
+        from src.pipeline.net_retry import with_network_retry
+        res, waited = with_network_retry(lambda: p.load(a.arg, a.job))          # a temporary network error: the same retry rule as the queue
+        if waited:
+            print(f"  waited for network retries: {waited:.0f} s")
         print_result(res)
         if a.dry_run or res.status == "failed" or a.no_score:
             return 1 if res.status == "failed" else 0
