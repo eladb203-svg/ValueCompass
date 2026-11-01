@@ -256,17 +256,40 @@ INV_PARTS = ("inv_cash", "inv_short_term", "inv_fixed_maturities", "inv_equity",
 
 
 def control_inv_sum(rows: list) -> dict:
-    tot = _by_year(rows, "inv_total")
-    out, bad = [], []
-    for y in sorted(tot):
-        s = sum((_by_year(rows, k).get(y) or {}).get("value_full", 0.0) for k in INV_PARTS)
-        if s == 0:
+    """The categories add up to the total investments (2%). K6d-2 fixes: (1) a total that INCLUDES cash ("Total cash and investments", basis INCLUDES_CASH) is compared with the categories
+    with cash, any other total without it - when the basis is not marked the better of the two counts; (2) when the model returned two values for one category in one year (the mortgage-loan line
+    of the year and of the year before, AFG) the combination that matches the total is used and the rows not used are rejected as duplicates (``ctl['rejected']``)."""
+    import itertools
+    tots: dict = {}
+    for r in rows:
+        if r["item_key"] == "inv_total" and r.get("value_full") is not None:
+            tots[r["year"]] = r
+    out, bad, rejected = [], [], []
+    for y in sorted(tots):
+        t = tots[y]
+        cand = {k: [x for x in rows if x["item_key"] == k and x["year"] == y and x.get("value_full") is not None] for k in INV_PARTS}
+        if not any(cand.values()):
             continue
-        diff = abs(s - tot[y]["value_full"]) / abs(tot[y]["value_full"]) if tot[y]["value_full"] else 1.0
-        (out if diff <= 0.02 else bad).append(f"{y}: categories {s:,.0f} vs total {tot[y]['value_full']:,.0f} ({diff:.2%})")
+        marked = "INCLUDES_CASH" in str(t.get("basis") or "")
+        modes = (True,) if marked else (False, True)
+        best = None
+        pools = [cand[k] or [None] for k in INV_PARTS]
+        for combo in itertools.islice(itertools.product(*pools), 5000):
+            for with_cash in modes:
+                s_ = sum((x["value_full"] for k, x in zip(INV_PARTS, combo) if x is not None and (with_cash or k != "inv_cash")), 0.0)
+                diff = abs(s_ - t["value_full"]) / abs(t["value_full"]) if t["value_full"] else 1.0
+                if best is None or diff < best[0]:
+                    best = (diff, s_, combo, with_cash)
+        diff, s_, combo, with_cash = best
+        (out if diff <= 0.02 else bad).append(f"{y}: categories {s_:,.0f} ({'with' if with_cash else 'without'} cash) vs total {t['value_full']:,.0f} ({diff:.2%})")
+        if diff <= 0.02:
+            used = {id(x) for x in combo if x is not None}
+            rejected += [(x["item_key"], y, x["value_full"]) for k in INV_PARTS for x in cand[k] if id(x) not in used]
     if not out and not bad:
         return ctl("inv_sum", "na", "no total investments or no categories", list(INV_PARTS) + ["inv_total"])
-    return ctl("inv_sum", "fail" if bad else "pass", "; ".join(bad or out), list(INV_PARTS) + ["inv_total"])
+    c = ctl("inv_sum", "fail" if bad else "pass", "; ".join(bad or out), list(INV_PARTS) + ["inv_total"])
+    c["rejected"] = [] if bad else rejected
+    return c
 
 
 def control_bounds(rows: list) -> dict:

@@ -141,6 +141,42 @@ def discover_extension_elements(sec: SecClient, cik: str, pattern: str) -> list:
     return [n for n, _ in sorted(counts.items(), key=lambda x: -x[1])]
 
 
+def instrument_sum_series(sec: SecClient, cik: str, local: str, needed_ends: list, max_filings: int = 3) -> dict:
+    """K6d-2 fixes: {end: Fact} where the element is reported only per debt instrument (SIGI FY2025: ``us-gaap:LongTermDebt`` once per note, no total). The facts of the balance-sheet date whose
+    only dimensions are the debt instrument (and the long-term debt type) are added up; the tag says so. Filings are read newest first until every needed date is covered."""
+    found: dict = {}
+    missing = set(needed_ends)
+    used = 0
+    for k in tenk_filings(sec, cik):
+        if not missing or used >= max_filings:
+            break
+        if all(abs((k["report_date"] - e).days) > 800 for e in missing):
+            continue
+        acc = k["accession"].replace("-", "")
+        raw = _get_raw(sec, f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}/{k['primary']}", f"{acc}_{k['primary']}")
+        used += 1
+        ctx = parse_contexts(raw)
+        sums: dict = {}
+        for attrs, text in _NF.findall(raw):
+            if (_attr(attrs, "name") or "").split(":")[-1] != local:
+                continue
+            c = ctx.get(_attr(attrs, "contextRef") or "")
+            if not c or not c["instant"] or not c["dims"]:
+                continue
+            axes = {a.split(":")[-1] for a, _ in c["dims"]}
+            if "DebtInstrumentAxis" not in axes or not axes <= {"DebtInstrumentAxis", "LongtermDebtTypeAxis", "LongTermDebtTypeAxis"}:
+                continue
+            v = parse_numeric(attrs, text)
+            if v is not None:
+                sums.setdefault(c["end"], {})[tuple(sorted(c["dims"]))] = v
+        for end, members in sums.items():
+            m = next((e for e in missing if abs((e - end).days) <= 10), None)
+            if m is not None and m not in found and len(members) >= 1:
+                found[m] = Fact(val=sum(members.values()), end=end, filed=k["filed"], form="10-K", accn=k["accession"], tag=f"ixbrl:SUM of {len(members)} instruments: {local} by DebtInstrumentAxis")
+        missing -= set(found)
+    return found
+
+
 def extension_series(sec: SecClient, cik: str, local_names: list, kind: str, needed_ends: list, max_filings: int = 6,
                      segment_sum: bool = False) -> dict:
     """{end: Fact} for the first element of ``local_names`` found per fiscal-year end, reading 10-K filings newest first

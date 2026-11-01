@@ -1,11 +1,11 @@
 ---
 title: "ValueCompass — Rulebook"
-subtitle: "Closed 2026-10-21_19-26 · English (source of truth)"
+subtitle: "Closed 2026-11-01_07-00 · English (source of truth)"
 ---
 
 # ValueCompass — Rulebook
 
-**Version:** closed 2026-10-21_19-26 (amends 2026-10-17_21-51: C5 extended, CL12; FIN-186 added, CL13; price score of "cannot be valued" clarified, CL14; Part B classification, CL15; router clarifications, CL16; Buffett 3.1 #3 scale, CL17; Graham 3.1 #4 scale, CL18). **Status:** **closed — the source of truth** for the scoring rules, for the database (stage 2) and for the code (stage 3). It supersedes the governing files: general model v1.3 (2026-10-14_22-35), BANK 2026-10-13_10-20, INSURANCE 2026-10-13_17-25, INCOME_REAL_ESTATE 2026-10-15_11-45 and the consolidated sector rules 2026-10-15_12-00 (S-06: those files still carry the pre-X1 rule and are not to be used). Closure rests on the verification of the book against the source files and the code (2026-10-15, Part V) and on the decision list approved on 2026-10-17 (Part G). Where the code differs from this book, the book governs and the code is aligned in stage 3 (Part H).
+**Version:** closed 2026-11-01_07-00 (amends 2026-10-21_19-26: REIT routing, CL19; Buffett 3.7.4 real estate, CL20; gains on sale assumed zero, CL21; same-property NOI growth, CL22; bank entity and CET1 order, CL23; net interest line, CL24. Earlier: amends 2026-10-17_21-51: C5 extended, CL12; FIN-186 added, CL13; price score of "cannot be valued" clarified, CL14; Part B classification, CL15; router clarifications, CL16; Buffett 3.1 #3 scale, CL17; Graham 3.1 #4 scale, CL18). **Status:** **closed — the source of truth** for the scoring rules, for the database (stage 2) and for the code (stage 3). It supersedes the governing files: general model v1.3 (2026-10-14_22-35), BANK 2026-10-13_10-20, INSURANCE 2026-10-13_17-25, INCOME_REAL_ESTATE 2026-10-15_11-45 and the consolidated sector rules 2026-10-15_12-00 (S-06: those files still carry the pre-X1 rule and are not to be used). Closure rests on the verification of the book against the source files and the code (2026-10-15, Part V) and on the decision list approved on 2026-10-17 (Part G). Where the code differs from this book, the book governs and the code is aligned in stage 3 (Part H).
 **Language:** English is the source of truth; the Hebrew version is a translation.
 
 | Part | Content | Status |
@@ -635,7 +635,7 @@ Non-US companies: tier 1 is the local classification (Israel: TASE industry); ti
 | BANK, INSURANCE | 1, 2, 5 | Unchanged (P/E) |
 | INCOME_REAL_ESTATE | 1 Buyback valuation | P / normalized FFO instead of P/E |
 | INCOME_REAL_ESTATE | 3 M&A gate | **Corporate** acquisitions only (not property purchases) / Σ normalized FFO <10% = 2; otherwise AI question. The denominator is always normalized FFO, also when OE exists (2026-10-17) |
-| INCOME_REAL_ESTATE | 4 Distributions | Σ dividends / Σ OE: ≤100% = 2, ≥150% = 0 (FFO proxy **flag**) |
+| INCOME_REAL_ESTATE | 4 Distributions | Σ dividends / Σ OE: ≤100% = 2, ≥150% = 0; **Missing** when OE is on the FFO proxy (CL20) |
 | INCOME_REAL_ESTATE | 5 Management | AI input adds equity issuance vs value per share and use of disposal proceeds |
 
 ---
@@ -1619,6 +1619,12 @@ Implementation status (verification of 2026-10-15): E3, E6 and E12 implemented; 
 | CL8 | 2026-10-17 | BANK / INSURANCE value ≤ 0 → price score 0, as C15 | D.3, D.4 |
 | CL9 | 2026-10-17 | Real-estate Buffett 3.1 keeps the five general AI questions | B3.1 |
 | CL10 | 2026-10-17 | Part E: engine mapping replaces the indicative concepts; FIN-112 / FIN-113 merged; FIN-160 to FIN-185 added; FIN-130 and TXT-001 to TXT-005 kept as required | Part E |
+| CL24 | 2026-10-31 | Interest expense when no gross interest tag exists and a net non-operating interest line does: interest expense = − net line (`derived`); EBIT = pretax income + interest expense (CL2 derivation). A net interest income gives coverage state `zero_interest`. A gross tag always wins | A.2, C2 |
+| CL23 | 2026-10-31 | Banks, CET1 requirement and ratio: one value per item — the entity named like the ticker (the group), else the first listed; never a subsidiary bank. Requirement order: stated in the filing → 4.5% + SCB + G-SIB surcharge (V9) → default 7.0% flagged `default`, the sub-item counted with a range from 0 to its full points | B3.6-BANK, G3.2-BANK |
+| CL22 | 2026-10-31 | Same-property NOI growth: when the filing gives same-property NOI levels for two years of the same pool, growth = current / prior − 1, flagged `derived`, with both quotes | B3.4-RE, G3.7-RE |
+| CL21 | 2026-10-31 | Gains on sale of real estate: assumed 0, flagged `assumed_zero`, only when (a) the company's XBRL has no gain/loss-on-sale or disposal element with an annual value in any namespace, or (b) the line is blank in a year between reported years. The company's own FFO reconciliation (extraction) overrides. Otherwise the rule stands: gains are not assumed zero | A.2, FFO definition |
+| CL20 | 2026-10-31 | Buffett 3.7.4 INCOME_REAL_ESTATE (distributions / OE): **Missing** when OE is on the FFO proxy, as the FFO proxy rule (level sub-items Missing) and Graham 3.5 #4 — corrects the earlier "FFO proxy flag" wording | B3.7 variants |
+| CL19 | 2026-10-31 | Router: an issuer with SIC 6798 that is not a mortgage REIT is always INCOME_REAL_ESTATE. RE10/RE11 no longer route it to STANDARD; they choose the NOI method: rent (operating, financing and sales-type lease income) ≥50% of revenue → rental NOI; otherwise operating NOI = all property revenue (incl. resident fees and operating income) − property operating expenses (cost of revenue as fallback, flagged), flag `operating_reit`. Reason: on net income / EPS, real-estate depreciation distorts a REIT; FFO neutralizes it (case: VTR) | B, B.1, C RE cards |
 | CL18 | 2026-10-21 | Graham 3.1 #4: the question judges how established the position is; 0 = young company, development stage, or no longer a significant player (was "an eroding position"); direction is judged only in Buffett 3.2 #4 — no double counting (AI calibration, K5a) | G3.1 |
 | CL17 | 2026-10-21 | Buffett 3.1 #3: the revenue-model scale judges whether an outsider can see what the customer pays for; the profile's standard model (bank, insurer, property owner) counts as one model; 1 = sources that differ in nature or a material part (about a quarter) hard to see from outside; 0 = unrelated sources that cannot be summarized together, or non-transparent (AI calibration, K5a) | B3.1 |
 | CL16 | 2026-10-20 | Router clarifications from implementation: mortgage REIT test "undetermined" when one measure is missing (tier 2 decides); absent investment-property line = 0 in that test; industry from the latest year applies to the window (code stage K4b) | B, B.1 |

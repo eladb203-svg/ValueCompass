@@ -197,6 +197,8 @@ def apply_controls(block: dict, rows: list, engine_ctl: Optional[dict] = None) -
         r["control_result"] = ctrl["result"] if ctrl else "n/a"
         r["control_detail"] = ctrl["detail"] if ctrl else ""
         r["approval_status"], r["approval_reason"] = decide(block, r, ctrl)
+        if ctrl and (r["item_key"], r["year"], r.get("value_full")) in set(map(tuple, ctrl.get("rejected") or [])) and r["state"] == "value":
+            r["approval_status"], r["approval_reason"] = "rejected", "inv_sum: a second value of the same category and year; the other one makes the categories add up to the total"
         if name == "neighbours_3x" and ctrl and r["item_key"] in ctrl.get("years", {}) and r["year"] in ctrl["years"][r["item_key"]] and r["approval_status"] == "approved":
             r["approval_status"], r["approval_reason"] = "pending", "value beyond 3x of both neighbouring years"
     return ctrl

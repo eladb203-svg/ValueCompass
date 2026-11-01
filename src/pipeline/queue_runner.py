@@ -671,6 +671,19 @@ class QueueRunner:
             if any(r.get("skill_id") == "EXT-GENERAL" and r.get("state") == "value" and r.get("approval_status") == "approved" for r in self.item_store.rows_for(t)):
                 # an approved B14 value is an engine input only once it is a fact (K6 spec 2.3, step 5): a `repair` job rebuilds the facts from the cache with the approved rows, before the score
                 n["repair_queued"] = self.enqueue(task["company_id"], "repair", None, None, task["priority"], {"reason": "approved B14 values become facts"})[1]
+        if co.get("profile") == "INCOME_REAL_ESTATE" and self.pipeline_factory is not None:
+            # K6d-2 fixes: the depth items of a REIT by keyword search (no model): occupancy of the last annual reports, same-property NOI growth from the stated levels, the unencumbered-assets backup
+            from src.ai import keyword_depth as KD
+            n["depth"] = KD.run(self.client, self.item_store, self.pipeline_factory().sec, t)
+            if n["depth"]["rows"]:
+                from src.ai import recheck as RC
+                RC.recheck(self.client, t, apply=True)
+        if co.get("profile") == "INSURANCE" and self.pipeline_factory is not None:
+            from src.ai import keyword_depth as KD
+            n["depth"] = KD.run_insurer(self.client, self.item_store, self.pipeline_factory().sec, t)
+            if n["depth"]["rows"]:
+                from src.ai import recheck as RC
+                RC.recheck(self.client, t, apply=True)
         if (task.get("payload") or {}).get("purpose") == "router":
             self.enqueue(task["company_id"], "repair", None, None, 1)               # re-route from the cache now that the extraction exists; the score follows
         return {"items": n, "attempts": self.gemini.attempts - before}

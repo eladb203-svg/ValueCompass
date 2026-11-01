@@ -364,6 +364,20 @@ def build_insurance_series(sec: SecClient, ticker: str, splits: list, n_years: i
         if f["total_expenses"][i] is None and f["revenue_total"][i] is not None and f["pretax"][i] is not None:
             f["total_expenses"][i] = f["revenue_total"][i] - f["pretax"][i]
             log["total_expenses"][lab] = {"tag": "DERIVED: Revenues - pretax income (BenefitsLossesAndExpenses not tagged)", "value": f["total_expenses"][i]}
+    # K6d-2 fixes: a year with no debt total and no long-term-debt tag although the notes exist (reported per instrument): the instruments are added up (latest 3 years only)
+    need = [e for i, e in enumerate(ends) if i >= len(ends) - 3 and f["debt_total"][i] is None and f["debt_lt"][i] is None]
+    if need:
+        try:
+            got = ix.instrument_sum_series(sec, cik, "LongTermDebt", need)
+        except Exception as exc:  # noqa: BLE001
+            got = {}
+            problems.append(f"debt_lt: instrument search failed ({type(exc).__name__}: {exc})")
+        for i, (end, lab) in enumerate(zip(ends, labels)):
+            fact = got.get(end)
+            if fact is not None and f["debt_lt"][i] is None:
+                f["debt_lt"][i] = fact.val
+                log["debt_lt"][lab] = {"tag": "SUM: " + fact.tag, "value": fact.val, "filed": str(fact.filed)}
+                problems.append(f"debt_lt: {lab} is the sum of the notes reported per instrument (no total tag)")
     # zero-if-absent (flagged)
     assumed: dict = {}
     for name in ZERO_IF_ABSENT_FLOW + ZERO_IF_ABSENT_BS:

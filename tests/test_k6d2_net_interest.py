@@ -59,3 +59,18 @@ def test_share_counts_reported_in_millions_are_rescaled_by_a_million():
     problems: list = []
     guard_share_scale(f, ["FY2016", "FY2017", "FY2018", "FY2019"], log, problems, ("shares_dil",))
     assert f["shares_dil"][1] == 739.1e6 and f["shares_dil"][2] == 740.6e6
+
+
+def test_a_debt_reported_only_per_instrument_is_added_up(monkeypatch):
+    from datetime import date
+    from src.providers import sec_ixbrl as ix
+
+    def ctx(i, member, end="2025-12-31"):
+        return (f'<xbrli:context id="c{i}"><xbrli:entity><xbrli:segment><xbrldi:explicitMember dimension="us-gaap:DebtInstrumentAxis">x:{member}</xbrldi:explicitMember></xbrli:segment></xbrli:entity>'
+                f'<xbrli:period><xbrli:instant>{end}</xbrli:instant></xbrli:period></xbrli:context>')
+    nf = lambda i, v: f'<ix:nonFraction unitRef="usd" contextRef="c{i}" decimals="-3" name="us-gaap:LongTermDebt" scale="6">{v}</ix:nonFraction>'   # noqa: E731
+    raw = ctx(1, "NoteAMember") + ctx(2, "NoteBMember") + ctx(3, "NoteCMember", "2024-12-31") + nf(1, "400") + nf(2, "100") + nf(3, "999")
+    monkeypatch.setattr(ix, "tenk_filings", lambda sec, cik: [{"accession": "0-25-1", "primary": "x.htm", "report_date": date(2025, 12, 31), "filed": date(2026, 2, 1)}])
+    monkeypatch.setattr(ix, "_get_raw", lambda sec, url, name: raw)
+    got = ix.instrument_sum_series(None, "0000000001", "LongTermDebt", [date(2025, 12, 31)])
+    assert got[date(2025, 12, 31)].val == 500e6 and "SUM of 2 instruments" in got[date(2025, 12, 31)].tag

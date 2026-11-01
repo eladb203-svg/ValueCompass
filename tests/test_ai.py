@@ -17,7 +17,7 @@ from src.scoring.graham import graham_quality
 from test_models_smoke import synthetic
 
 ROOT = Path(__file__).resolve().parents[1]
-RULEBOOK = (ROOT / "docs" / "scoring" / "ValueCompass_Rulebook_2026-10-21_19-26_EN.md").read_text(encoding="utf-8")
+RULEBOOK = (ROOT / "docs" / "scoring" / "ValueCompass_Rulebook_2026-11-01_07-00_EN.md").read_text(encoding="utf-8")
 
 
 # ------------------------------------------------------------------ sections

@@ -30,3 +30,23 @@ def test_a_sentence_with_a_date_and_an_amount_keeps_the_year_the_model_gave():
     text = normalize("x " + q + " y")
     year, how, _ = assign_year({"item_key": "committed_undrawn_facilities"}, 3.3, 1000000000, "USD", q, text, 2025, 2025)
     assert year is None and how == "unresolved"                      # not "column_order" (which gave 2023)
+
+
+def _inv(key, year, val, basis=""):
+    return {"item_key": key, "year": year, "value_full": float(val), "basis": basis, "state": "value"}
+
+
+def test_inv_sum_uses_the_duplicate_that_matches_and_a_total_that_includes_cash():
+    from src.ai.ext_checks import control_inv_sum
+    rows = [_inv("inv_total", 2025, 17182, "INCLUDES_CASH"), _inv("inv_cash", 2025, 1727), _inv("inv_fixed_maturities", 2025, 11052), _inv("inv_equity", 2025, 785),
+            _inv("inv_illiquid_loans", 2025, 947), _inv("inv_illiquid_loans", 2025, 791), _inv("inv_real_estate", 2025, 1431), _inv("inv_other", 2025, 990)]
+    c = control_inv_sum(rows)
+    assert c["result"] == "pass" and ("inv_illiquid_loans", 2025, 791.0) in c["rejected"] and ("inv_illiquid_loans", 2025, 947.0) not in c["rejected"]
+
+
+def test_inv_sum_total_without_cash_and_a_real_mismatch():
+    from src.ai.ext_checks import control_inv_sum
+    ok = [_inv("inv_total", 2025, 1500), _inv("inv_cash", 2025, 100), _inv("inv_fixed_maturities", 2025, 1000), _inv("inv_equity", 2025, 500)]
+    assert control_inv_sum(ok)["result"] == "pass"                      # the total has no cash: cash is left out of the sum
+    bad = [_inv("inv_total", 2025, 3000), _inv("inv_fixed_maturities", 2025, 1000), _inv("inv_equity", 2025, 500)]
+    assert control_inv_sum(bad)["result"] == "fail"
