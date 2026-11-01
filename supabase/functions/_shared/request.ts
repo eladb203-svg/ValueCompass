@@ -8,8 +8,9 @@ import { type Deps, isTicker, normTicker } from "./lib.ts";
 export type RequestResult =
   | { status: "ready"; company_id: number; symbol: string }
   | { status: "in_progress"; company_id: number | null; symbol: string; message: string }
-  | { status: "not_found" | "unsupported" | "invalid" | "unavailable"; symbol: string; reason: string; report_form: any };
+  | { status: "unsupported" | "invalid" | "unavailable"; symbol: string; reason: string; report_form: any };
 
+export const REASON_NOT_IN_SEC = "הטיקר לא נמצא ברשימת ה-SEC — ייתכן שהחברה התמזגה או נמחקה מהמסחר";
 const MSG_PROCESSING = "בעיבוד — יושלם בהמשך";
 const ANNUAL = ["10-K", "10-K/A", "10-KT", "10-KT/A", "10-K405", "10-K405/A"];
 const FOREIGN = ["20-F", "20-F/A", "40-F", "40-F/A"];
@@ -45,7 +46,11 @@ export async function requestCompany(deps: Deps, userId: string, rawTicker: unkn
     hit = Object.values(tickers as Record<string, any>).find((t: any) => String(t.ticker).toUpperCase() === symbol) as any;
     if (hit) { cik = String(hit.cik_str).padStart(10, "0"); hitSub = await secJson(deps, `https://data.sec.gov/submissions/CIK${cik}.json`); }
     } catch { return { status: "unavailable", symbol, reason: "בדיקת ה-SEC אינה זמינה כרגע, נסו שוב בעוד כמה דקות", report_form: reportForm(symbol, "SEC לא זמין") }; }
-    if (!hit) return { status: "not_found", symbol, reason: "הסימול לא נמצא ברשימת ה-SEC", report_form: reportForm(symbol, "לא נמצא ב-SEC") };
+    if (!hit) {                                                              // not in the SEC list: unsupported, and the request is recorded as failed with the reason
+      const again = await db.from("support_tickets").select("id").eq("user_id", userId).eq("type", "company_request").eq("requested_ticker", symbol).eq("status", "failed").eq("fail_reason", REASON_NOT_IN_SEC).limit(1);
+      if (!again.data?.[0]) await db.from("support_tickets").insert({ user_id: userId, type: "company_request", requested_ticker: symbol, status: "failed", fail_reason: REASON_NOT_IN_SEC, body: null });
+      return { status: "unsupported", symbol, reason: REASON_NOT_IN_SEC, report_form: reportForm(symbol, REASON_NOT_IN_SEC) };
+    }
     const sub = hitSub;
     const forms: string[] = sub?.filings?.recent?.form ?? [];
     let reason: string | null = null;

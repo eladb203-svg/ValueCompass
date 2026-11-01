@@ -109,7 +109,7 @@
 | 9 | גיבוי | חלקי | הלוגיקה והגיזום נבדקו; dump אמיתי ושחזור — לא (אין pg_dump). שחזור ב-SQL עבר |
 | 10 | פעיל לא קורא/כותב טבלה ישירות | עבר | A מול 42 טבלאות/תצוגות × GET/POST/PATCH/DELETE (ללא הצלחה); קטלוג ההרשאות: `scripts/security_privileges_check.sql` — רק SELECT על 8 התצוגות |
 | 11 | משתמש לא משנה role/status | עבר | PATCH/POST ישיר ו-`admin-users` — 403, הפרופיל לא השתנה. בנוסף ב-SQL (טרנזקציה שבוטלה, עם הרשאת עדכון זמנית ופוליסה פתוחה): הטריגר חוסם שינוי role, status ו-invited_by ("role and status are changed by the admin only") ומתיר שינוי שם |
-| 12 | חיפוש שלא מצא מפעיל request-company | עבר | `smart-search` עם `ZZZZQ` → `not_found` + `request` עם סיבה וטופס דיווח. **נתמך (הכנסה לתור) נבדק רק בבדיקות Deno שלא הורצו** ובטריגרים (13), כדי לא להכניס משימה לתור ולא לעורר את המריץ של השיחה השנייה |
+| 12 | חיפוש שלא מצא מפעיל request-company | עבר | `smart-search` עם `ZZZZQ` → אין תוצאות + `request` (אחרי עדכון main: `unsupported`) עם סיבה וטופס דיווח. **נתמך (הכנסה לתור) נבדק רק בבדיקות Deno שלא הורצו** ובטריגרים (13), כדי לא להכניס משימה לתור ולא לעורר את המריץ של השיחה השנייה |
 | 13 | הודעות רק למשתמש הנכון | עבר | פנייה `company_request` של A: מעברים data_loaded → complete יוצרים `company_started`, `company_ready`; תשובת מנהל וסגירה על פנייה רגילה: `ticket_reply`, `ticket_status`; B — אין הודעות; `notifications-read` מסמן רק של הקורא (חברת בדיקה זמנית נמחקה) |
 | 15 | `signup-request` בלי התחברות | עבר | בקשה נשמרה (`type=signup`, `user_id` ריק, `status=open`), מספר משתמשי Auth לא השתנה |
 | 16 | אישור/דחייה | ראו הערה | מנהל דוחה → `closed` בלי הזמנה; לא-מנהל — 403; אישור → `inviteUserByEmail`, הבקשה `done`, המשתמש המוזמן `active` עם השם מהטופס (הטריגר נבדק ב-SQL: מוזמן → active + שם). **בהרצות שבהן המכסה של שליחת המייל ב-Supabase (SMTP מובנה) הייתה מלאה** ההזמנה נכשלה ב-"email rate limit exceeded" והבקשה נשארה פתוחה (זו ההתנהגות הנכונה, בדיקה 16b). 16 מלאה תלויה במכסת המייל — ראו סעיף 11 |
@@ -178,3 +178,6 @@
 1. **Site URL וקישור ההזמנה:** `Authentication → URL Configuration → Site URL` והסוד `SITE_URL` ל-`redirectTo` של ההזמנה צריכים להצביע על עמוד קביעת הסיסמה — **נבנה ב-ק7**. עד אז קישור ההזמנה לא נוחת על מסך מתאים.
 2. **SMTP של Resend + תבניות בעברית** (`supabase/templates/*.html`) ב-Auth — **לפני פתיחה למשתמשים**, וגם כדי שבדיקות 16 ו-18 יעברו בלי מגבלת המכסה.
 **ז. בדיקת "נמצאה ונתמכת" ב-`request-company`:** לא הורצה, לפי ההנחיה — רק אחרי שהצ'אט של מנה 8/9 מסתיים ו-`work_queue` ריק מהמשימות שלו.
+
+## 13. עדכון מ-main: טיקר שלא ב-SEC
+`request-company` (דרך `_shared/request.ts`, וכך גם `smart-search` ו-`broker-import`) מחזירה עכשיו לטיקר שלא ברשימת ה-SEC `status = "unsupported"` עם הסיבה "הטיקר לא נמצא ברשימת ה-SEC — ייתכן שהחברה התמזגה או נמחקה מהמסחר" (במקום `not_found`), ורושמת פנייה `company_request` בסטטוס `failed` עם אותה סיבה ב-`fail_reason` (לא נוצרת פעם שנייה לאותו משתמש וטיקר). בדיקת Deno עודכנה: 17 עברו. הגרסה הזו **לא נפרסה** ל-test (בגרסה שם עדיין `not_found`); `scripts/deploy_functions.ps1` פורס אותה.

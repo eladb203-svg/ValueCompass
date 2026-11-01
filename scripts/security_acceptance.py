@@ -172,8 +172,8 @@ def main():
         # 12 search without result -> request-company runs automatically
         s, nf = fn(at, "smart-search", {"query": "ZZZZQ"})
         req = (nf or {}).get("request") or {}
-        record(12, "A search with no result calls request-company automatically", s == 200 and nf.get("not_found") and req.get("status") in ("not_found", "unavailable", "unsupported") and "report_form" in req,
-               f"smart-search 'ZZZZQ' -> not_found, request.status={req.get('status')}, reason={req.get('reason')}, report form prefilled={'report_form' in req}")
+        record(12, "A search with no result calls request-company automatically", s == 200 and nf.get("not_found") and req.get("status") in ("unavailable", "unsupported") and "report_form" in req,
+               f"smart-search 'ZZZZQ' -> no result, request.status={req.get('status')}, reason={req.get('reason')}, report form prefilled={'report_form' in req}")
 
         # 13 notifications only for the right user
         sym = "SECTST1"

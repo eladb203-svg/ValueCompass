@@ -175,14 +175,17 @@ Deno.test("request-company: not found, 20-F filer, SEC down -> reason and a pref
   const { db, deps } = world();
   const mk = (tickers: any, sub: any, ok = true): Deps => ({ ...deps, fetch: ((u: string) => Promise.resolve({ ok, json: () => Promise.resolve(u.includes("company_tickers") ? tickers : sub) })) as any });
   let j = await (await call(requestCompany, mk({}, {}), "tA", { ticker: "NOPE" })).json();
-  assertEquals([j.status, !!j.report_form], ["not_found", true]);
+  assertEquals([j.status, j.reason, !!j.report_form], ["unsupported", "הטיקר לא נמצא ברשימת ה-SEC — ייתכן שהחברה התמזגה או נמחקה מהמסחר", true]);
+  const failed = db.t("support_tickets");
+  assertEquals([failed.length, failed[0].type, failed[0].status, failed[0].fail_reason, failed[0].requested_ticker, failed[0].user_id], [1, "company_request", "failed", j.reason, "NOPE", "A"]);
+  await call(requestCompany, mk({}, {}), "tA", { ticker: "NOPE" });                    // asked again: still one failed request
   j = await (await call(requestCompany, mk({ "0": { cik_str: 2, ticker: "FORN", title: "Foreign" } }, { sic: "3570", filings: { recent: { form: ["20-F"] } } }), "tA", { ticker: "FORN" })).json();
   assertEquals([j.status, j.report_form.type], ["unsupported", "support"]);
   j = await (await call(requestCompany, mk({}, {}, false), "tA", { ticker: "DOWN" })).json();
   assertEquals(j.status, "unavailable");
   j = await (await call(requestCompany, deps, "tA", { ticker: "bad ticker!" })).json();
   assertEquals(j.status, "invalid");
-  assertEquals([db.t("work_queue").length, db.t("support_tickets").length], [0, 0]);
+  assertEquals([db.t("work_queue").length, db.t("support_tickets").length], [0, 1]);   // only the failed request of NOPE; nothing queued
 });
 
 Deno.test("admin-tickets: status values follow the ticket type; the change is audited", async () => {
