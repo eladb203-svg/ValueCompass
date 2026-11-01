@@ -341,3 +341,50 @@ Preflight `scripts/state/acceptance_preflight_6.txt` (all new). Log `scripts/sta
 3. ERIE: row 2 fallback for an issuer with no insurance liabilities at all (a missing component that is zero by the balance sheet), so it ends STANDARD.
 4. AFG / THG: the categories of the investments block against the total (equity-method investments).
 5. The unexplained idle time at the end of two runs (SIGI, PANW).
+
+## 12. Fixes after batch 6, and acceptance batch 7 (2026-11-01)
+
+### 12.1 The five fixes (all on test, 947 tests pass)
+1. **WAL - year shift in capital tables.** The row "Common equity tier 1 | $ | 7,003 | | | $ | 6,311" has a "1" in its label ("tier 1") that the column logic counted as the first cell, so every year moved back one (cet1 capital stored as FY2023 / FY2024). Fix (`ext_norm.data_tokens`): a one- or two-digit number right after a label word such as tier, level, class, series, stage, group is part of the label. Re-judged from the stored answers: WAL B 3.6.1 4/4, G 3.2.1 8/8, G 3.7.3 1.27/2 (Buffett 79.70 -> 80.59, Graham 84.8 -> 86.35).
+2. **KIM - debt maturities.** The model quoted only the cell ("$881.7"; the report has "$ 881.7"), shorter than the minimum quote. When such a quote occurs once in the text sent, it is extended to the words before it (the table row), as written in the report (`quote_extended_to_the_row`); an ambiguous cell stays rejected. No hidden characters were involved this time (those were DLR's). KIM G 3.2.2 4.45/8 now scored.
+3. **ERIE - SIC fallback.** The fallback to INSURANCE when the row test is undetermined applies only to carriers, SIC 63xx; 64xx (agents, brokers, insurance services) go on as STANDARD (`fallback_by_sic_allowed`). ERIE's stored profile came from the old rule and, by the stability rule, carried over, so its profile was cleared once and the company re-routed (one data step on a company of batch 6): ERIE is now STANDARD, Buffett 97.29 (91%), Graham none (55%).
+4. **AFG - equity-method investments** are a category of the investments block (`inv_equity_method`, skill version 5; the `inv_sum` control, the engine and the complex-assets numerator include it; the control was not loosened): 2,421 m added, every row `approved`, G 3.2.2 4.89/5, G 3.7.3 0.57/3 (before: both missing). New: rows of an older skill version are rejected as `superseded` when the current version has the period (AFG's two stale mortgage-loan rows).
+5. **Heartbeat.** `keep_awake` now also writes `[heartbeat] HH:MM:SS +N s` every 5 minutes (and at start and end); a gap well over the interval is printed as `GAP ... the computer was probably asleep`. `vc.py load` covers the whole command, not only the queue part. 14 heartbeat lines in batch 7, no GAP.
+
+### 12.2 Batch 7 (BOKF bank, RLI insurer, REXR industrial REIT, TSN regular, CDNS technology)
+Preflight `scripts/state/acceptance_preflight_7.txt` (all new). Log `scripts/state/acceptance_run_8.log`.
+
+| Company | Result | Calls | Time | Buffett / Graham (coverage) |
+|---|---|---|---|---|
+| BOKF | complete | 16 | 6:45 | 81.77 (98%) / 90.46 (94%) |
+| RLI | complete | 16 | 6:41 | 87.59 (90%) / 77.97 (75%) |
+| REXR | complete | 23 | 6:34 | 87.95 (81%) / 92.06 (70%) |
+| TSN | complete | 14 | 5:16 | 49.86 (100%) / 55.43 (98%) |
+| CDNS | complete | 16 | 4:13 | 97.36 (100%) / 84.96 (100%) |
+
+**(a) Without contact: 5 of 5.** No failed task, retry or network wait; heartbeat every 5 minutes, no gap (the computer did not sleep).
+
+**(b) Missing items classified. Result: not clean - three companies with bugs.**
+
+| Company | Item | Class | Evidence |
+|---|---|---|---|
+| CDNS | none | - | 100% / 100% |
+| BOKF | B 3.6.5, G 3.2.2 LCR | real - not reported | no numeric LCR |
+| BOKF | G 3.7.3 RWA | real - not in the report text | "risk-weighted assets" appears only in prose, no figure |
+| RLI | B 3.6.1, G 3.2.1 capital ratio | real - not reported | "RBC amount in excess of the authorized control level", no number |
+| RLI | **G 3.7.2 investment-grade share; G 3.7.3 (needs the below-IG part)** | **BUG - in the report as dollar amounts, not as a share** | "Non-investment grade bonds totaled $148 million while non-rated Regulation D securities totaled $90 million": the share is derivable from these and the fixed-maturity total; the sentence/table forms of the keyword step (a stated percentage) do not cover it |
+| REXR | **B 3.4.2, G 3.7.2 same-property NOI growth** | **BUG - derivable from the report** | the same-property table gives revenues 759,209 / 745,932 and property expenses 170,034 / 163,053: NOI +1.1%; the NOI rows of the keyword step need an "NOI" line, this table has revenues and expenses |
+| REXR | **G 3.7.3 largest tenant** | **BUG - in the report, not extracted** | "no single tenant accounting for more than 2.4% of our total annualized in-place base rent"; the 10 largest tenants 13.9% (table) |
+| REXR | G 3.3.2 unencumbered | real | covenants only, no NOI or asset figures |
+| REXR | B 3.6.3, B 3.7.4, G 3.5.4, G 3.8.2, G 3.3.3, B 3.4.1 | real by rule / no value basis / short NOI history | as for the other REITs |
+| TSN | **G 3.5.2 DPS cuts ("dividend per share missing for most years")** | **BUG - in the report; XBRL by class** | the 10-K states Class A dividends of $2.00 / $1.96 / $1.92 per share; the XBRL per-share dividend is reported per share class (members), no undimensioned total |
+
+**Gate: not passed** (third batch in a row). Nothing of batch 7 was repaired by hand. Each batch removed the families found in the one before and showed new ones (this time: dollar-amount credit quality, same-property tables without an NOI line, a largest-tenant sentence, a dividend per share by class). The three new ones are of the same kind as before: facts that the report gives in a form the extraction and the keyword steps do not read.
+
+### 12.3 Open for the next round
+1. RLI: investment-grade share from dollar amounts (non-investment grade + non-rated over fixed maturities).
+2. REXR (and DLR): same-property NOI growth from a same-property table of revenues and expenses.
+3. REXR: largest tenant share from the sentence "no single tenant ... more than X%".
+4. TSN: dividend per share by share class (take the primary class) from XBRL members.
+5. AFG, THG: THG's categories are 2.4% from the total (above the 2% of the control).
+6. A question for you: batches 5, 6 and 7 each found three to six new bugs of the "present in the report, not read" kind. The strict gate remains open unless these families are closed one by one or the gate changes (for example: a list of families that count as "derivable, not stated" and are reported but do not fail a batch).
