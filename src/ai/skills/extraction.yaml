@@ -107,7 +107,7 @@ blocks:
 
   - skill_id: EXT-INS-INV
     block: B4
-    version: 4
+    version: 5
     profile: INSURANCE
     task: "Extract the investment portfolio by category and credit quality, catastrophe losses and whether asset-liability matching is disclosed."
     sections: [X-INSINV, X-BS]
@@ -118,7 +118,8 @@ blocks:
       - {key: inv_equity, def: "Equity securities", unit: USD}
       - {key: inv_illiquid_loans, def: "Mortgage and other loans", unit: USD}
       - {key: inv_real_estate, def: "Real estate investments", unit: USD}
-      - {key: inv_other, def: "Other invested assets: every remaining investment line of the balance sheet that is not cash, short-term investments, fixed maturities, equity securities, loans or real estate (investments accounted for using the equity method, limited partnerships, private equity, other long-term investments)", unit: USD}
+      - {key: inv_equity_method, def: "Investments accounted for using the equity method (balance-sheet line), including limited partnerships and joint ventures carried by that method", unit: USD}
+      - {key: inv_other, def: "Other invested assets: every remaining investment line of the balance sheet that is not cash, short-term investments, fixed maturities, equity securities, loans or real estate (limited partnerships, private equity, other long-term investments; NOT investments accounted for using the equity method, which have their own item)", unit: USD}
       - {key: inv_total, def: "Total investments as stated. When the balance sheet states only a total that includes cash (for example 'Total cash and investments'), report that amount and write INCLUDES_CASH in the basis field", unit: USD}
       - {key: inv_ig_fixed, def: "Investment-grade fixed income (BBB-/Baa3 or better, NAIC 1-2); unrated is NOT investment grade", unit: USD}
       - {key: inv_ig_share, def: "Investment-grade share of fixed income, when stated instead of an amount", unit: percent}

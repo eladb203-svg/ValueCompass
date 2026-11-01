@@ -457,7 +457,7 @@ def resolve_latest(ii, d) -> dict:
     if cash is None:
         cash = ii.series("cash")[-1]
     out["cash"] = cash
-    cats = {k: _usd(reg, f"bs_{k}") for k in ("short_term", "fixed_maturities", "equity", "illiquid_loans", "real_estate", "other_invested", "total_investments")}
+    cats = {k: _usd(reg, f"bs_{k}") for k in ("short_term", "fixed_maturities", "equity", "illiquid_loans", "real_estate", "equity_method", "other_invested", "total_investments")}
     tot = cats["total_investments"]
     incl_cash = bool(tot is not None and "INCLUDES_CASH" in ((reg.get("bs_total_investments") or {}).get("note") or ""))
     out["bs_categories"] = {**cats, "cash": cash, "total_includes_cash": incl_cash}
@@ -496,7 +496,7 @@ def resolve_latest(ii, d) -> dict:
     else:
         below_src = "omitted: no credit-quality table / investment-grade share extracted"
     cparts = {"equity_securities": cats["equity"] or 0.0, "real_estate": cats["real_estate"] or 0.0,
-              "other_invested_assets_limited_partnerships": cats["other_invested"] or 0.0, "below_ig_fixed_maturities": below}
+              "other_invested_assets_limited_partnerships": cats["other_invested"] or 0.0, "equity_method_investments": cats["equity_method"] or 0.0, "below_ig_fixed_maturities": below}
     out["complex_parts"] = cparts
     out["below_ig_source"] = below_src
     if below is None:

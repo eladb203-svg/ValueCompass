@@ -22,7 +22,7 @@ BANK_MAP = [
 INS_MAP = [
     (r"^reg_capital_ratio$", "reg_capital_ratio", "B3"), (r"^adverse_prior_year_dev:", "prior_year_dev", "B3"), (r"^adverse_ldti_remeasurement:", "ldti_remeasurement", "B3"),
     (r"^bs_cash$", "inv_cash", "B4"), (r"^bs_short_term$", "inv_short_term", "B4"), (r"^bs_fixed_maturities$", "inv_fixed_maturities", "B4"), (r"^bs_equity$", "inv_equity", "B4"),
-    (r"^bs_illiquid_loans$", "inv_illiquid_loans", "B4"), (r"^bs_real_estate$", "inv_real_estate", "B4"), (r"^bs_other_invested$", "inv_other", "B4"),
+    (r"^bs_illiquid_loans$", "inv_illiquid_loans", "B4"), (r"^bs_real_estate$", "inv_real_estate", "B4"), (r"^bs_equity_method$", "inv_equity_method", "B4"), (r"^bs_other_invested$", "inv_other", "B4"),
     (r"^bs_total_investments$", "inv_total", "B4"), (r"^ig_fixed_income$", "inv_ig_fixed", "B4"), (r"^ig_share_pct$", "inv_ig_share", "B4"),
     (r"^cat_loss_latest$", "cat_loss_latest", "B4"), (r"^alm_disclosed$", "alm_disclosed", "B4"),
     (r"^total_fixed_income$", None, None), (r"^debt_total$", None, None), (r"^structural_event:", None, None),
@@ -101,7 +101,7 @@ def to_reg(kind: str, rows: list, fy_latest: int) -> dict:
             name = f"loan:{r.get('basis') or 'line'}" if key == "loan_line" else (f"loans_{fy_latest}" if key == "total_loans" else key)
         else:
             name = {"prior_year_dev": f"adverse_prior_year_dev:{_label(y)}", "inv_cash": "bs_cash", "inv_short_term": "bs_short_term", "inv_fixed_maturities": "bs_fixed_maturities",
-                    "inv_equity": "bs_equity", "inv_illiquid_loans": "bs_illiquid_loans", "inv_real_estate": "bs_real_estate", "inv_other": "bs_other_invested",
+                    "inv_equity": "bs_equity", "inv_illiquid_loans": "bs_illiquid_loans", "inv_real_estate": "bs_real_estate", "inv_equity_method": "bs_equity_method", "inv_other": "bs_other_invested",
                     "inv_total": "bs_total_investments", "inv_ig_fixed": "ig_fixed_income", "inv_ig_share": "ig_share_pct", "ldti_remeasurement": f"adverse_ldti_remeasurement:{_label(y)}"}.get(key, key)
         new = {**row, "value": v, "unit": u, "period": _label(y)}
         # K6d-2 fixes: a capital table lists the group and its subsidiary bank (CFG and CBNA). One value per item is used: the group's - the entity named like the ticker, else the first one listed

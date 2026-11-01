@@ -134,6 +134,17 @@ def check_item(it: dict, keys: dict, text_norm: str, fy: int, window: int = 2, r
         res.reasons.append("no_quote")
         return res
     qn = normalize(qt)
+    cell = list(re.finditer(re.escape(qn).replace(r"\$", r"\$ ?"), text_norm)) if (len(qn) < MIN_QUOTE_CHARS and "..." not in qn and "…" not in qn) else []
+    if len(cell) == 1:
+        # K6d-2 fixes: the model quoted only the cell ("$881.7", the report has "$ 881.7"); it occurs once in the text sent, so the quote is extended to the words before it (the table row), as written
+        i, e_ = cell[0].start(), cell[0].end()
+        j = max(0, i - 70)
+        if j and " " in text_norm[j:i]:
+            j = text_norm.index(" ", j) + 1
+        qn = text_norm[j:e_]
+        qt = qn
+        q["text"] = qn
+        res.flags.append("quote_extended_to_the_row")
     if len(qn) < MIN_QUOTE_CHARS or "..." in qn or "…" in qn:
         res.reasons.append("quote_not_found")
     elif qn not in text_norm:
@@ -252,7 +263,7 @@ def control_loans_sum(rows: list) -> dict:
     return ctl("loans_sum", "fail" if bad else "pass", "; ".join(bad or out), ["loan_line", "total_loans"])
 
 
-INV_PARTS = ("inv_cash", "inv_short_term", "inv_fixed_maturities", "inv_equity", "inv_illiquid_loans", "inv_real_estate", "inv_other")
+INV_PARTS = ("inv_cash", "inv_short_term", "inv_fixed_maturities", "inv_equity", "inv_illiquid_loans", "inv_real_estate", "inv_equity_method", "inv_other")
 
 
 def control_inv_sum(rows: list) -> dict:

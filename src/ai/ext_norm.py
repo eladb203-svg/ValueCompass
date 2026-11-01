@@ -14,6 +14,9 @@ _TOKEN = re.compile(r"(\(?\s*(?:[-−](?=\$?\d))?\$?\s*\d[\d,]*(?:\.\d+)?\s*\)?)
 _FOOTNOTE = re.compile(r"^\(\s*\d\s*\)$")
 
 
+LABEL_NUMBER_WORDS = {"tier", "level", "class", "series", "stage", "type", "category", "group", "phase", "step", "note", "item", "part", "schedule", "segment", "region", "quarter", "plan", "tranche", "grade"}
+
+
 def data_tokens(s: str) -> tuple:
     """-> (label, tokens): the line label (text before the first data number) and the data cells of the line in order: (text, negative?, is_percent, is_dash)."""
     label_end = None
@@ -24,6 +27,10 @@ def data_tokens(s: str) -> tuple:
             continue                                       # footnote reference "(1)"
         if m.group(1) and m.start() > 0 and m.group(1) == m.group(1).lstrip() and s[m.start() - 1].isalnum():
             continue                                       # digits glued to a word ("Intel4", "Q4")
+        if m.group(1) and t.isdigit() and len(t) <= 2:
+            prev = re.findall(r"[A-Za-z]+", s[:m.start()])
+            if prev and prev[-1].lower() in LABEL_NUMBER_WORDS:
+                continue                                   # K6d-2 fixes: the number is part of the label ("Common equity tier 1", "Level 2"), not a column: it shifted every year of the row
         if label_end is None:
             label_end = m.start()
         if m.group(3):

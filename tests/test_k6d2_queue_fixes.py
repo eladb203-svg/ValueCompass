@@ -222,3 +222,32 @@ def test_a_direct_load_gives_up_after_five_attempts():
     with pytest.raises(Exception):
         with_network_retry(down, sleep=lambda s: None, log=lambda m: None)
     assert n["c"] == 5
+
+
+def test_rows_of_an_older_skill_version_are_retired_when_the_new_version_has_the_period():
+    from src.ai.prompt import extraction_blocks
+    ver = str(next(b["version"] for b in extraction_blocks().values() if b["skill_id"] == "EXT-INS-INV"))
+    client = FakeClient()
+    a = company(client, "AAA")
+    mk = lambda key, v, per, src=None: client.table("extraction_items").insert({"company_id": a, "item_key": key, "period": per, "skill_id": "EXT-INS-INV", "skill_version": v, "approval_status": "approved", "approval_source": src}).execute()   # noqa: E731
+    mk("old_a", "1", "FY2025")
+    mk("old_h", "1", "FY2025", "human_review")
+    mk("old_b", "1", "FY2024")                                   # no row of the new version for this period: stays
+    mk("new_a", ver, "FY2025")
+    r = runner(client)
+    assert r.retire_old_skill_rows(a) == 1
+    st = {x["item_key"]: x["approval_status"] for x in client.tables["extraction_items"]}
+    assert st == {"old_a": "rejected", "old_h": "approved", "old_b": "approved", "new_a": "approved"}
+
+
+def test_the_heartbeat_writes_a_line_and_flags_a_gap_much_longer_than_the_interval():
+    from src.sched.awake import Heartbeat
+    t = {"now": 1000.0}
+    lines = []
+    hb = Heartbeat(300, emit=lines.append, wall=lambda: t["now"])
+    hb.beat()
+    t["now"] += 300
+    assert "GAP" not in hb.beat()
+    t["now"] += 7000                                              # the computer slept for about two hours
+    assert "GAP" in hb.beat() and "asleep" in lines[-1]
+    assert lines[0].startswith("[heartbeat]") and "+0 s" in lines[0]

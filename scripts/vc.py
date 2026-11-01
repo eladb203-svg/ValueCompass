@@ -388,23 +388,23 @@ def main(argv=None) -> int:
             queue_status(r, a.arg)
         return 0
     if a.command == "load":
-        p = make_pipeline(a.dry_run, offline=(a.job == "repair"))
-        before = p.companies.get_by_symbol(a.arg.upper(), "US")
-        from src.pipeline.net_retry import with_network_retry
-        res, waited = with_network_retry(lambda: p.load(a.arg, a.job))          # a temporary network error: the same retry rule as the queue
-        if waited:
-            print(f"  waited for network retries: {waited:.0f} s")
-        print_result(res)
-        if a.dry_run or res.status == "failed" or a.no_score:
-            return 1 if res.status == "failed" else 0
-        runner = make_runner(a.budget)
-        row = runner.companies.get_by_symbol(a.arg.upper(), "US")
-        from src.repositories.work_queue_repository import JOB_PRIORITY, PRIORITY
-        prio = PRIORITY["user"] if before is None or not before.get("processing_state") else JOB_PRIORITY.get(a.job, PRIORITY["completion"])        # a new company = a user's request (1)
-        print("after load:", runner.after_load(res, row["id"], prio))
-        with keep_awake():
+        with keep_awake():                                   # the whole load (SEC fetch, queue) is covered: awake and a heartbeat line every 5 minutes
+            p = make_pipeline(a.dry_run, offline=(a.job == "repair"))
+            before = p.companies.get_by_symbol(a.arg.upper(), "US")
+            from src.pipeline.net_retry import with_network_retry
+            res, waited = with_network_retry(lambda: p.load(a.arg, a.job))          # a temporary network error: the same retry rule as the queue
+            if waited:
+                print(f"  waited for network retries: {waited:.0f} s")
+            print_result(res)
+            if a.dry_run or res.status == "failed" or a.no_score:
+                return 1 if res.status == "failed" else 0
+            runner = make_runner(a.budget)
+            row = runner.companies.get_by_symbol(a.arg.upper(), "US")
+            from src.repositories.work_queue_repository import JOB_PRIORITY, PRIORITY
+            prio = PRIORITY["user"] if before is None or not before.get("processing_state") else JOB_PRIORITY.get(a.job, PRIORITY["completion"])        # a new company = a user's request (1)
+            print("after load:", runner.after_load(res, row["id"], prio))
             print_report(runner.run(a.max_tasks, only={a.arg.upper()}))        # only this company's tasks: the rest of the queue belongs to the scheduler
-        return 0
+            return 0
     if a.command == "score":
         runner = make_runner(a.budget)
         row = runner.companies.get_by_symbol(a.arg.upper(), "US")

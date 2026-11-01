@@ -374,3 +374,10 @@ def test_resolve_does_not_adopt_a_company_of_another_cik_and_stops_on_an_ambiguo
     with pytest.raises(ValueError, match="have no CIK"):
         R.persist(R.resolve(fake_sec(sub(K10)), "ACM"), CompanyRepository(d), d, state="resolved")
     assert len(d.tables["companies"]) == 2
+
+
+def test_the_sic_fallback_to_insurance_is_only_for_carriers_63xx():
+    from src.pipeline.runner import fallback_by_sic_allowed as ok
+    assert ok("insurance", "6331") and ok("insurance", "6311")
+    assert not ok("insurance", "6411") and ok("insurance", "6321")
+    assert ok("bank", "6021") and ok("realestate", "6798")

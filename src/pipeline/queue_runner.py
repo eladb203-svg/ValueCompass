@@ -642,6 +642,22 @@ class QueueRunner:
     def exec_classify(self, task: dict) -> dict:
         raise RuntimeError("C1 (industry classification) for a new company is not wired to the queue yet: needs the router's SIC / provider industry inputs of the company")
 
+    def retire_old_skill_rows(self, company_id: int) -> int:
+        """K6d-2 fixes: a skill whose version was raised is asked again; the rows of the older version for a period that has a row of the current version are rejected (``superseded``), so the
+        engine never reads a stale value next to the new one (AFG: two mortgage-loan rows of version 1 beside the one of version 5). Rows approved by a person are left alone."""
+        from src.ai.approval_rules import HUMAN_SOURCES
+        from src.ai.prompt import extraction_blocks
+        current = {b["skill_id"]: str(b["version"]) for b in extraction_blocks().values()}
+        rows = [r for r in self.client.table("extraction_items").select("id,skill_id,skill_version,period,approval_status,approval_source").eq("company_id", company_id).execute().data if r.get("skill_id")]
+        fresh = {(r["skill_id"], r["period"]) for r in rows if r["skill_version"] == current.get(r["skill_id"])}
+        n = 0
+        for r in rows:
+            cur = current.get(r["skill_id"])
+            if cur and r["skill_version"] != cur and (r["skill_id"], r["period"]) in fresh and r["approval_status"] != "rejected" and r.get("approval_source") not in HUMAN_SOURCES:
+                self.client.table("extraction_items").update({"approval_status": "rejected", "approval_source": None, "note": f"superseded by skill version {cur}"}).eq("id", r["id"]).execute()
+                n += 1
+        return n
+
     def exec_extract(self, task: dict) -> dict:
         if self.gemini is None:
             raise QuotaSpent("no model budget")
@@ -665,6 +681,7 @@ class QueueRunner:
         rows = [json.loads(ln) for ln in (out_root / "items.jsonl").read_text(encoding="utf-8").splitlines() if ln.strip()] if (out_root / "items.jsonl").exists() else []
         rows = [r for r in rows if r["ticker"] == t]
         n = self.item_store.upsert_rows(rows, "ai_controls") if rows else {}
+        n["superseded"] = self.retire_old_skill_rows(task["company_id"])
         if rows:                                                      # K6d-2: the approval rules (AI skills 2.3) judge the new rows before the score reads them
             from src.ai import recheck as RC
             n["approval_rules"] = RC.recheck(self.client, t, apply=True)["applied"]

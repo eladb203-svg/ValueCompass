@@ -193,7 +193,7 @@ class Pipeline:
         engine, kw, raw, final = chosen
         # ... and the same when the rows exist but the test stays undetermined (rulebook B: an undetermined year is not a failure, so it is not STANDARD either): DLR's row 3 after the extraction
         undetermined = any("-> undetermined (" in x for x in (getattr(final, "reason", None) or []))      # the latest year's row test had no result (the stored profile, if any, only carries over)
-        if engine == "general" and unconfirmed and sic_hint(resolved.sic) == unconfirmed[0] and ((not has_engine_rows and self.router_fallback) or (has_engine_rows and undetermined)):
+        if engine == "general" and unconfirmed and sic_hint(resolved.sic) == unconfirmed[0] and fallback_by_sic_allowed(unconfirmed[0], resolved.sic) and ((not has_engine_rows and self.router_fallback) or (has_engine_rows and undetermined)):
             # K6d-2: the extraction was asked once and did not decide (it failed or gave nothing): the profile is set by the SIC code and the provider industry, with a flag - no second request
             eng2 = unconfirmed[0]
             kw, raw, f2 = candidates[eng2]
@@ -322,6 +322,12 @@ def sic_hint(sic: str) -> Optional[str]:
     if sic[:2] == "63" or sic == "6411":
         return "insurance"
     return None
+
+
+def fallback_by_sic_allowed(engine: str, sic: str) -> bool:
+    """K6d-2 fixes (2026-11-01): the fallback by SIC when the router's row test stays undetermined. An insurer only for SIC 63xx (carriers); 64xx (agents, brokers, insurance services - ERIE manages an
+    insurance exchange for a fee and has no claims liabilities) is STANDARD. Banks and REITs are unchanged."""
+    return engine != "insurance" or (sic or "")[:2] == "63"
 
 
 def _candidates(sic: str, first: str, facts_json: Optional[dict] = None) -> list:

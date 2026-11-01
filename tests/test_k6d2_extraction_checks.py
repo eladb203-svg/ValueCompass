@@ -50,3 +50,34 @@ def test_inv_sum_total_without_cash_and_a_real_mismatch():
     assert control_inv_sum(ok)["result"] == "pass"                      # the total has no cash: cash is left out of the sum
     bad = [_inv("inv_total", 2025, 3000), _inv("inv_fixed_maturities", 2025, 1000), _inv("inv_equity", 2025, 500)]
     assert control_inv_sum(bad)["result"] == "fail"
+
+
+def test_a_number_that_is_part_of_the_label_is_not_a_column():
+    from src.ai.ext_norm import assign_year, data_tokens
+    q = "Common equity tier 1 | $ | 7,003 | | | $ | 6,311"
+    label, toks = data_tokens(normalize(q))
+    assert label.lower().startswith("common equity tier 1") and [t[0].lstrip("$ ") for t in toks] == ["7,003", "6,311"]
+    text = normalize("x " + q + " y")
+    y1, how1, _ = assign_year({"item_key": "cet1_capital"}, 7003, 1000000, "USD", q, text, 2025, 2025)
+    y2, how2, _ = assign_year({"item_key": "cet1_capital"}, 6311, 1000000, "USD", q, text, 2025, 2024)
+    assert (y1, y2) == (2025, 2024)
+
+
+def test_a_quote_that_is_only_the_cell_is_extended_to_the_row_when_it_occurs_once():
+    text = normalize("Long-Term Debt: Principal (1) $ 881.7 $ 1,176.5 $ 636.8 $ 238.6 Interest (2) $ 321.3 $ 258.7")
+    it = item("debt_maturity_year1", "FY2026", 881.7, "$881.7")
+    it["scale"] = 1000000
+    r = check_item(it, KEYS, text, 2025)
+    assert "quote_not_found" not in r.reasons and "quote_extended_to_the_row" in r.flags and "Principal" in it["quote"]["text"] and "881.7" in it["quote"]["text"]
+    twice = normalize("a $ 881.7 and again $ 881.7 here")
+    it2 = item("debt_maturity_year1", "FY2026", 881.7, "$881.7")
+    it2["scale"] = 1000000
+    assert "quote_not_found" in check_item(it2, KEYS, twice, 2025).reasons               # ambiguous: stays rejected
+
+
+def test_equity_method_investments_are_a_category_of_the_inv_sum_control():
+    from src.ai.ext_checks import control_inv_sum
+    rows = [_inv("inv_total", 2025, 17182, "INCLUDES_CASH"), _inv("inv_cash", 2025, 1727), _inv("inv_fixed_maturities", 2025, 11052), _inv("inv_equity", 2025, 785),
+            _inv("inv_illiquid_loans", 2025, 947), _inv("inv_real_estate", 2025, 159), _inv("inv_equity_method", 2025, 2421), _inv("inv_other", 2025, 91)]
+    assert control_inv_sum(rows)["result"] == "pass"                       # 1727 + 11052 + 785 + 947 + 159 + 2421 + 91 = 17182
+    assert control_inv_sum([r for r in rows if r["item_key"] != "inv_equity_method"])["result"] == "fail"
