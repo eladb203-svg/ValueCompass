@@ -388,3 +388,39 @@ Preflight `scripts/state/acceptance_preflight_7.txt` (all new). Log `scripts/sta
 4. TSN: dividend per share by share class (take the primary class) from XBRL members.
 5. AFG, THG: THG's categories are 2.4% from the total (above the 2% of the control).
 6. A question for you: batches 5, 6 and 7 each found three to six new bugs of the "present in the report, not read" kind. The strict gate remains open unless these families are closed one by one or the gate changes (for example: a list of families that count as "derivable, not stated" and are reported but do not fail a batch).
+
+## 13. Four fixes, three general mechanisms, the updated gate, batch 8 (2026-11-01)
+
+### 13.1 The four fixes (test database; reload without a model call, Buffett / Graham, coverage)
+| Company | Fix | Before | After |
+|---|---|---|---|
+| TSN | dividend per share of the traded class (Class A) from the inline XBRL (`DERIVED ... class=CommonClassAMember`; shares by class summed) | 49.86 / 55.43 (G coverage 98%) | 49.86 / 55.43 (100%); G 3.5.2 missing -> 2.0/2.0 |
+| REXR | same-property NOI = revenues - property expenses (+1.08% for 2025; 7.40, 8.19, 4.11 for 2022-2024), growth by CL22, `derived` with the formula | 87.95 / 92.06 (81% / 70%) | 85.76 / 92.99 (96% / 80%); B 3.4.2 6/6, G 3.7.2 4/4 |
+| REXR | "no single tenant ... more than 2.4%" stored as a ceiling (`bound=max`), scored at 2.4; 10 largest tenants 13.9% a separate item `top10_tenants_share` | G 3.7.3 missing | G 3.7.3 2/2 |
+| RLI | investment-grade share = 1 - (non-IG + non-rated) / fixed income (total from the report row, else XBRL), `derived`; no total = stays missing | 87.59 / 77.97 (90% / 75%) | 87.59 / 76.59 (90% / 85%); G 3.7.2 2.62/3, G 3.7.3 0/3 |
+BOKF and CDNS unchanged. Other companies affected by a per-class XBRL: not scanned yet (open).
+Notes: REXR B 3.4.1 became 0/4 (the NOI history now exists). `custom_tag` is stored as source_kind `ixbrl` (tag text `ixbrl:custom_tag ...`) so that the `financial_facts` constraint is unchanged.
+
+### 13.2 The mechanisms
+1. **`data_gap_review`** (migration `20261101150100`, test only; no access for anon / authenticated; closed rows older than 180 days go in the weekly cleanup). Written after every score; family, reason, passage (about 300 characters, no model). `vc.py gaps [--family X] [--state S] [--refresh]`. Run on all companies of test: 233 rows added, 150 open, 91 genuine (by rule). Largest open families: same_property_noi 16 companies, unencumbered 14, capital_ratio 11, ai_insufficient 10. Full output `scripts/state/k13_gaps.txt`.
+2. **Derivation hints**: `derivation_hints` on `inv_ig_share`, `largest_tenant_share`, `same_property_noi_growth` (EXT-INS-INV v6, EXT-RE-OPS v2) and B14 `gross_profit`. The model returns components with quotes (`value_state = components`), the code computes and checks (`ext_checks.derive_item`); a final number from the model is refused. NOT yet exercised against the real model.
+3. **Wide XBRL search** (`src/providers/xbrl_wide.py`, in all four providers): class of stock, close-named company elements, conflicts leave the year missing and go to the list.
+All with unit tests (`tests/test_k6d2_gaps_wide.py`); 975 tests pass.
+
+### 13.3 Batch 7 under the new gate
+Fails: TSN dividend per share is a core item that was in the report and not read; REXR same-property NOI moved Buffett by 2.2 points (87.95 -> 85.76 with the tenant and NOI items). RLI (Graham -1.4) and the REXR tenant item are below 2 points and not core: recorded, not failing.
+
+### 13.4 Batch 8 (CMA bank, UNM life insurer, OHI healthcare REIT, CLX regular, TXN technology)
+Preflight `acceptance_preflight_8.txt`; log `acceptance_run_9.log`. Calls: OHI 23, TXN 16 (daily counter 140 of 450).
+| Company | Result |
+|---|---|
+| OHI | complete, B 73.39 (81%), G none (55%) |
+| TXN | complete, 72.38 / 77.12 (100%) |
+| CLX | **ai_extract FAILED** (`AttributeError: NoneType has no attribute text`): scored 68.21 / 42.68 before the extraction |
+| CMA | **not loaded**: the ticker is not in the SEC company list (Comerica merged); an unsuitable ticker, not a pipeline defect, but the load ended `failed` |
+| UNM | **not loaded**: a network outage of about 40 minutes (all 5 retry rounds used; a heartbeat GAP of 931 s: the computer or the network was suspended) |
+
+**Gate: not passed (batch 8 fails (a) and the rule "stop at a new kind of bug").**
+- CLX is a new kind of bug: its FY2026 annual report (June 2026) is the latest 10-K in the filing cache, while `filing_periods` and the engine stop at FY2025, so `find_filing` finds no report for the engine's latest year and the extraction task crashes. Fix to design: the filing for the engine's latest fiscal year must be the one fetched, and the FY2026/FY2025 mismatch between the XBRL years and the filing periods must be understood first.
+- OHI open items (7): same-property NOI, largest tenant (operator concentration is stated in other words), occupancy, unencumbered, debt maturities: passages mostly empty, so likely not reported in the usual form; NOT classified as real or bug yet.
+- Batch 9 was not run (batch 8 not clean).
