@@ -294,3 +294,36 @@ def test_the_table_has_no_access_for_the_public_roles():
     sql = open(__file__.replace("tests\\test_k6d2_gaps_wide.py", "supabase\\migrations\\20261101150100_data_gap_review.sql").replace("tests/test_k6d2_gaps_wide.py", "supabase/migrations/20261101150100_data_gap_review.sql"), encoding="utf-8").read()
     assert "enable row level security" in sql and "revoke all on public.data_gap_review from anon, authenticated" in sql and "grant all on public.data_gap_review to service_role" in sql
     assert "state in ('open','fixed','genuine')" in sql and "unique (company_id, item_key)" in sql
+
+
+def test_a_healthcare_reit_calls_its_tenants_operators():
+    floor = "In addition, at December 31, 2025, one operator represented greater than 10% of our investments, and the three geographic locations were the U.K. (17.7%)."
+    rows = {r[0]: r for r in KD.tenant_rows({2025: ("acc", floor)})}
+    assert rows["largest_tenant_floor"][3] == 10.0 and "bound=min" in rows["largest_tenant_floor"][5] and "largest_tenant_share" not in rows          # a floor is not a share to score
+    cap = "with no single operator accounting for more than 12.5% of our total revenue. The 10 largest operators accounted for 40% of revenue."
+    rows = {r[0]: r for r in KD.tenant_rows({2025: ("acc", cap)})}
+    assert rows["largest_tenant_share"][3] == 12.5 and rows["top10_tenants_share"][3] == 40.0
+
+
+def test_an_answer_given_without_sections_is_stale_once_the_sections_exist():
+    from src.ai import assess
+
+    class Sec:
+        def __init__(self, found):
+            self.found, self.text = found, "x"
+
+    class Co:
+        def __init__(self, found):
+            self._s = {"TXT-004": Sec(found), "NOTE-UNUSUAL": Sec(False)}
+
+        def sections(self):
+            return self._s
+
+    skill = {"sections": ["TXT-004", "NOTE-UNUSUAL"]}
+    no_call = {"state": "insufficient_evidence", "evidence": {"flags": ["section_not_found:TXT-004"], "reasons": ["primary_section_missing"]}}
+    partly = {"state": "insufficient_evidence", "evidence": {"flags": ["section_not_found:TXT-004"], "reasons": []}}
+    model_said = {"state": "insufficient_evidence", "evidence": {"flags": [], "reasons": []}}
+    answered = {"state": "answered", "evidence": {"flags": ["section_not_found:TXT-004"]}}
+    assert assess.stale_insufficient(no_call, Co(True), skill) and assess.stale_insufficient(partly, Co(True), skill)
+    assert not assess.stale_insufficient(no_call, Co(False), skill)                          # the sections are still missing: nothing new to ask with
+    assert not assess.stale_insufficient(model_said, Co(True), skill) and not assess.stale_insufficient(answered, Co(True), skill)

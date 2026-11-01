@@ -101,6 +101,10 @@ def filing_documents(sec: SecClient, cik: str, k: dict) -> list:
     for n in names:
         if re.search(r"ex[-_]?13", n, re.I) and n.lower().endswith((".htm", ".html")) and n not in docs:
             docs.append(n)
+    stem = re.sub(r"\.html?$", "", k["primary"], flags=re.I)
+    for n in names:                                       # K6d-2 fixes (CLX): the financial statements can be a companion document of the same inline-XBRL filing (<primary>_d2.htm)
+        if re.fullmatch(re.escape(stem) + r"_d\d+\.html?", n, re.I) and n not in docs:
+            docs.append(n)
     return docs
 
 

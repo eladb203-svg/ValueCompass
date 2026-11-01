@@ -115,7 +115,15 @@ class Pipeline:
         try:
             self._run(res, job)
         except R.ResolveError as e:
-            res.status, res.error = "failed", f"{e.kind}: {e}"
+            if e.kind == "not_found":                     # K6d-2 fixes: a ticker that is not on the SEC list is not a failure of the pipeline: unsupported, with the reason
+                reason = f"the ticker {res.ticker} was not found on the SEC list - the company may have merged or been delisted"
+                res.status, res.state = "no_change", "unsupported"
+                res.warnings.append("unsupported: " + reason)
+                if not self.dry_run:
+                    co = self.companies.ensure(res.ticker, res.ticker)
+                    self.companies.set_processing_state(co["id"], "unsupported", reason)
+            else:
+                res.status, res.error = "failed", f"{e.kind}: {e}"
         except Exception as e:   # noqa: BLE001 - a failed job is logged, never silently dropped
             res.status, res.error = "failed", f"{type(e).__name__}: {e}"
         res.requests = self.sec.requests_made - req0

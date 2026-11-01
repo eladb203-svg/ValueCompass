@@ -44,8 +44,11 @@ SAME_ANCHOR = r"[Ss]ame[- ](?:[Pp]roperty|[Ss]tore)"
 SAME_REV = r"(?:TOTAL REVENUES|Total revenues|Rental (?:income|revenues?)|Rental and other (?:income|revenues?))\s+\$?\s*([\d,]{5,})\s+\$?\s*([\d,]{5,})"
 SAME_EXP = r"(?:Property|Real estate|Property operating) (?:operating )?expenses?\s+\$?\s*([\d,]{4,})\s+\$?\s*([\d,]{4,})"
 # tenants: "no single tenant ... more than X%" is a ceiling (bound=max); "10 largest tenants ... Y%" is a separate item
-TENANT_CAP = r"no (?:single |one )?tenants?[^.%$]{0,100}?(?:more than|greater than|in excess of|exceeding|over) (\d{1,2}(?:\.\d+)?)\s?%"
-TENANT_TOP10 = r"(?:10|ten) largest tenants[^.%$]{0,120}?(\d{1,2}(?:\.\d+)?)\s?%"
+TENANT_WORDS = r"(?:tenants?|operators?|lessees?|customers?)"           # a healthcare REIT calls its tenants operators
+TENANT_CAP = r"no (?:single |one )?" + TENANT_WORDS + r"[^.%$]{0,100}?(?:more than|greater than|in excess of|exceeding|over) (\d{1,2}(?:\.\d+)?)\s?%"
+# "one operator represented greater than 10% of our investments" is a floor (the largest is at least X): kept as its own item, never scored as the largest share
+TENANT_FLOOR = r"(?:one|a single|an?) " + TENANT_WORDS + r"[^.%$]{0,60}?(?:represented|accounted for|accounting for|representing)[^.%$]{0,30}?(?:more than|greater than|in excess of|over) (\d{1,2}(?:\.\d+)?)\s?%"
+TENANT_TOP10 = r"(?:10|ten) largest " + TENANT_WORDS + r"[^.%$]{0,120}?(\d{1,2}(?:\.\d+)?)\s?%"
 # insurers: investment-grade share from amounts - "non-investment grade bonds totaled $148 million while non-rated ... $90 million"
 NONIG = r"non-investment[- ]grade[^.$]{0,80}?\$\s?([\d,\.]+)\s+(million|billion)"
 NONRATED = r"non-rated[^.$]{0,100}?\$\s?([\d,\.]+)\s+(million|billion)"
@@ -123,6 +126,9 @@ def tenant_rows(texts: dict) -> list:
         m = re.search(TENANT_CAP, t, re.I)
         if m and 0 < _num(m.group(1)) <= 100:
             out.append(("largest_tenant_share", y, texts[y][0], _num(m.group(1)), t[m.start():m.end()], "upper bound (bound=max): no single tenant above this share of annualized base rent; the largest tenant is at or below it", True))
+        m = re.search(TENANT_FLOOR, t, re.I)
+        if m and 0 < _num(m.group(1)) <= 100 and not re.search(TENANT_CAP, t, re.I):
+            out.append(("largest_tenant_floor", y, texts[y][0], _num(m.group(1)), t[m.start():m.end()], "lower bound (bound=min): the largest tenant / operator is at or above this share; not a scored value", False))
         m = re.search(TENANT_TOP10, t, re.I)
         if m and 0 < _num(m.group(1)) <= 100:
             out.append(("top10_tenants_share", y, texts[y][0], _num(m.group(1)), t[m.start():m.end()], "share of annualized base rent of the 10 largest tenants", False))

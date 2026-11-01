@@ -15,8 +15,10 @@ PRIORITY = {"user": 1, "completion": 2, "new_report": 3, "bulk": 4}
 JOB_PRIORITY = {"initial_import": PRIORITY["completion"], "backfill": PRIORITY["completion"], "repair": PRIORITY["completion"], "new_report": PRIORITY["new_report"],
                 "amendment": PRIORITY["new_report"]}
 
-OPEN = ("queued", "running", "deferred_quota")
-RUNNABLE = ("queued", "deferred_quota")
+OPEN = ("queued", "running", "deferred_quota", "deferred_network")
+RUNNABLE = ("queued", "deferred_quota", "deferred_network")
+NETWORK_ROUNDS = 6                       # K6d-2 fixes: after 5 attempts lost to a network error the task waits 30 minutes (deferred_network) and returns, up to 6 times; only a permanent error fails it
+NETWORK_ROUND_WAIT = timedelta(minutes=30)
 MAX_ATTEMPTS = 3
 MAX_TRANSIENT_ATTEMPTS = 5                  # K6d-2 fixes: a temporary network error (ConnectError, ReadError, timeout, DNS) goes back to the queue with a wait, up to 5 attempts
 NETWORK_MARK = "[network] "                 # last_error of a task that waits for a network retry
@@ -80,7 +82,7 @@ class WorkQueueRepository:
         """The earliest time a queued task that is only waiting for its retry time becomes runnable (None when there is none). ``labels_of``: company ids to look at."""
         now = self._now().isoformat()
         times = [r["next_run_at"] for r in self.client.table("work_queue").select("*").execute().data
-                 if r["state"] == "queued" and r["next_run_at"] > now and str(r.get("last_error") or "").startswith(NETWORK_MARK) and (labels_of is None or r["company_id"] in labels_of)]
+                 if r["state"] in ("queued", "deferred_network") and r["next_run_at"] > now and str(r.get("last_error") or "").startswith(NETWORK_MARK) and (labels_of is None or r["company_id"] in labels_of)]
         return datetime.fromisoformat(min(times)) if times else None
 
     def open_before(self, task: dict) -> list:
@@ -114,6 +116,13 @@ class WorkQueueRepository:
     def fail(self, task: dict, error: str, transient: bool = False) -> dict:
         """A failed attempt: queued again after a delay, failed for good after MAX_ATTEMPTS (3). A temporary network error (``transient``) waits 1, 2, 4, 8 minutes and has 5 attempts."""
         final = task["attempts"] >= (MAX_TRANSIENT_ATTEMPTS if transient else MAX_ATTEMPTS)
+        if transient and final:
+            rounds = int((task.get("payload") or {}).get("network_rounds", 0))
+            if rounds < NETWORK_ROUNDS:                                   # the five attempts are used by a network error: not failed - 30 minutes in deferred_network, then the attempts start again
+                payload = {**(task.get("payload") or {}), "network_rounds": rounds + 1}
+                fields = {"state": "deferred_network", "attempts": 0, "payload": payload, "last_error": (NETWORK_MARK + f"network round {rounds + 1} of {NETWORK_ROUNDS}: " + str(error))[:500],
+                          "updated_at": self._now().isoformat(), "next_run_at": (self._now() + NETWORK_ROUND_WAIT).isoformat()}
+                return self.client.table("work_queue").update(fields).eq("id", task["id"]).execute().data[0]
         delay = TRANSIENT_DELAY * (2 ** max(0, task["attempts"] - 1)) if transient else RETRY_DELAY * task["attempts"]
         fields = {"state": "failed" if final else "queued", "last_error": ((NETWORK_MARK if transient else "") + str(error))[:500], "updated_at": self._now().isoformat(), "next_run_at": (self._now() + delay).isoformat()}
         return self.client.table("work_queue").update(fields).eq("id", task["id"]).execute().data[0]

@@ -50,11 +50,27 @@ def prompt_version_of(skill: dict, variant: str = "3.1") -> str:
     return str(skill["version"]) + (".1" if variant == "3.1" else "")
 
 
+def stale_insufficient(row: dict, co: Company, skill: dict) -> bool:
+    """A stored answer of ``insufficient_evidence`` that was given while sections of the question were missing (``section_not_found:<id>`` in its flags, or no call at all because the primary section
+    was missing), where the text of the filing has those sections now. An answer the model gave with all sections present is never asked again."""
+    if row.get("state") != "insufficient_evidence":
+        return False
+    ev = row.get("evidence") or {}
+    missing = [f.split(":", 1)[1] for f in (ev.get("flags") or []) if f.startswith("section_not_found:")]
+    if not missing and "primary_section_missing" not in (ev.get("reasons") or []):
+        return False
+    secs = co.sections()
+    need = txt_sections(skill)
+    return any(sid in secs and secs[sid].found for sid in (missing or need[:1]))
+
+
 def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, force: bool = False, variant: str = "3.1", thinking_budget=None) -> dict:
     """One skill for one company-year. Returns the stored row. An existing row (same company, year, question, prompt version) is returned without a call unless ``force``."""
     model = client.model if client is not None else ""
     pv = prompt_version_of(skill, variant)
     ex = None if force else store.get(co.ticker, co.fiscal_year, skill["skill_id"], pv)
+    if ex is not None and stale_insufficient(ex, co, skill):
+        ex = None                                                  # K6d-2 fixes: "insufficient evidence" because sections were missing, and they are found now (a companion document was downloaded): asked again
     if ex is not None:
         stats.cached += 1
         return ex

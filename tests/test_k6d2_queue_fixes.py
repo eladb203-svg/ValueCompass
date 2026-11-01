@@ -137,7 +137,17 @@ def test_a_temporary_network_error_waits_and_tries_again_up_to_five_attempts(err
             assert t["state"] == "queued" and t["attempts"] == attempt and rep.retried
             waits.append((datetime.fromisoformat(t["next_run_at"]) - clock.t).total_seconds() / 60)
             clock.t = datetime.fromisoformat(t["next_run_at"])
-    assert t["state"] == "failed" and t["attempts"] == 5 and waits == [1, 2, 4, 8]
+    # K6d-2 fixes: the five attempts lost to the network are not a failure: the task waits 30 minutes in deferred_network, up to 6 rounds, and only then fails
+    assert t["state"] == "deferred_network" and t["attempts"] == 0 and waits == [1, 2, 4, 8] and t["payload"]["network_rounds"] == 1
+    assert (datetime.fromisoformat(t["next_run_at"]) - clock.t).total_seconds() == 30 * 60
+    for rnd in range(2, 8):
+        clock.t = datetime.fromisoformat(t["next_run_at"])
+        for _ in range(5):
+            r.run()
+            t = r.queue.list(a)[0]
+            clock.t = datetime.fromisoformat(t["next_run_at"])
+        assert t["state"] == ("deferred_network" if rnd <= 6 else "failed")
+    assert t["state"] == "failed" and t["payload"]["network_rounds"] == 6
 
 
 def test_a_permanent_error_fails_after_three_attempts():
@@ -251,3 +261,22 @@ def test_the_heartbeat_writes_a_line_and_flags_a_gap_much_longer_than_the_interv
     t["now"] += 7000                                              # the computer slept for about two hours
     assert "GAP" in hb.beat() and "asleep" in lines[-1]
     assert lines[0].startswith("[heartbeat]") and "+0 s" in lines[0]
+
+
+def test_an_extraction_that_fails_for_good_fails_the_company_and_marks_its_score_partial():
+    client, clock = FakeClient(), Clock()
+    a = company(client, "AAA")
+    client.tables["score_runs"] = [{"id": 1, "company_id": a, "flags": {}}]
+
+    def bad(task):
+        raise ValueError("no filing for the latest year")
+
+    r = runner(client, budget=5, executors={"ai_extract": bad}, clock=clock)
+    r.queue.enqueue(a, "ai_extract", None, None, 3)
+    for _ in range(3):
+        r.run()
+        t = r.queue.list(a)[0]
+        clock.t = datetime.fromisoformat(t["next_run_at"])
+    co = client.tables["companies"][0]
+    assert t["state"] == "failed" and co["processing_state"] == "failed"
+    assert "ai_extract failed for good" in client.tables["score_runs"][0]["flags"]["partial"]

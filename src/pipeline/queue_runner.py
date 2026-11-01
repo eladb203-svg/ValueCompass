@@ -33,7 +33,7 @@ BLOCKS_OF = {"BANK": ["EXT-BANK-CAP", "EXT-BANK-LOANS"], "INSURANCE": ["EXT-INS-
 
 COMPANY_CALL_CAP = 40                                  # model request attempts for one company's annual report: a guard against a loop, not a quota (K6d-2 fixes, 2026-10-29)
 COMPANY_CAP_MSG = "company call limit"
-MAX_RETRY_WAIT = 15 * 60                                # a run waits for a network retry that is due within this many seconds; a later one is left to the next run
+MAX_RETRY_WAIT = 31 * 60                                # a run waits for a network retry that is due within this many seconds; a later one is left to the next run
 TRANSIENT_TYPES = ("ConnectError", "ReadError", "ConnectTimeout", "ReadTimeout", "WriteError", "PoolTimeout", "TimeoutException", "Timeout", "TimeoutError", "gaierror", "ConnectionError",
                    "ConnectionResetError", "ConnectionAbortedError", "RemoteProtocolError", "NetworkError", "ServerDisconnectedError")
 TRANSIENT_TEXT = ("WinError 10054", "WinError 10060", "WinError 10053", "getaddrinfo failed", "name resolution", "timed out", "Connection reset", "Connection aborted", "ConnectError", "ReadError")
@@ -225,10 +225,28 @@ class QueueRunner:
         """A failed attempt. A temporary network error waits and tries again (up to 5 attempts); anything else has 3 attempts."""
         transient = is_transient(e)
         row = self.queue.fail(task, f"{type(e).__name__}: {e}" + ("" if transient else f"\n{traceback.format_exc()[-300:]}"), transient=transient)
-        if transient and row["state"] == "queued":
+        if row["state"] == "deferred_network":
+            rep.retried.append((task["id"], task["job_type"], self._label(task), f"5 attempts lost to the network: deferred_network until {row['next_run_at'][11:16]} UTC ({row['payload'].get('network_rounds')} of 6)"))
+        elif transient and row["state"] == "queued":
             rep.retried.append((task["id"], task["job_type"], self._label(task), f"attempt {task['attempts']} of 5, next try {row['next_run_at'][11:16]} UTC: {type(e).__name__}"))
         else:
             rep.failed.append((task["id"], task["job_type"], self._label(task), (str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}")[:160]))
+            if row["state"] == "failed" and task["job_type"] in SCORING_AI and task["company_id"]:
+                self.mark_extraction_failed(task, str(e))
+
+    def mark_extraction_failed(self, task: dict, error: str) -> None:
+        """K6d-2 fixes: a score is final only after the extraction of the latest year ended. When that task fails for good the company is `failed` with the reason (in the queue row and the administrator log),
+        and the score it already has is marked partial (``flags.partial`` of the run)."""
+        cid = task["company_id"]
+        reason = f"{task['job_type']} failed for good: {error[:200]}"
+        try:
+            self.companies.set_processing_state(cid, "failed", reason)
+            run = self.client.table("score_runs").select("id,flags").eq("company_id", cid).order("id", desc=True).limit(1).execute().data
+            if run:
+                self.client.table("score_runs").update({"flags": {**(run[0].get("flags") or {}), "partial": reason}}).eq("id", run[0]["id"]).execute()
+            self.alert(self._label(task), reason, {"company_id": cid, "task": task["job_type"]})
+        except Exception:   # noqa: BLE001 - the marking never hides the failure itself
+            pass
 
     def _wait_retry(self, rep: RunReport) -> bool:
         """Nothing is runnable but a task of this run waits for its network retry: wait for it (up to MAX_RETRY_WAIT) when the runner may sleep (the command line); the time is reported apart."""
@@ -252,7 +270,7 @@ class QueueRunner:
         label, cid = self._label(task), task["company_id"]
         reason = f"חריגה ממספר הקריאות — חשד ללולאה ({calls} קריאות; הגבול {COMPANY_CALL_CAP} לדוח שנתי; {COMPANY_CAP_MSG})"
         for t in self.queue.list(cid):
-            if t["state"] in ("queued", "running", "deferred_quota"):
+            if t["state"] in ("queued", "running", "deferred_quota", "deferred_network"):
                 self.queue.fail_for_good(t, reason)
         self.companies.set_processing_state(cid, "failed", reason)
         self.alert(label, reason, {"company_id": cid, "task": task["job_type"], "calls": calls})
@@ -285,7 +303,7 @@ class QueueRunner:
             if getattr(self, "only", None) and co["symbol"] not in self.only:
                 continue
             tasks = self.queue.list(co["id"])
-            if any(t["state"] in ("queued", "running", "deferred_quota", "failed") for t in tasks):          # a task that failed for good is looked at by a person, not re-planned on every run
+            if any(t["state"] in ("queued", "running", "deferred_quota", "deferred_network", "failed") for t in tasks):          # a task that failed for good is looked at by a person, not re-planned on every run
                 continue
             planned = self.plan_completion(co, PRIORITY["completion"])
             if not planned and not co.get("profile") and not self.scores.latest_run(co["id"]):         # a shell that was never loaded (no profile, no score): load it
@@ -299,7 +317,7 @@ class QueueRunner:
         """When the last open scoring AI task (C1, B, A) of a company is done: the score with the AI answers and D2 follow (both are idempotent), and the state goes back to scored_partial until that
         score decides. The background text is not waited for."""
         cid = task["company_id"]
-        if any(t["job_type"] in SCORING_AI and t["state"] in ("queued", "running", "deferred_quota") for t in self.queue.list(cid)):
+        if any(t["job_type"] in SCORING_AI and t["state"] in ("queued", "running", "deferred_quota", "deferred_network") for t in self.queue.list(cid)):
             return
         self.enqueue(cid, "score", None, "final", task["priority"])
         self.enqueue(cid, "analysis", None, None, task["priority"])
@@ -595,7 +613,7 @@ class QueueRunner:
         co = self.company(task["company_id"])
         t = co["symbol"]
         res = self.load_result(t)
-        self.ensure_filing(t, co.get("cik"))
+        self.ensure_filing(t, co.get("cik"), self.latest_period_end(task["company_id"]))
         K5 = self._meta_context(co, res)
         import run_ai_k5a2 as K5A2
         K5A2.golden = K5.golden
@@ -638,11 +656,31 @@ class QueueRunner:
         return {"ticker": co["symbol"], "name": co["company_name"], "profile": profile, "fiscal_years": dict(zip(labels, ends)), "financials": f,
                 "buffett_quality": {"criteria": []}, "graham_quality": {"criteria": []}}
 
-    def ensure_filing(self, ticker: str, cik: Optional[str]) -> None:
-        """The latest 10-K in the local filings cache (downloaded through the rate-limited SEC client when it is not there)."""
+    def latest_period_end(self, company_id: int) -> Optional[str]:
+        """The fiscal year end (YYYY-MM-DD) of the latest annual report whose data is loaded (``filing_periods``): the year the engine scores and the extraction reads."""
+        rows = self.client.table("filing_periods").select("fiscal_year,fiscal_year_end").eq("company_id", company_id).order("fiscal_year", desc=True).limit(1).execute().data
+        return str(rows[0]["fiscal_year_end"]) if rows and rows[0].get("fiscal_year_end") else None
+
+    def ensure_filing(self, ticker: str, cik: Optional[str], end_date: Optional[str] = None) -> None:
+        """The 10-K of the engine's latest fiscal year in the local filings cache (downloaded through the rate-limited SEC client when it is not there). K6d-2 fixes (CLX, a June year end): the latest
+        10-K on the SEC list can be of a year that companyfacts does not carry yet; the report read is the one of ``end_date`` (the latest loaded fiscal year end), within 20 days."""
         from src.ai.sections import find_filing
-        if find_filing(ticker) is not None:
+        if find_filing(ticker, end_date) is not None and not (end_date and self.pipeline_factory is not None and cik):
             return
+        if end_date and self.pipeline_factory is not None and cik:                # also completes the documents of the filing (companion document with the statements): cached files are not downloaded again
+            from datetime import date as _d
+            from src.providers.sec_filings import _get_raw, filing_documents
+            from src.providers.sec_ixbrl import tenk_filings
+            sec = self.pipeline_factory().sec
+            want = _d.fromisoformat(end_date)
+            k = next((x for x in tenk_filings(sec, cik) if abs((x["report_date"] - want).days) <= 20), None)
+            if k is not None:
+                acc = k["accession"].replace("-", "")
+                for d in filing_documents(sec, cik, {"accession": k["accession"], "primary": k["primary"]}):
+                    _get_raw(sec, f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}/{d}", f"{acc}_{d}")
+                if find_filing(ticker, end_date) is not None:
+                    return
+            raise RuntimeError(f"the 10-K of {ticker} for the fiscal year ending {end_date} was not found in the cache or on the SEC list")
         if self.pipeline_factory is None or not cik:
             raise RuntimeError(f"the 10-K of {ticker} is not in the local filings cache")
         from src.providers.sec_filings import fetch_filing_text
@@ -679,7 +717,7 @@ class QueueRunner:
             profile = {"bank": "BANK", "insurance": "INSURANCE", "realestate": "INCOME_REAL_ESTATE"}[eng]
             res = self.result_from_db(co, eng, profile)
             co = {**co, "profile": profile}
-        self.ensure_filing(t, co.get("cik"))
+        self.ensure_filing(t, co.get("cik"), self.latest_period_end(task["company_id"]))
         K5 = self._meta_context(co, res)
         import run_ai_k5b_extract as K5B
         K5B.golden, K5B.meta = K5.golden, K5.meta

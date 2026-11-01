@@ -52,14 +52,28 @@ def db_hits(ticker: str) -> dict:
     return out
 
 
+def sec_check(ticker: str) -> str:
+    """"" when the ticker is on the SEC company list and the entity has no Form 25 / Form 15 / merger filing after its latest annual report and is a supported issuer; else the reason."""
+    from src.pipeline import resolve as R
+    from src.providers.sec_companyfacts import SecClient
+    try:
+        r = R.resolve(SecClient(), ticker)
+    except R.ResolveError as e:
+        return f"{e.kind}: {e}"
+    except Exception as e:   # noqa: BLE001 - a network failure of the check is reported, not hidden
+        return f"check failed: {type(e).__name__}: {e}"
+    return r.unsupported_reason or ""
+
+
 def main(tickers: list) -> int:
     bad = 0
-    print(f"{'ticker':8}{'test.companies':16}{'prod.companies':16}{'csv':6}{'golden':8}{'cache':7} verdict")
+    print(f"{'ticker':8}{'test.companies':16}{'prod.companies':16}{'csv':6}{'golden':8}{'cache':7}{'SEC':6} verdict")
     for t in [x.upper() for x in tickers]:
         db, c, g, k = db_hits(t), csv_hits(t), golden_hits(t), cache_hits(t)
-        new = not (db["test"] or db["prod"] or c or g or k)
+        sec_bad = sec_check(t)
+        new = not (db["test"] or db["prod"] or c or g or k) and not sec_bad
         bad += 0 if new else 1
-        print(f"{t:8}{('YES' if db['test'] else 'no'):16}{('YES' if db['prod'] else 'no'):16}{len(c):<6}{len(g):<8}{len(k):<7} {'NEW' if new else 'NOT NEW ' + str(c + g + k)}")
+        print(f"{t:8}{('YES' if db['test'] else 'no'):16}{('YES' if db['prod'] else 'no'):16}{len(c):<6}{len(g):<8}{len(k):<7}{('NOT OK' if sec_bad else 'ok'):6}{'NEW' if new else 'NOT NEW ' + str(c + g + k) + (' SEC: ' + sec_bad if sec_bad else '')}")
     return 1 if bad else 0
 
 

@@ -143,7 +143,9 @@ def test_unsupported_issuer_is_stored_with_its_reason_and_nothing_else_runs(env)
 
 def test_unknown_ticker_is_a_failed_job_in_the_log(env):
     r = env.make().load("ZZZZ")
-    assert r.status == "failed" and "not_found" in r.error and env.client.tables["data_update_log"][0]["status"] == "failed"
+    assert r.status == "no_change" and r.state == "unsupported" and any("merged or been delisted" in w for w in r.warnings)       # K6d-2 fixes: not on the SEC list = unsupported with the reason, not failed
+    co = env.client.tables["companies"][-1]
+    assert co["symbol"] == "ZZZZ" and co["processing_state"] == "unsupported" and "SEC list" in co["unsupported_reason"]
 
 
 def test_unknown_job_and_status_report(env):

@@ -424,3 +424,39 @@ Preflight `acceptance_preflight_8.txt`; log `acceptance_run_9.log`. Calls: OHI 2
 - CLX is a new kind of bug: its FY2026 annual report (June 2026) is the latest 10-K in the filing cache, while `filing_periods` and the engine stop at FY2025, so `find_filing` finds no report for the engine's latest year and the extraction task crashes. Fix to design: the filing for the engine's latest fiscal year must be the one fetched, and the FY2026/FY2025 mismatch between the XBRL years and the filing periods must be understood first.
 - OHI open items (7): same-property NOI, largest tenant (operator concentration is stated in other words), occupancy, unencumbered, debt maturities: passages mostly empty, so likely not reported in the usual form; NOT classified as real or bug yet.
 - Batch 9 was not run (batch 8 not clean).
+
+## 14. Fixes before the new batch 8, and batch 8 (2026-11-01)
+
+### 14.1 CLX and non-calendar fiscal years
+- **Cause.** CLX (June year end) filed its FY2026 10-K in August 2026, but SEC `companyfacts` does not carry it yet (only DEF 14A facts for 2026-06-30). The facts and `filing_periods` stop at FY2025 (the plan listed 2026 as "missing", nothing to write); the filing cache fetched "the latest 10-K" (FY2026). `find_filing(ticker, FY2025 end)` found nothing and the extraction task crashed (`AttributeError`).
+- **Fix.** The extraction and the assessments read the 10-K of the latest LOADED fiscal year end (`latest_period_end`, within 20 days); if it is not cached it is downloaded; the documents of the filing are completed (cached files are not fetched again). Second finding: CLX files its financial statements in a companion document of the same inline-XBRL filing (`clx-20250630_d2.htm`), which was never downloaded (so B14 found no sections); `filing_documents` now takes `<primary>_d<n>.htm`, and an extraction call stored as "no call" is asked again.
+- **Other companies** (`scripts/k14_fy_check.py`, 95 companies of test): the report read by the old rule differs from the engine's year only for CLX. MSFT, GIS, HRL, CAG, SJM, NTAP, PANW and the rest: no difference, nothing to re-run. Companion documents (`scripts/k14_companions.py`, 96 companies): only CLX has one; data missing because of it: CLX only (B14, 4 assessments).
+- **A score is final only after the extraction; partial is marked.** When an AI task of the score (extract / assess / classify) fails for good the company becomes `failed`, the reason goes to the queue row and the administrator log, and the latest score run is flagged `partial` (`score_runs.flags.partial`). Unit test.
+
+### 14.2 Assessments answered "insufficient evidence" while sections were missing
+`assess.stale_insufficient`: an answer with `section_not_found:<id>` in its flags (or no call because the primary section was missing) is asked again when the section exists now; an answer the model gave with all sections is never asked again. Twenty such answers exist in test: 3 no-call (all CLX), 3 with a section missing (CLX B3.2-Q4, VICI and HRL B3.7-Q3: `NOTE-ACQ`, the note probably does not exist), 14 the model's own "insufficient" with all sections (KO, INTC x2, UBER, AFG, NKE, RF, ORI, ZION, ANET x3, EWBC and others): not re-asked.
+CLX re-asked (4 calls): B3.7-Q5 and G3.8-Q3 now answered (gaps closed), B3.2-Q4 the model again says insufficient (all sections present), B3.1-Q4 still has no primary section. CLX before 72.22 / 40.68 (coverage 94% / 98%), after 72.37 / 39.68 (96% / 100%).
+
+### 14.3 Tickers not on the SEC list, network, preflight
+- `load` of a ticker that is not on the SEC list: `unsupported` with "the ticker was not found on the SEC list - the company may have merged or been delisted" (was `failed`). The preflight of a batch now checks the SEC list and Form 25 / merger: it rejected CMA (merged) and SNV (merged) - SNV was in the instruction, EWBC took its place. (No "request-company" code exists in the repository.)
+- Five attempts lost to a network error: the task is `deferred_network` for 30 minutes and returns, up to 6 rounds; failed only for a permanent error (migration `20261101160100`, applied to test; unit test).
+
+### 14.4 OHI, the 7 items
+Real (not reported in the usual form): same-property NOI growth (B 3.4.2, G 3.7.2) - the report has no such measure; occupancy (G 3.7.1) - only in risk text; unencumbered (G 3.3.2) - only a joint-venture mortgage; stabilized yields (B 3.4.1) - only the contractual yield of existing triple-net leases (10.4%); debt maturities (G 3.2.2) - no maturity table found (not verified in depth). Largest tenant (G 3.7.3): the report says "one operator represented greater than 10% of our investments" - a floor, not a share. Synonyms added (operator / lessee / customer for tenant); a floor is stored as `largest_tenant_floor` (`bound=min`) and is not scored. EBITDARM does not occur in the report.
+
+### 14.5 Batch 8 (new): EWBC bank, LNC life insurer, SUI manufactured-housing REIT, SBUX (September year end), ADI technology
+Preflight `acceptance_preflight_9.txt`; log `acceptance_run_10.log`; calls EWBC 17, LNC 16, SUI 24, SBUX 15, ADI 15 (daily counter 244 of 450).
+| Company | Result | Buffett / Graham (coverage) |
+|---|---|---|
+| EWBC | complete | 96.63 / 97.62 (90% / 79%) |
+| LNC | complete | none (32%) / 67.21 (70%) |
+| SUI | complete | 82.07 / 89.11 (81% / 68%) |
+| SBUX | complete | 78.07 / 39.47 (100% / 100%) |
+| ADI | complete | 78.22 / 75.62 (100% / 100%) |
+**(a) Without contact: 5 of 5**; no failure, retry or heartbeat gap.
+**Gate: not passed - three new kinds of data that are in the filing and not read (core items):**
+- **EWBC:** nonaccrual loans / ACL missing (B 3.6.3, B 3.6.4, G 3.3.2, G 3.3.3). `companyfacts` has `FinancingReceivableAllowanceForCreditLossExcludingAccruedInterest` (2022-2025), `FinancingReceivableAllowanceForCreditLosses` (2018-2021) and `FinancingReceivableNonaccrualNoAllowance`: the bank tag chains do not use them (a tag-chain gap; CET1 was fixed by the extraction).
+- **LNC (life insurer):** Buffett score impossible (coverage 32%): premiums earned jumps from 5.4 bn (2020) to 11.7 bn (2021) (tag change), realized investment gains only for 2024-2025, claims series end in 2022, so the margins and ROE need "3 years" and are missing; life-insurer float cost, capital ratio, categories and credit-quality table (the table exists in the text: "Investment Grade Securities ... 60.3%") not read. Life-insurer tag chains are the family to design.
+- **SUI:** same-property NOI growth ("Same Property NOI growth" is named in the text; the table is not in a form the steps read), occupancy, largest tenant, unencumbered: not classified further.
+SBUX and ADI: no open item. EWBC LCR is real (not reported); the OE-proxy and economic-value items of SUI are genuine by rule.
+Batch 9 was not run (batch 8 not clean). Open: EWBC tags, LNC life-insurer chains, SUI same-property table, the 14 "model said insufficient" answers, CLX B3.1-Q4/B3.2-Q4.

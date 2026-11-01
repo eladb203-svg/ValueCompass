@@ -19,7 +19,7 @@ PASSAGE = 300
 # (pattern of the engine's note, family, keywords of the item in the report, genuine by the rulebook)
 FAMILIES = (
     (r"same-property NOI growth", "same_property_noi", r"same[- ](?:property|store)[^.]{0,120}(?:NOI|net operating income|revenues?)", False),
-    (r"largest tenant", "largest_tenant", r"no (?:single )?tenant|largest tenants?|ten largest|10 largest", False),
+    (r"largest tenant", "largest_tenant", r"no (?:single )?(?:tenant|operator)|largest (?:tenants?|operators?)|ten largest|10 largest|operators? represented|EBITDARM|triple-net", False),
     (r"unencumbered", "unencumbered", r"unencumbered", False),
     (r"occupancy|mapped metric", "occupancy", r"occupancy|% leased|percent leased", False),
     (r"committed undrawn|undrawn", "undrawn_facilities", r"undrawn|unused (?:borrowing )?capacity|available (?:under|on) (?:our )?(?:revolving|credit)", False),
