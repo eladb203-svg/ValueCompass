@@ -292,3 +292,52 @@ Unexplained time in SIGI: its last task was written at 23:11 UTC (01:11 Israel),
 | EXR | G 3.3.3 | real by rule | needs a stabilized portfolio with economic value |
 
 **Gate: not passed.** (a) holds, (b) does not: six items (SIGI financial debt, investment categories, credit-quality share; EXR same-store NOI, unencumbered share, occupancy history) exist in XBRL or in the report and were not taken. They are the same two families as before: REIT depth items (same-property NOI, unencumbered assets share, occupancy history - done by hand for MAA, DLR, VICI with `scripts/keyword_backfill.py`, not part of the pipeline) and the insurer investments block. A batch can be called clean only after these are in the pipeline, not patched by hand per company.
+
+## 11. Pipeline steps for the two families, and acceptance batch 6 (2026-11-01)
+
+**Rulebook:** version 2026-11-01_07-00 (CL19-CL24) added to git; 2026-10-21_19-26 (4 files) removed; `tests/test_ai.py` now reads the new file. The task "bank / entity and CET1 order" (CL23), "gains assumed_zero" (CL21), "same-property NOI growth derived" (CL22) are what the code does.
+
+### 11.1 What was put into the pipeline (no per-company hand step)
+1. **REIT depth** (`src/ai/keyword_depth.py`, called from the extraction task of every INCOME_REAL_ESTATE company, no model call): occupancy of the last 5 annual reports (one wording for all years: the first of five patterns that matches the latest report), same-property NOI growth = current / prior - 1 from the two stated levels (CL22, flagged derived, both numbers in the quote), unencumbered assets share from "unencumbered asset value $A ... total asset value $B" when the model returned `not_disclosed` for both unencumbered items. Earlier reports are downloaded through the rate-limited SEC client. A model value is never replaced.
+2. **Insurer investments block:** (a) `inv_sum` control: a total that includes cash ("Total cash and investments") is compared with the categories with cash, otherwise without; when the model gave two values for one category and year (AFG mortgage loans 947 and 791) the combination that adds up is used and the other row is rejected as a duplicate; (b) the skill reads the balance sheet and "other invested assets" now says what belongs there (version 3, 4; a changed skill version is asked again); (c) financial debt reported only per instrument (SIGI FY2025: `LongTermDebt` once per note) is added up from the inline XBRL (`instrument_sum_series`, flagged `SUM`); (d) the investment-grade share from the sentence or table line of the report (SIGI "non-investment grade ... 3%" -> 97, THG 95, AFG 96) when the model returned none.
+3. Tests: 15 new (keyword depth, inv_sum, instrument sum, share-scale and the others of this section); 941 pass.
+
+### 11.2 Check without the manual backfill
+The manual rows (`model = keyword-search`, `kw1`) of MAA, DLR and VICI were deleted and the extraction task was run through the queue (cached model answers, no call):
+- **EXR:** same-property NOI growth (4 years), unencumbered assets share (5 years, rulebook backup `fallback`), occupancy history now exist. Buffett 69.10 -> 72.59; Graham 3.4.2 6/6, G 3.3.2 4/4, G 3.7.1 2.4/4, G 3.7.2 4/4, G 3.7.3 not applicable.
+- **MAA:** same-property NOI growth (5 years: +6.2%, +17.1%, +6.0%, -1.4%, -1.4%) -> B 3.4.2 6/6, G 3.7.2 4/4; occupancy as before. **DLR and VICI: the scores are the same as with the manual rows** (85.75, 79.17), i.e. the pipeline reproduces them.
+- **SIGI:** B 3.6.3 1.98/2, G 3.2.2 5/5, G 3.3.2 5.97/6, G 3.7.2 3/3, G 3.7.3 2.31/3; Graham coverage 60% -> 85%. **THG:** G 3.7.2 3/3 (IG share 95%). **AFG, THG:** the balance-sheet categories still do not add up to the total (AFG 7.2%: equity-method investments of 2.4 bn are not among the categories; THG 2.4%, above the 2% of the control) - rows stay pending; a real extraction-quality limit, the control was not loosened.
+
+### 11.3 Batch 6 (WAL bank, ERIE insurance agent, KIM retail REIT, CAG regular, PANW technology)
+Preflight `scripts/state/acceptance_preflight_6.txt` (all new). Log `scripts/state/acceptance_run_7.log`.
+
+| Company | Result | Calls | Time | Buffett / Graham (coverage) |
+|---|---|---|---|---|
+| WAL | complete | 18 | 7:46 | 79.70 (90%) / 84.80 (83%) |
+| ERIE | complete, **profile INSURANCE by the router fallback** | 16 | 4:32 | none (33%) / none (15%) |
+| KIM | complete | 25 | 9:27 | 66.25 (81%) / 62.98 (65%) |
+| CAG | complete | 17 | 5:09 | 46.52 (100%) / 37.04 (100%) |
+| PANW | complete | 14 | tasks done in minutes, the process ended at 09:37 (see below) | 85.70 (100%) / 49.14 (100%) |
+
+**(a) Without contact: 5 of 5.** No failed task, no retry, no network wait. PANW: its report was printed about two hours after the start (07:41 -> 09:37) with all tasks done early, the same pattern as SIGI in batch 5: most likely the computer sleeping despite the keep-awake request; not confirmed.
+
+**(b) Missing items classified. Result: not clean - three bugs.**
+
+| Company | Item | Class | Evidence |
+|---|---|---|---|
+| CAG, PANW | none | - | 100% / 100% |
+| WAL | B 3.6.5, G 3.2.2 LCR | real - not reported | no numeric LCR |
+| WAL | **B 3.6.1, G 3.2.1 CET1; G 3.7.3 RWA** | **BUG - in the report, extracted, then held back** | "Common equity tier 1 ratio 11.0 %", "Risk-weighted assets $63,408": both were extracted (11.0, 63,408) but the rows are `pending`: the model's CET1 capital is stored under FY2023 / FY2024 instead of FY2024 / FY2025 (a one-year shift of the periods), so the block control `cet1_vs_rwa` fails and everything of the block waits |
+| KIM | **G 3.2.2 debt maturities** | **BUG - in the report, rejected** | the table "Principal $881.7 $1,176.5 ..." is in the 10-K; both rows were rejected `quote_not_found` (the quote does not match the text as written) |
+| KIM | B 3.6.3 economic LTV; B 3.7.4, G 3.5.4, G 3.8.2 (OE proxy); G 3.3.2 unencumbered; G 3.3.3 | real | no fair value of real estate, no recurring-capex amount, no unencumbered figure in the 10-K |
+| KIM | B 3.4.1, B 3.4.3 | short history | the NOI series is shorter than 3 years of property expenses |
+| ERIE | **all (33% / 15% coverage)** | **BUG - misrouting** | Erie Indemnity manages the Erie Insurance Exchange for a fee; its balance sheet has no claims liabilities (total liabilities 1.07 bn, no liability for claims). The row 2 test is "undetermined" because the claims component is missing and the fallback of 2026-10-29 sends it to INSURANCE by its SIC (6411); on the insurance engine nearly everything is missing. A fee business is not an insurer; the profile should be STANDARD |
+
+**Gate: not passed** (second batch in a row with bugs, though of different kinds: the REIT and insurer depth items of batch 5 are fixed and did not recur). Nothing of batch 6 was repaired by hand.
+
+### 11.4 Open for the next round
+1. WAL: the period assignment of capital tables ("$ 7,003 $ 6,311" under "December 31, 2025 / 2024") - a shift of one year.
+2. KIM: why the maturity quotes are not found (the check of the quote against the text).
+3. ERIE: row 2 fallback for an issuer with no insurance liabilities at all (a missing component that is zero by the balance sheet), so it ends STANDARD.
+4. AFG / THG: the categories of the investments block against the total (equity-method investments).
+5. The unexplained idle time at the end of two runs (SIGI, PANW).
