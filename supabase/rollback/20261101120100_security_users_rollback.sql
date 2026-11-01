@@ -1,0 +1,16 @@
+drop view if exists public.v_holding_counts;
+drop trigger if exists notify_company_state on public.companies;
+drop function if exists public.notify_company_state();
+drop trigger if exists notify_ticket_change on public.support_tickets;
+drop function if exists public.notify_ticket_change();
+drop table if exists public.smart_search_usage, public.admin_audit_log, public.company_requests, public.user_notifications, public.support_tickets;
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_auth_user();
+drop function if exists public.is_admin();
+drop function if exists public.is_active();
+drop trigger if exists user_profiles_guard on public.user_profiles;
+drop function if exists public.user_profiles_guard();
+create policy "Users can insert their own profile" on public.user_profiles to authenticated with check ((select auth.uid()) = id);
+create policy "Users can update their own profile" on public.user_profiles to authenticated using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
+alter table public.user_profiles drop column invited_by, drop column status, drop column role;
+drop table if exists public.app_settings;

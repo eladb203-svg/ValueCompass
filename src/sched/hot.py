@@ -19,10 +19,8 @@ def is_hot(price: Optional[float], buy_prices: list, ratio: float = HOT_RATIO) -
 
 
 def followed_company_ids(client) -> set:
-    """Companies in some portfolio or on some watchlist."""
-    held = {r["company_id"] for r in select_all(client, "portfolio_holdings")}
-    watched = {r["company_id"] for r in select_all(client, "user_watchlist")}
-    return held | watched
+    """Companies in some portfolio or on some watchlist. Read through v_holding_counts: counts per company, no user ids (security stage, spec 3)."""
+    return {r["company_id"] for r in select_all(client, "v_holding_counts") if (r.get("total") or 0) > 0}
 
 
 def hot_stocks(client, ratio: float = HOT_RATIO) -> list:

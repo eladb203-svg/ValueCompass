@@ -1,0 +1,29 @@
+# Auth settings for ValueCompass (security stage, spec 1). Applied to a hosted project with:  supabase config push --project-ref <ref>
+# (the CLI is not installed on this PC yet; the same settings are listed step by step in scripts/code_stage_security_2026-11-01.md)
+project_id = "valuecompass"
+
+[auth]
+site_url = "http://localhost:3000"
+# Invite mode: nobody can sign up on their own. The admin invites by email (admin-invite). To open registration later: enable_signup = true and app_settings.registration_mode = 'open'.
+enable_signup = false
+enable_anonymous_sign_ins = false
+minimum_password_length = 10
+password_requirements = "lower_upper_letters_digits"
+
+[auth.email]
+enable_signup = true            # the email provider itself stays on (invited users set their password); the global enable_signup above blocks self-sign-up
+enable_confirmations = true     # email verification is required
+double_confirm_changes = true
+secure_password_change = true
+
+[auth.email.template.invite]
+subject = "הוזמנת להצטרף ל-ValueCompass"
+content_path = "./templates/invite.html"
+
+[auth.email.template.recovery]
+subject = "איפוס סיסמה ל-ValueCompass"
+content_path = "./templates/recovery.html"
+
+[auth.email.template.confirmation]
+subject = "אימות כתובת המייל ב-ValueCompass"
+content_path = "./templates/confirmation.html"

@@ -46,14 +46,11 @@ def test_hot_stocks_are_followed_by_a_user_and_near_a_buy_price():
     for s, p in prices.items():
         c.table("market_snapshot").insert({"company_id": ids[s], "current_price": p}).execute()
         c.table("company_score_summary").insert({"company_id": ids[s], "buffett_buy_price": buys[s][0], "graham_buy_price": buys[s][1]}).execute()
-    c.table("portfolio_holdings").insert({"portfolio_id": 1, "company_id": ids["KO"], "quantity": 1}).execute()
-    c.table("user_watchlist").insert({"user_id": "u", "company_id": ids["MSFT"]}).execute()
-    c.table("user_watchlist").insert({"user_id": "u", "company_id": ids["INTC"]}).execute()
-    c.table("user_watchlist").insert({"user_id": "v", "company_id": ids["JPM"]}).execute()
+    for s_, n in (("KO", 1), ("MSFT", 1), ("INTC", 1), ("JPM", 1)):                           # v_holding_counts: one row per followed company, no user ids
+        c.table("v_holding_counts").insert({"company_id": ids[s_], "in_portfolios": 0, "in_watchlists": n, "total": n}).execute()
     # KO 28 <= 1.1 x 26.43; MSFT far above both; INTC has no buy price; JPM 10 <= 1.1 x 9.5 = 10.45 and followed
     assert [h["symbol"] for h in hot_stocks(c)] == ["KO", "JPM"]
-    c.tables["portfolio_holdings"].clear()
-    c.tables["user_watchlist"].clear()
+    c.tables["v_holding_counts"].clear()
     assert hot_stocks(c) == []                                                                 # nobody follows anything: no hot stock
 
 

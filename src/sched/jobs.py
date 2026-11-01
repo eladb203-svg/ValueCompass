@@ -24,6 +24,7 @@ from src.pipeline.reprice import PriceUpdater
 from src.repositories.work_queue_repository import PRIORITY, WorkQueueRepository
 from src.sched import cleanup as CL
 from src.sched import refdata, sec_daily
+from src.sched.backup import run_weekly_backup
 from src.sched.hot import hot_stocks
 from src.sched.schedule import NO_CATCH_UP, Config
 
@@ -309,9 +310,15 @@ class JobRunner:
         path = self.state_dir / f"cleanup_plan_{stamp}.txt"
         path.write_text(text + "\n", encoding="utf-8")
         out = Outcome("no_change", detail={"apply": apply, "counts": plan.counts(), "bytes": plan.total_bytes(), "plan_file": str(path)})
+        out.detail["backup"] = run_weekly_backup(self.now())               # security stage: weekly production dump, off unless SUPABASE_PROD_DB_URL is set
         if not apply:
             return out
         done = CL.apply_plan(self.client, plan)
+        try:                                                                # security stage: tickets closed 180 days, notifications 180 days (database function)
+            ret = self.client.rpc("security_retention", {"p_days": 180}).execute().data or {}
+            done.update({"support_tickets": ret.get("tickets", 0), "user_notifications": ret.get("notifications", 0)})
+        except Exception as e:                                              # noqa: BLE001 - e.g. a client without rpc, or the migration not applied yet
+            out.warnings.append(f"security_retention: {type(e).__name__}")
         out.deleted = sum(done.values())
         out.detail["deleted"] = done
         out.status = "success" if out.deleted else "no_change"
