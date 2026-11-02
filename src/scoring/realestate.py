@@ -545,6 +545,26 @@ def b33(ri, d):
     return B.c33(_View(ri, d), _gd(ri, d))
 
 
+# K6d-2 fixes (WY, a timber REIT): an operating REIT (rent below half of the revenue - timber, resident operations ...) has no like-for-like rent roll: the same-property NOI growth, the occupancy, the largest tenant
+# and the unencumbered-NOI share are "not applicable", not "missing". Only an item that is Missing becomes not applicable; a value that was found is scored as before.
+NO_RENT_ROLL_TYPES = ("timberland", "farmland")       # owner instruction 2026-11-02: "not applicable" only where the concept does not exist; an operating REIT (hotels, senior-housing operations) stays "missing"
+OPERATING_NA = {"b34": {"2"}, "g33": {"2"}, "g37": {"1", "2", "3"}}
+
+
+def _op_na(key):
+    def deco(fn):
+        def wrapped(ri, d):
+            items = fn(ri, d)
+            if ri.asset_type not in NO_RENT_ROLL_TYPES:
+                return items
+            return [not_applicable(x.id, x.name, x.max_pts, note=f"{ri.asset_type}: no rent roll - no like-for-like rent, occupancy, tenant concentration or NOI-based encumbrance measure; not applicable")
+                    if (x.state == "missing" and x.id in OPERATING_NA[key]) else x for x in items]
+        wrapped.__name__ = fn.__name__
+        return wrapped
+    return deco
+
+
+@_op_na("b34")
 def b34(ri, d):
     items = []
     inc, wacc = d["incremental"], d["wacc"]
@@ -687,6 +707,7 @@ def g32(ri, d):
     return items
 
 
+@_op_na("g33")
 def g33(ri, d):
     state, ratio = d["nd_ebitdare_state"][-1]
     a1 = [(3.0, 7), (4.0, 6.3), (5.0, 5.6), (6.0, 4.9), (8.0, 3.5), (10.0, 2.1), (12.0, 1.05), (15.0, 0)]
@@ -743,12 +764,13 @@ def g36(ri, d):
     return G.c36(_View(ri, d), _gd(ri, d))
 
 
+@_op_na("g37")
 def g37(ri, d):
     items = []
     util = ri.utilization
     a1 = [(0.80, 0), (0.85, 1), (0.89, 2), (0.92, 3), (0.95, 4)]
     if util == "not_applicable":
-        items.append(not_applicable("1", "Utilization", 4, note="communication towers: no occupancy metric (table A); resilience through organic revenue growth in 3.7.2"))
+        items.append(not_applicable("1", "Utilization", 4, note=f"{ri.asset_type}: no occupancy metric (table A); resilience through organic revenue growth in 3.7.2" if ri.asset_type == "communication towers" else f"{ri.asset_type}: no occupancy metric"))
     else:
         m, nv = _median5(d["occupancy"])
         label = "occupancy" if util == "occupancy" else "leased capacity / available capacity"

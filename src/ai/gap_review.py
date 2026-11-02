@@ -18,10 +18,10 @@ PASSAGE = 300
 
 # (pattern of the engine's note, family, keywords of the item in the report, genuine by the rulebook)
 FAMILIES = (
-    (r"same-property NOI growth", "same_property_noi", r"same[- ](?:property|store)[^.]{0,120}(?:NOI|net operating income|revenues?)", False),
+    (r"same-property NOI growth", "same_property_noi", r"same[- ](?:property|store)[^.]{0,120}(?:NOI|net operating income|revenues?)|comparable hotels?|RevPAR|same-store (?:cash |SHOP )?NOI", False),
     (r"largest tenant", "largest_tenant", r"no (?:single )?(?:tenant|operator)|largest (?:tenants?|operators?)|ten largest|10 largest|operators? represented|EBITDARM|triple-net", False),
     (r"unencumbered", "unencumbered", r"unencumbered", False),
-    (r"occupancy|mapped metric", "occupancy", r"occupancy|% leased|percent leased", False),
+    (r"occupancy|mapped metric", "occupancy", r"occupancy|% leased|percent leased|hotel occupancy|SHOP occupancy", False),
     (r"committed undrawn|undrawn", "undrawn_facilities", r"undrawn|unused (?:borrowing )?capacity|available (?:under|on) (?:our )?(?:revolving|credit)", False),
     (r"debt maturities", "debt_maturities", r"maturit(?:y|ies)[^.]{0,80}(?:thereafter|20\d\d)", False),
     (r"OE is a proxy|OE is a proxy or missing", "oe_proxy", r"recurring capital|maintenance capital|tenant improvements|leasing commissions", True),

@@ -107,7 +107,7 @@ blocks:
 
   - skill_id: EXT-INS-INV
     block: B4
-    version: 7
+    version: 8
     profile: INSURANCE
     task: "Extract the investment portfolio by category and credit quality, catastrophe losses and whether asset-liability matching is disclosed."
     sections: [X-INSINV, X-BS]
@@ -122,7 +122,7 @@ blocks:
       - {key: inv_other, def: "Other invested assets: every remaining investment line of the balance sheet that is not cash, short-term investments, fixed maturities, equity securities, loans or real estate (limited partnerships, private equity, other long-term investments; NOT investments accounted for using the equity method, which have their own item)", unit: USD}
       - {key: inv_total, def: "Total investments as stated. When the balance sheet states only a total that includes cash (for example 'Total cash and investments'), report that amount and write INCLUDES_CASH in the basis field", unit: USD}
       - {key: inv_ig_fixed, def: "Investment-grade fixed income (BBB-/Baa3 or better, NAIC 1-2); unrated is NOT investment grade", unit: USD}
-      - {key: inv_ig_share, def: "Investment-grade share of fixed income, when stated instead of an amount", unit: percent, derivation_hints: "if a credit-quality table shows a total investment-grade line with a '% of total' column, return that stated percentage as the value (no components); if only amounts of non-investment-grade (and non-rated) bonds are stated, return the components non_investment_grade, non_rated (if stated) and total_fixed_income (the total of the fixed-income portfolio), each with its quote; the code computes 1 - (non-IG + non-rated) / total"}
+      - {key: inv_ig_share, def: "Investment-grade share of fixed income, when stated instead of an amount", unit: percent, derivation_hints: "if the text says the whole portfolio is rated investment grade or better (for example 'all of our fixed maturities are rated A- or better'), return 100 as the value with that sentence as the quote; if it states the share that is unrated or rated below investment grade, return 100 minus that share as the components non_investment_grade and total_fixed_income = 100 (percent); if a credit-quality table shows a total investment-grade line with a '% of total' column, return that stated percentage as the value (no components); if only amounts of non-investment-grade (and non-rated) bonds are stated, return the components non_investment_grade, non_rated (if stated) and total_fixed_income (the total of the fixed-income portfolio), each with its quote; the code computes 1 - (non-IG + non-rated) / total"}
       - {key: cat_loss_latest, def: "Catastrophe losses of the year", unit: USD}
       - {key: alm_disclosed, def: "1 when asset-liability (duration) matching is disclosed, else 0", unit: count}
     control: inv_sum
@@ -130,14 +130,14 @@ blocks:
 
   - skill_id: EXT-RE-OPS
     block: B5
-    version: 2
+    version: 3
     profile: INCOME_REAL_ESTATE
     task: "Extract occupancy, largest tenant, same-property NOI growth and new-investment yields. Figures that appear only in the supplemental package are not in the text: return not_disclosed."
     sections: [X-REOPS]
     items:
       - {key: occupancy, def: "Occupancy / leased percentage of the portfolio (data centers: leased / available capacity); basis = the company's primary reported basis (RE21)", unit: percent}
       - {key: largest_tenant_share, def: "Largest independent tenant share of rent or NOI; basis = rent or NOI", unit: percent, derivation_hints: "'no single tenant ... more than X%' is a ceiling: return X as the value and write bound=max at the start of the basis field"}
-      - {key: same_property_noi_growth, def: "Like-for-like NOI growth; basis = the company's primary basis (RE21)", unit: percent, derivation_hints: "if no NOI growth or NOI line is stated but the same-property table gives revenues and property expenses for two years, return the components revenue_current, revenue_prior, expense_current, expense_prior (thousands or millions as in the table), each with its quote; the code computes NOI = revenues - property expenses and the growth"}
+      - {key: same_property_noi_growth, def: "Like-for-like NOI growth; basis = the company's primary basis (RE21)", unit: percent, derivation_hints: "an operating REIT may call it same-store (SHOP) NOI, same-store cash NOI or comparable hotel EBITDA / NOI (RevPAR alone is not NOI); if no NOI growth or NOI line is stated but the same-property table gives revenues and property expenses for two years, return the components revenue_current, revenue_prior, expense_current, expense_prior (thousands or millions as in the table), each with its quote; the code computes NOI = revenues - property expenses and the growth"}
       - {key: acquisition_yield, def: "Stabilized yield on acquisitions", unit: percent}
       - {key: development_yield, def: "Stabilized yield on developments", unit: percent}
       - {key: acquisition_invested, def: "Amount invested in acquisitions", unit: USD}

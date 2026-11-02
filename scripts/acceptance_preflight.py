@@ -52,6 +52,9 @@ def db_hits(ticker: str) -> dict:
     return out
 
 
+MIN_GATE_YEARS = 5
+
+
 def sec_check(ticker: str) -> str:
     """"" when the ticker is on the SEC company list and the entity has no Form 25 / Form 15 / merger filing after its latest annual report and is a supported issuer; else the reason."""
     from src.pipeline import resolve as R
@@ -62,7 +65,12 @@ def sec_check(ticker: str) -> str:
         return f"{e.kind}: {e}"
     except Exception as e:   # noqa: BLE001 - a network failure of the check is reported, not hidden
         return f"check failed: {type(e).__name__}: {e}"
-    return r.unsupported_reason or ""
+    if r.unsupported_reason:
+        return r.unsupported_reason
+    years = {f.fiscal_year for f in r.annual if f.fiscal_year}
+    if len(years) < MIN_GATE_YEARS:                         # a gate company needs a history that exercises the whole path (only for choosing gate companies, not a limit for users)
+        return f"only {len(years)} annual reports (10-K) under this CIK; a gate company needs {MIN_GATE_YEARS}"
+    return ""
 
 
 def main(tickers: list) -> int:

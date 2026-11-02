@@ -25,6 +25,8 @@ OCCUPANCY = (
     ("approximately N% leased", r"approximately (\d{2,3}(?:\.\d)?)\s?% (?:leased|occupied)"),
     ("properties are N% leased", r"(?:properties|portfolio|stores|communities|facilities|buildings)[^.%$]{0,40}? (?:are|were|was|is) (\d{2,3}(?:\.\d)?)\s?% (?:leased|occupied)"),
     ("Same Store table row", r"Same Store \d+ [\d,]+ (\d{2,3}\.\d) ?%"),
+    ("SHOP occupancy sentence", r"SHOP (?:same-store |average |in-place |total )?occupancy[^.%$]{0,60}?(?:was|of|to|at|increased to|decreased to) (\d{2,3}(?:\.\d)?)\s?%"),          # senior-housing operating portfolios
+    ("hotel occupancy sentence", r"(?:[Cc]omparable |[Ss]ame-store )?[Hh]otels?[^.%$]{0,40}?occupancy[^.%$]{0,40}?(?:was|of|at|to) (\d{2}(?:\.\d)?)\s?%"),          # hotel REITs (comparable hotels)
     ("Same Property occupancy sentence", r"[Ss]ame [Pp]roperty (?:adjusted )?(?:blended )?occupancy[^.%$]{0,80}?(?:to|was|of) (\d{2,3}(?:\.\d)?)\s?%"),
     ("N% occupancy / leased", r"(\d{2,3}(?:\.\d)?)\s?% (?:occupancy|occupied|leased)\b"),
 )
@@ -38,13 +40,18 @@ IG_SENTENCES = (
     (r"investment[- ]grade[^.%]{0,80}?(?:representing|represented|representing approximately|were|was|of)\s*(?:approximately )?(\d{2,3}(?:\.\d)?)\s?%", False),
     (r"(\d{2,3}(?:\.\d)?)\s?% of (?:our |the |AFG[’']s )?[^.%]{0,100}?(?:fixed (?:maturity|maturities|income)|portfolio)[^.%]{0,100}?(?:investment[- ]grade|rated investment grade)", False),
     (r"[Tt]otal investment grade\s+[\d,\.]+\s+[\d,\.]+\s+(\d{2,3})\s?%", False),
+    (r"(\d{1,2}(?:\.\d)?)\s?% of (?:our |the )?[^.%]{0,60}?(?:fixed[- ]maturit\w*|portfolio)[^.%]{0,80}?(?:was|were) (?:unrated or rated below investment[- ]grade|rated below investment[- ]grade|below investment[- ]grade)", True),     # KNSL: "1.4% ... was unrated or rated below investment grade" (unrated counted as not investment grade)
     (r"[Nn]on-investment[- ]grade [^.%]{0,100}?(?:represented|representing|was|were|of)\s*(?:approximately )?(\d{1,2}(?:\.\d)?)\s?%", True),     # the complement
+    (r"(?:[Aa]ll|[Tt]he entire|[Ee]ntirely|[Ss]ubstantially all)\b[^.%$]{0,80}?(?:fixed[- ]maturit\w*|portfolio)[^.%$]{0,60}?(?:was|were|is|are) rated (?:BBB-|Baa3|investment[- ]grade|A-|A3|A|AA-|AA)\s+or\s+(?:better|above|higher)()", "all"),     # a floor for the whole portfolio: all of it is investment grade
 )
 # same-property table without an NOI line (REXR): revenues and property expenses of the same pool, current and prior year -> NOI = revenues - property expenses
-SAME_ANCHOR = r"[Ss]ame[- ](?:[Pp]roperty|[Ss]tore)"
+SAME_ANCHOR = r"[Ss]ame[- ](?:[Pp]roperty|[Ss]tore|[Cc]ommunity)"
+# a table whose first block is the total of the same-property pool and the next blocks are its segments: "Total Same Property MH RV ... Real Property NOI $ 819.7 $ 777.5 $ 42.2 5.4 %" (SUI 2021-2022)
+SAME_PAIR_NOI = r"Real Property NOI\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)\s+\$?\s*\(?([\d,\.]+)\)?\s+\(?\d+(?:\.\d+)?\)?\s?%"
+SAME_POOL_HEAD = r"^[Ss]ame (?:[Pp]roperty|[Cc]ommunity)\s*-?\s*(?:[Tt]otal|MH)"
 # same-property NOI row with the segments side by side: "Real Property NOI $ 686.9 $ 276.8 $ 963.7 $ 630.9 $ 280.9 $ 911.8" = current MH, RV, Total, prior MH, RV, Total (SUI)
 SAME_SEGMENT_NOI = r"(?:Real [Pp]roperty|Same [Pp]roperty) NOI\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)"
-SAME_SEGMENT_NOI_ROW = r"(?:Real [Pp]roperty|Same [Pp]roperty) NOI((?:\s+\$?\s*[\d,]+(?:\.\d+)?){6,12})"
+SAME_SEGMENT_NOI_ROW = r"(?:Real [Pp]roperty|Same [Pp]roperty) NOI(?:\s*\([a-z0-9]\))?((?:\s+\$?\s*[\d,]+(?:\.\d+)?){6,12})"
 SAME_REV = r"(?:TOTAL REVENUES|Total revenues|Rental (?:income|revenues?)|Rental and other (?:income|revenues?))\s+\$?\s*([\d,]{5,})\s+\$?\s*([\d,]{5,})"
 SAME_EXP = r"(?:Property|Real estate|Property operating) (?:operating )?expenses?\s+\$?\s*([\d,]{4,})\s+\$?\s*([\d,]{4,})"
 # tenants: "no single tenant ... more than X%" is a ceiling (bound=max); "10 largest tenants ... Y%" is a separate item
@@ -56,6 +63,11 @@ TENANT_TOP10 = r"(?:10|ten) largest " + TENANT_WORDS + r"[^.%$]{0,120}?(\d{1,2}(
 # insurers: investment-grade share from amounts - "non-investment grade bonds totaled $148 million while non-rated ... $90 million"
 NONIG = r"non-investment[- ]grade[^.$]{0,80}?\$\s?([\d,\.]+)\s+(million|billion)"
 NONRATED = r"non-rated[^.$]{0,100}?\$\s?([\d,\.]+)\s+(million|billion)"
+# an operating REIT states the growth as a percentage: "same-store SHOP NOI grew 4.1%", "same-store cash NOI increased 3.2%", "comparable hotel EBITDA decreased 2.0%"
+STATED_GROWTH = (
+    r"[Ss]ame[- ]store (?:SHOP |cash |total )?(?:NOI|net operating income)[^.%$]{0,50}?(grew|growth|increased|increase|rose|decreased|decrease|declined|decline|fell)[^.%$]{0,25}?(\d{1,2}(?:\.\d)?)\s?%",
+    r"[Cc]omparable (?:hotel )?(?:hotels? )?(?:EBITDA|NOI|net operating income)[^.%$]{0,50}?(grew|growth|increased|increase|rose|decreased|decrease|declined|decline|fell)[^.%$]{0,25}?(\d{1,2}(?:\.\d)?)\s?%",
+)
 UNENC = r"unencumbered (?:asset|property) value[^$]{0,120}\$\s?([\d,\.]+)[^$]{0,200}?total (?:asset|property) value[^$]{0,120}\$\s?([\d,\.]+)"
 
 
@@ -101,6 +113,13 @@ def same_noi_rows(texts: dict) -> list:
             t = same_table(texts[y][1])
             if t:
                 out.append((y, texts[y][0], t[0], t[1], t[2]))
+            else:
+                for p in STATED_GROWTH:
+                    m = re.search(p, texts[y][1])
+                    if m and 0 < _num(m.group(2)) <= 50:
+                        neg = m.group(1).lower() in ("decreased", "decrease", "declined", "decline", "fell")
+                        out.append((y, texts[y][0], -_num(m.group(2)) if neg else _num(m.group(2)), texts[y][1][m.start():m.end()], "same-store growth as stated by the company (an operating REIT's wording; not derived)"))
+                        break
     return out
 
 
@@ -119,6 +138,12 @@ def same_table(text: str) -> Optional[tuple]:
                 if prior > 0 and cur > 0 and abs(sum(v[:k - 1]) - cur) <= 0.01 * cur + 0.15 and abs(sum(v[k:2 * k - 1]) - prior) <= 0.01 * prior + 0.15 and abs(cur / prior - 1) <= 0.5:
                     return (round((cur / prior - 1) * 100, 4), win[sg.start():sg.start() + sg.group(0).find(sg.group(1)) + len(sg.group(1))],
                             f"same-property NOI of the total of the segments: current {cur:,.1f} / prior {prior:,.1f} - 1 ({k - 1} segment columns add up to the totals; CL22)")
+        if re.match(SAME_POOL_HEAD, win):
+            pr = re.search(SAME_PAIR_NOI, win)
+            if pr:
+                cur, prior, chg = _num(pr.group(1).rstrip(".")), _num(pr.group(2).rstrip(".")), _num(pr.group(3).rstrip("."))
+                if prior > 0 and cur > 0 and abs(abs(cur - prior) - chg) <= 0.02 * chg + 0.15 and abs(cur / prior - 1) <= 0.5:
+                    return (round((cur / prior - 1) * 100, 4), win[pr.start():pr.end()], f"same-property NOI of the first (total) block of the table: current {cur:,.1f} / prior {prior:,.1f} - 1; the change column agrees (CL22)")
         r = re.search(SAME_REV, win)
         if not r:
             continue
@@ -229,10 +254,10 @@ def ig_share_rows(texts: dict) -> list:
     for y in years:
         m = re.search(form[0], texts[y][1])
         if m:
-            v = _num(m.group(1))
-            v = 100.0 - v if form[1] else v
+            v = 100.0 if form[1] == "all" else _num(m.group(1))
+            v = 100.0 - v if form[1] is True else v
             if 0 < v <= 100:
-                out.append((y, texts[y][0], v, texts[y][1][m.start():m.end()], "investment-grade share of the fixed income portfolio" + (" (100 - the stated non-investment-grade share)" if form[1] else "")))
+                out.append((y, texts[y][0], v, texts[y][1][m.start():m.end()], "investment-grade share of the fixed income portfolio" + (" (100 - the stated non-investment-grade share, unrated counted as not investment grade)" if form[1] is True else (" (the whole portfolio is stated to be rated investment grade or better: 100)" if form[1] == "all" else ""))))
     return out
 
 
@@ -283,7 +308,7 @@ def run_insurer(client, item_store, sec, ticker: str, n: int = 3) -> dict:
     rows_db = item_store.rows_for(ticker)
     have = {r["year"] for r in rows_db if r.get("item_key") == "inv_ig_share" and r.get("state") == "value" and r.get("model") != "keyword-search"}      # the engine uses the share when no total fixed income was extracted
     texts = reports(sec, ticker, n)
-    rows = [_row(ticker, "inv_ig_share", "EXT-INS-INV", "B4", y, acc, v, q, b, "100 -" in b) for y, acc, v, q, b in ig_share_rows(texts) if y not in have]
+    rows = [_row(ticker, "inv_ig_share", "EXT-INS-INV", "B4", y, acc, v, q, b, "100 -" in b or "whole portfolio" in b) for y, acc, v, q, b in ig_share_rows(texts) if y not in have]
     done = {r["year"] for r in rows} | have
     if any(y not in done for y in texts):                                # K6d-2 fixes (RLI): only amounts of non-investment-grade bonds -> the share from the fixed-income total
         try:

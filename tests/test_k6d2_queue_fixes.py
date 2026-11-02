@@ -280,3 +280,33 @@ def test_an_extraction_that_fails_for_good_fails_the_company_and_marks_its_score
     co = client.tables["companies"][0]
     assert t["state"] == "failed" and co["processing_state"] == "failed"
     assert "ai_extract failed for good" in client.tables["score_runs"][0]["flags"]["partial"]
+
+
+def test_a_short_history_is_a_final_state_of_its_own_and_the_third_annual_report_gives_the_score():
+    client = FakeClient()
+    a = company(client, "NEW")
+    client.table("filing_periods").insert({"company_id": a, "fiscal_year": 2025, "accession": "0000000000-26-000001"}).execute()
+    seen = []
+    ex = {k: (lambda t, seen=seen: seen.append(t["job_type"]) or {}) for k in ("score", "analysis", "ai_extract", "ai_assess", "repair", "new_report")}
+    r = runner(client, budget=5, executors=ex)
+    r.queue.enqueue(a, "analysis", None, None, 3)
+    res = type("Res", (), {"status": "success", "state": "data_loaded", "router_needs": None, "profile": "STANDARD", "rows_written": 5, "years": [2025], "error": None})()
+    out = r.after_load(res, a, 3)
+    co = client.tables["companies"][0]
+    assert out["state"] == "insufficient_history" and co["processing_state"] == "insufficient_history"                    # not `unsupported`
+    assert "היסטוריה קצרה מדי לציון (1 שנים; נדרשות 3)" in co["unsupported_reason"]
+    assert all(t["state"] == "done" for t in r.queue.list(a)) and not any(t["job_type"] == "score" for t in r.queue.list(a))        # nothing was queued for the score; the open task ended as not relevant
+    r.queue.enqueue(a, "ai_assess", None, None, 3)
+    rep = r.run()
+    assert seen == [] and not rep.failed                                                                                          # a later score / AI task neither runs nor fails
+    # the second annual report: still short. The third one (the new_report load queued by the SEC daily index) turns it into a normal company with a first score
+    client.table("filing_periods").insert({"company_id": a, "fiscal_year": 2024, "accession": "0000000000-25-000001"}).execute()
+    assert r.short_history(a) is not None
+    r.queue.enqueue(a, "new_report", None, None, 3, {"accession": "0000000000-27-000001", "source": "sec_daily_index"})
+    rep = r.run()
+    assert seen == ["new_report"]                                                                                                  # a data job still runs for a company in insufficient_history
+    client.table("filing_periods").insert({"company_id": a, "fiscal_year": 2026, "accession": "0000000000-27-000001"}).execute()
+    assert r.short_history(a) is None
+    res2 = type("Res", (), {"status": "success", "state": "data_loaded", "router_needs": None, "profile": "STANDARD", "rows_written": 5, "years": [2026], "error": None})()
+    out2 = r.after_load(res2, a, 3)
+    assert out2.get("state") != "insufficient_history" and any(t["job_type"] == "score" and t["skill"] == "first" for t in r.queue.list(a))      # the first score is queued

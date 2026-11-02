@@ -70,7 +70,7 @@ class CompanyRepository:
 
         return None
     # ------------------------------------------------------------ K6a: identifiers, classification and processing state (migration 9)
-    PROCESSING_STATES = ("resolved", "data_loaded", "scored_partial", "ai_in_progress", "complete", "failed", "unsupported")
+    PROCESSING_STATES = ("resolved", "data_loaded", "scored_partial", "ai_in_progress", "complete", "failed", "unsupported", "insufficient_history")
 
     def get_by_symbol(self, symbol: str, exchange: str = None):
         q = self.client.table("companies").select("*").eq("symbol", symbol)
@@ -91,9 +91,9 @@ class CompanyRepository:
     def set_processing_state(self, company_id: int, state: str, unsupported_reason: str = None):
         if state not in self.PROCESSING_STATES:
             raise ValueError(f"unknown processing_state {state!r}")
-        if state == "unsupported" and not unsupported_reason:
-            raise ValueError("an unsupported company needs a reason")
-        return self.update(company_id, {"processing_state": state, "unsupported_reason": unsupported_reason if state == "unsupported" else None})
+        if state in ("unsupported", "insufficient_history") and not unsupported_reason:
+            raise ValueError(f"a company in the state {state} needs a reason")
+        return self.update(company_id, {"processing_state": state, "unsupported_reason": unsupported_reason if state in ("unsupported", "insufficient_history") else None})
 
     def set_classification(self, company_id: int, sic: str = None, vc_industry: str = None, tier: str = None, status: str = None):
         fields = {"sic": sic, "vc_industry": vc_industry, "classification_tier": tier, "classification_status": status}

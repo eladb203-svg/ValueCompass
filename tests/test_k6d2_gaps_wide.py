@@ -211,7 +211,7 @@ def test_the_prompt_carries_the_hints_and_the_component_format_only_when_an_item
     assert "derivation hint:" in p and "bound=max" in p and "components" in p and "Never compute the final number" in p
     p2, _, _ = build_extraction_prompt(blocks["EXT-BANK-CAP"], {"company_name": "X", "ticker": "X", "fiscal_year": "FY2025"}, {"X-BANKCAP": "some text"})
     assert "derivation hint" not in p2.lower()
-    assert blocks["EXT-RE-OPS"]["version"] >= 2 and blocks["EXT-INS-INV"]["version"] >= 7                      # a changed prompt is a new version: stored answers of the old text are asked again
+    assert blocks["EXT-RE-OPS"]["version"] >= 3 and blocks["EXT-INS-INV"]["version"] >= 8                      # a changed prompt is a new version: stored answers of the old text are asked again
 
 
 def test_the_b14_gross_profit_item_has_a_hint():
@@ -349,3 +349,61 @@ def test_the_same_property_occupancy_sentence_is_read():
 def test_manufactured_housing_is_a_residential_asset_type():
     from src.pipeline import auto_config
     assert "manufactured housing" in auto_config.ASSET_WORDS["residential"]
+
+
+def test_the_investment_grade_share_from_the_unrated_share_and_from_a_whole_portfolio_statement():
+    knsl = ("Additionally, at December 31, 2025, approximately 81.9% of our fixed-maturity portfolio, excluding cash equivalents, was rated A- or better. Our policy is to invest in investment grade securities. "
+            "At December 31, 2025, approximately 1.4% of our fixed-maturity portfolio, excluding cash equivalents, was unrated or rated below investment grade.")
+    r = KD.ig_share_rows({2025: ("acc", knsl)})
+    assert len(r) == 1 and abs(r[0][2] - 98.6) < 1e-9 and "unrated counted as not investment grade" in r[0][4]
+    whole = "At year end all of our fixed maturities were rated A- or better by at least one rating agency."
+    r = KD.ig_share_rows({2025: ("acc", whole)})
+    assert len(r) == 1 and r[0][2] == 100.0 and "whole portfolio" in r[0][4]
+    assert KD.ig_share_rows({2025: ("acc", "Most of our bonds were rated A- or better.")}) == []                      # "most" is not "all"
+
+
+SUI22 = ("Real Property Operations - Same Property - MH and RV United States and Canada The following tables reflect certain financial and other information for our Same Property MH and RV portfolio. "
+         "Total Same Property MH RV Year Ended Financial Information December 31, 2022 December 31, 2021 Change % Change(1) Revenue Total Operating 1,217.8 1,152.4 65.4 5.7 % "
+         "Expense Property Operating 398.1 374.9 23.2 6.2 % Real Property NOI $ 819.7 $ 777.5 $ 42.2 5.4 % $ 558.2 $ 540.4 $ 17.8 3.3 % $ 261.5 $ 237.1 $ 24.4 10.3 %")
+SUI24 = ("Same Property Expenses Same Property operating expenses(b)(d) 235.2 231.3 134.4 600.9 220.1 222.8 125.7 568.6 32.3 6.8 % 3.8 % 6.9 % 5.7 % "
+         "Real Property NOI(d) $ 631.6 $ 272.4 $ 266.3 $ 1,170.3 $ 591.7 $ 280.4 $ 252.7 $ 1,124.8 $ 45.5 6.7 % (2.8) % 5.4 % 4.1 %")
+
+
+def test_other_layouts_of_the_same_property_table_give_the_total_growth():
+    g, quote, basis = KD.same_table(SUI22)                                             # the first block is the total, the change column agrees
+    assert abs(g - (819.7 / 777.5 - 1) * 100) < 1e-3 and "819.7" in quote and "change column agrees" in basis
+    g, quote, basis = KD.same_table(SUI24)                                             # four columns per year (MH, RV, Marina, Total) and a footnote mark after the label
+    assert abs(g - (1170.3 / 1124.8 - 1) * 100) < 1e-3 and "3 segment columns add up" in basis
+    wrong = SUI22.replace("$ 42.2", "$ 99.9")                                          # the change column does not agree: not read
+    assert KD.same_table(wrong) is None
+
+
+def test_only_a_timberland_or_farmland_reit_has_no_rent_roll_items():
+    from src.scoring import realestate as RE
+    from src.scoring.common import miss
+
+    class Ri:
+        def __init__(self, t):
+            self.asset_type = t
+
+    def fake(ri, d):
+        return [miss("2", "Same-property NOI growth", 6, "not extracted"), miss("1", "Other", 4, "x")]
+
+    wrapped = RE._op_na("b34")(fake)
+    wt = wrapped(Ri("timberland"), {"flags": []})
+    assert wt[0].state == "not_applicable" and "timberland" in wt[0].note and wt[1].state == "missing"             # only the listed item changes
+    assert wrapped(Ri("diversified"), {"flags": ["operating_reit"]})[0].state == "missing"                         # hotels / senior-housing operations stay Missing
+    assert wrapped(Ri("data centers"), {"flags": ["operating_reit"]})[0].state == "missing"
+    from src.pipeline import auto_config as AC
+    assert AC.reit_asset_type("We own timberlands. Our timber is harvested; timberland values rise.")[0] == "timberland" and AC.reit_utilization("timberland") == "not_applicable"
+
+
+def test_operating_reit_wording_is_read():
+    shop = "Same-store SHOP NOI grew 4.1% year over year. SHOP same-store occupancy was 83.4% at year end."
+    r = KD.same_noi_rows({2025: ("acc", shop)})
+    assert r and r[0][2] == 4.1 and "not derived" in r[0][4]
+    assert KD.same_noi_rows({2025: ("acc", "Comparable hotel EBITDA decreased 2.0% compared to 2024.")})[0][2] == -2.0
+    occ = KD.occupancy_rows({2025: ("acc", shop)})
+    assert occ and occ[0][2] == 83.4 and occ[0][4] == "SHOP occupancy sentence"
+    hotel = "Comparable hotels occupancy was 71.2% for the year."
+    assert KD.occupancy_rows({2025: ("acc", hotel)})[0][2] == 71.2

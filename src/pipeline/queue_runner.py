@@ -27,6 +27,8 @@ from src.repositories.work_queue_repository import PRIORITY, SCORING_AI, WorkQue
 ROOT = Path(__file__).resolve().parents[2]
 ISRAEL = ZoneInfo("Asia/Jerusalem")
 AI_JOBS = ("ai_classify", "ai_extract", "ai_assess", "ai_background")
+DATA_JOBS = ("initial_import", "backfill", "new_report", "amendment", "repair")
+MIN_SCORE_YEARS = 3                                      # K6d-2 fixes: fewer loaded fiscal years than this and the company has no score: a final state with the reason, no analysis / AI task
 BLOCKS_OF = {"BANK": ["EXT-BANK-CAP", "EXT-BANK-LOANS"], "INSURANCE": ["EXT-INS-CAP", "EXT-INS-INV"],
              "INCOME_REAL_ESTATE": ["EXT-RE-OPS", "EXT-RE-MAINT", "EXT-RE-VALUE", "EXT-RE-LIQ", "EXT-RE-UNENC", "EXT-RE-NAV", "EXT-RE-OPU", "EXT-RE-FFO", "EXT-PROFILE"]}
 
@@ -180,6 +182,11 @@ class QueueRunner:
             remaining = COMPANY_CALL_CAP - self.queue.company_calls(task["company_id"], task["fiscal_year"]) if (is_ai and task["company_id"]) else None
             if remaining is not None and remaining <= 0:
                 self._trip(task, rep, COMPANY_CALL_CAP - remaining)
+                continue
+            why = self.not_relevant(task)
+            if why:
+                self.queue.done(task, {"skipped": "not relevant: " + why})
+                rep.done.append((task["id"], task["job_type"], task.get("skill"), self._label(task)))
                 continue
             task = self.queue.claim(task)
             if task["job_type"] in SCORING_AI and task["company_id"]:
@@ -356,6 +363,14 @@ class QueueRunner:
             raise RuntimeError(res.error or "load failed")
         if res.state == "unsupported":
             return {"status": res.status, "state": res.state}
+        why = self.short_history(company_id)
+        if why:
+            # a final state of its own, not `unsupported`: the company gets its score when the third annual report arrives (the SEC daily index queues a new_report load, priority 3)
+            self.companies.set_processing_state(company_id, "insufficient_history", why)
+            for t in self.queue.list(company_id):
+                if t["state"] in ("queued", "running", "deferred_quota", "deferred_network") and t["job_type"] not in DATA_JOBS:
+                    self.queue.done(t, {"skipped": "not relevant: " + why})
+            return {"status": res.status, "state": "insufficient_history", "reason": why}
         task = {"company_id": company_id, "priority": priority}
         if res.router_needs:
             # provisional profile: the router needs the extraction of the engine first; the score waits until the profile is confirmed (a `repair` job re-routes from the cache)
@@ -369,6 +384,18 @@ class QueueRunner:
             return {"status": res.status, "rows": res.rows_written, "years": res.years, "provisional_profile": res.profile, "extraction_requested": res.router_needs}
         self.enqueue(task["company_id"], "score", None, "first", task["priority"])
         return {"status": res.status, "rows": res.rows_written, "years": res.years}
+
+    def short_history(self, company_id: int) -> Optional[str]:
+        """The reason when the company has fewer than ``MIN_SCORE_YEARS`` loaded fiscal years (a new registrant after a merger: PNFP has one), else None."""
+        n = len({p["fiscal_year"] for p in self.client.table("filing_periods").select("fiscal_year").eq("company_id", company_id).execute().data})
+        return f"היסטוריה קצרה מדי לציון ({n} שנים; נדרשות {MIN_SCORE_YEARS})" if 0 < n < MIN_SCORE_YEARS else None                       # no period rows at all = nothing is known yet (the load did not write periods): no verdict
+
+    def not_relevant(self, task: dict) -> Optional[str]:
+        """A score / analysis / AI task of a company in `insufficient_history` does not run and does not fail: it ends as not relevant. The data jobs (a new annual report) still run."""
+        if not task.get("company_id") or task["job_type"] in DATA_JOBS:
+            return None
+        co = self.companies.get_by_id(task["company_id"]) or {}
+        return co.get("unsupported_reason") if co.get("processing_state") == "insufficient_history" else None
 
     def d1_facts(self, ticker: str) -> tuple:
         """-> (D1 facts, competitors of the stored English text) of a company, for the checks of a corrected Hebrew text."""

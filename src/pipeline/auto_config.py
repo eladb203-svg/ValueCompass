@@ -29,6 +29,8 @@ ASSET_WORDS = {
     "retail (malls)": ("regional mall", "malls", "premium outlet"),
     "retail (shopping centers)": ("shopping center", "grocery-anchored", "retail propert", "retail center", "open-air"),
     "net lease": ("net lease", "triple-net", "triple net", "net-lease"),
+    "timberland": ("timberland", "timber"),                     # K6d-2 fixes (WY): no rent roll - the like-for-like rent, occupancy, tenant and encumbrance measures do not exist
+    "farmland": ("farmland", "farms"),
 }
 DEFAULT_ASSET_TYPE = "diversified"
 
@@ -88,7 +90,7 @@ def reit_asset_type(text: str) -> tuple:
 
 
 def reit_utilization(asset_type: str) -> str:
-    return {"communication towers": "not_applicable", "data centers": "leased_capacity"}.get(asset_type, "occupancy")
+    return {"communication towers": "not_applicable", "timberland": "not_applicable", "farmland": "not_applicable", "data centers": "leased_capacity"}.get(asset_type, "occupancy")
 
 
 def reit_noi_method(has_prop_opex: bool, operating: bool = False):

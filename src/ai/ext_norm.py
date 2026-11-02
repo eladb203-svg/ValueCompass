@@ -61,6 +61,10 @@ def header_years(tn: str, idx: int, upto: int, span: int = 2500) -> Optional[lis
     return None
 
 
+# column headers that name a ROLE of a regulatory table (the requirement columns are not the company's)
+ROLE_HEADER = re.compile(r"(?:minimum|well[- ]capitali[sz]ed|required|requirement|conservation buffer|ratio plus|to be (?:well|adequately))", re.I)
+
+
 def assign_year(item: dict, value: float, scale: int, unit: str, quote: str, text_norm: str, fy: int, ai_year: Optional[int] = None) -> tuple:
     """-> (year or None, how, printed_negative). The year of the table column that holds ``value``; ``how``: 'header' (a year header with as many columns as cells), 'column_order'
     (no usable header: newest first, 2-3 cells), 'unresolved'."""
@@ -85,6 +89,8 @@ def assign_year(item: dict, value: float, scale: int, unit: str, quote: str, tex
         return hdr[col], "header", neg
     if not hdr and len(re.findall(r"[A-Za-z]{3,}", qn)) >= 10:
         return None, "unresolved", neg                                      # K6d-2 fixes: a sentence ("At December 31, 2025, approximately $3.3 billion was available ...") is not a table row: the model's year stays
+    if not (hdr and len(hdr) == len(cells)) and ROLE_HEADER.search(text_norm[max(0, idx - 900):idx]):
+        return None, "column_roles", neg                                    # K6d-2 fixes (WTFC): the columns are roles - minimum, plus buffer, well capitalized, the company - not years; the position says nothing about the year, the model's period stays
     if not hdr and len(cells) in (2, 3) and len(cands) == 1 and not any(t[3] for t in cells):
         return fy - col, "column_order", neg                               # no header: the usual 10-K order, newest first; only when the value is in one column and no cell is empty
     return None, "unresolved", neg
@@ -127,6 +133,8 @@ def apply(res, it: dict, text_norm: str, fy: int, rule: Optional[str], window: i
     year, how, pneg = assign_year(it, v, sc, unit, q, text_norm, fy, res.year)
     if how == "unresolved" and year is None and res.year is not None:
         res.flags.append("period_unverified")
+    elif how == "column_roles":
+        res.flags.append("period_kept_columns_are_roles")
     elif year is not None:
         if how == "column_order":
             res.flags.append("period_by_column_order")
