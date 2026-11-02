@@ -30,6 +30,56 @@ SPECS = {
 }
 
 
+# a total reported only as a member of an axis: bank nonaccrual loans are the loans (before allowance) with the past-due member "Nonperforming" (EWBC); the standard nonaccrual tag has no undimensioned value
+MEMBER_SPECS = {
+    "nonaccrual": (["FinancingReceivableExcludingAccruedInterestNonaccrual", "FinancingReceivableRecordedInvestmentNonaccrualStatus",
+                    "FinancingReceivableExcludingAccruedInterestBeforeAllowanceForCreditLoss", "FinancingReceivableRecordedInvestment"],
+                   "PastDueAxis", ("NonperformingFinancingReceivableMember", "NonaccrualMember", "FinancingReceivableRecordedInvestmentNonaccrualStatusMember", "FinancialAssetNonaccrualMember")),
+}
+
+
+def member_facts(raw: str, names: list, axis_suffix: str, members: tuple) -> dict:
+    """{local name: {end: (value, full name, member)}} - instant facts whose ONLY dimension is the axis (name ends with ``axis_suffix``) at one of the members."""
+    ctx = parse_contexts(raw)
+    out: dict = {}
+    for attrs, text in _NF.findall(raw):
+        full = _attr(attrs, "name") or ""
+        local = full.split(":")[-1]
+        if local not in names or "usd" not in (_attr(attrs, "unitRef") or "").lower():
+            continue
+        c = ctx.get(_attr(attrs, "contextRef") or "")
+        if not c or not c["instant"] or len(c["dims"]) != 1 or not c["dims"][0][0].endswith(axis_suffix) or c["dims"][0][1].split(":")[-1] not in members:
+            continue
+        v = parse_numeric(attrs, text)
+        if v is not None:
+            out.setdefault(local, {}).setdefault(c["end"], (v, full, c["dims"][0][1].split(":")[-1]))
+    return out
+
+
+def member_search(sec, cik: str, fld: str, needed_ends: list, max_filings: int = 6) -> dict:
+    """{needed end: Fact} for a total reported as a member (MEMBER_SPECS), newest filing first; the tags are tried in the order of the spec."""
+    names, axis, members = MEMBER_SPECS[fld]
+    found: dict = {}
+    missing = set(needed_ends)
+    used = 0
+    for k in tenk_filings(sec, cik):
+        if not missing or used >= max_filings:
+            break
+        if all(abs((k["report_date"] - e).days) > 800 for e in missing):
+            continue
+        acc = k["accession"].replace("-", "")
+        raw = _get_raw(sec, f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}/{k['primary']}", f"{acc}_{k['primary']}")
+        used += 1
+        mf = member_facts(raw, names, axis, members)
+        for local in names:
+            for end, (v, full, mem) in mf.get(local, {}).items():
+                m = _near(missing, end)
+                if m is not None and m not in found:
+                    found[m] = Fact(val=v, end=end, filed=k["filed"], form="10-K", accn=k["accession"], tag=f"DERIVED: {full} at the member {mem} of {axis} (the total only exists as a member)")
+        missing -= set(found)
+    return found
+
+
 def _unit_ok(unit: str, kind: str) -> bool:
     u = unit.lower()
     return ("share" in u and "usd" in u) if kind == "pershare" else (u == "shares" or (u.endswith("shares") and "usd" not in u))
@@ -171,6 +221,24 @@ def search(sec, cik: str, ticker: str, fld: str, needed_ends: list, max_filings:
 def fill(sec, cik: str, ticker: str, f: dict, log: dict, labels: list, ends: list, problems: list, split_factor=None, fields=("dps", "eps", "shares", "shares_basic", "shares_out")) -> list:
     """Fill the years still missing of the fields; mutates ``f``, ``log``, ``problems``. -> conflicts (for ``data_gap_review``). A failure of the search is reported in ``problems`` and changes nothing."""
     conflicts: list = []
+    for fld in [x for x in MEMBER_SPECS if x in f]:
+        miss = [e for e, v in zip(ends, f[fld]) if v is None]
+        if not miss:
+            continue
+        try:
+            got = member_search(sec, cik, fld, miss)
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"{fld}: wide XBRL member search failed ({type(exc).__name__}: {exc})")
+            continue
+        done = []
+        for i, (end, lab) in enumerate(zip(ends, labels)):
+            fact = got.get(end)
+            if fact is not None and f[fld][i] is None:
+                f[fld][i] = fact.val
+                log.setdefault(fld, {})[lab] = {"tag": fact.tag, "value": fact.val, "filed": str(fact.filed), "form": fact.form}
+                done.append(lab)
+        if done:
+            problems.append(f"{fld}: wide XBRL search (member of an axis) filled {', '.join(done)}")
     for fld in fields:
         if fld not in f or fld not in SPECS:
             continue

@@ -25,6 +25,7 @@ OCCUPANCY = (
     ("approximately N% leased", r"approximately (\d{2,3}(?:\.\d)?)\s?% (?:leased|occupied)"),
     ("properties are N% leased", r"(?:properties|portfolio|stores|communities|facilities|buildings)[^.%$]{0,40}? (?:are|were|was|is) (\d{2,3}(?:\.\d)?)\s?% (?:leased|occupied)"),
     ("Same Store table row", r"Same Store \d+ [\d,]+ (\d{2,3}\.\d) ?%"),
+    ("Same Property occupancy sentence", r"[Ss]ame [Pp]roperty (?:adjusted )?(?:blended )?occupancy[^.%$]{0,80}?(?:to|was|of) (\d{2,3}(?:\.\d)?)\s?%"),
     ("N% occupancy / leased", r"(\d{2,3}(?:\.\d)?)\s?% (?:occupancy|occupied|leased)\b"),
 )
 SAME_NOI = (
@@ -41,6 +42,9 @@ IG_SENTENCES = (
 )
 # same-property table without an NOI line (REXR): revenues and property expenses of the same pool, current and prior year -> NOI = revenues - property expenses
 SAME_ANCHOR = r"[Ss]ame[- ](?:[Pp]roperty|[Ss]tore)"
+# same-property NOI row with the segments side by side: "Real Property NOI $ 686.9 $ 276.8 $ 963.7 $ 630.9 $ 280.9 $ 911.8" = current MH, RV, Total, prior MH, RV, Total (SUI)
+SAME_SEGMENT_NOI = r"(?:Real [Pp]roperty|Same [Pp]roperty) NOI\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)\s+\$?\s*([\d,\.]+)"
+SAME_SEGMENT_NOI_ROW = r"(?:Real [Pp]roperty|Same [Pp]roperty) NOI((?:\s+\$?\s*[\d,]+(?:\.\d+)?){6,12})"
 SAME_REV = r"(?:TOTAL REVENUES|Total revenues|Rental (?:income|revenues?)|Rental and other (?:income|revenues?))\s+\$?\s*([\d,]{5,})\s+\$?\s*([\d,]{5,})"
 SAME_EXP = r"(?:Property|Real estate|Property operating) (?:operating )?expenses?\s+\$?\s*([\d,]{4,})\s+\$?\s*([\d,]{4,})"
 # tenants: "no single tenant ... more than X%" is a ceiling (bound=max); "10 largest tenants ... Y%" is a separate item
@@ -84,14 +88,16 @@ def same_noi_rows(texts: dict) -> list:
     """[(year, accession, growth in percent, quote, basis)] - growth of the same pool, current over prior year, from the two levels in one quote."""
     out = []
     for y in sorted(texts):
+        found = False
         for p in SAME_NOI:
             m = re.search(p, texts[y][1])
             if m:
                 cur, prior = _num(m.group(1)), _num(m.group(2))
                 if prior > 0 and cur > 0 and abs(cur / prior - 1) <= 0.5:
+                    found = True
                     out.append((y, texts[y][0], round((cur / prior - 1) * 100, 4), texts[y][1][m.start():m.end()], "same-property NOI growth derived: current / prior - 1 (both levels in the quote)"))
-                break
-        else:
+                    break
+        if not found:                                              # no usable stated levels (a match that fails the check does not stop the table)
             t = same_table(texts[y][1])
             if t:
                 out.append((y, texts[y][0], t[0], t[1], t[2]))
@@ -103,6 +109,16 @@ def same_table(text: str) -> Optional[tuple]:
     growth = current / prior - 1 (rulebook CL22). The quote runs from the revenue line to the end of the expense line, so both lines are in it."""
     for a in re.finditer(SAME_ANCHOR, text):
         win = text[a.start():a.start() + 3500]
+        sg = re.search(SAME_SEGMENT_NOI_ROW, win)
+        if sg:                                                      # segments side by side: k columns of the current year and k of the prior year, the last column of each half is the total and the parts must add up to it
+            v = [_num(x.rstrip(".")) for x in re.findall(r"[\d,]+(?:\.\d+)?", sg.group(1))]
+            for k in (3, 4, 5, 6):
+                if len(v) < 2 * k:
+                    continue
+                cur, prior = v[k - 1], v[2 * k - 1]
+                if prior > 0 and cur > 0 and abs(sum(v[:k - 1]) - cur) <= 0.01 * cur + 0.15 and abs(sum(v[k:2 * k - 1]) - prior) <= 0.01 * prior + 0.15 and abs(cur / prior - 1) <= 0.5:
+                    return (round((cur / prior - 1) * 100, 4), win[sg.start():sg.start() + sg.group(0).find(sg.group(1)) + len(sg.group(1))],
+                            f"same-property NOI of the total of the segments: current {cur:,.1f} / prior {prior:,.1f} - 1 ({k - 1} segment columns add up to the totals; CL22)")
         r = re.search(SAME_REV, win)
         if not r:
             continue
@@ -192,7 +208,8 @@ def reports(sec, ticker: str, n: int = 5) -> dict:
 def run(client, item_store, sec, ticker: str, n: int = 5) -> dict:
     """The step: search, write the rows, return a summary for the task result. Idempotent."""
     rows_db = item_store.rows_for(ticker)
-    have = lambda key: {r["year"] for r in rows_db if r.get("item_key") == key and r.get("state") == "value" and r.get("model") != "keyword-search"}   # noqa: E731
+    # a model answer counts only when the engine can use it: approved (SUI: three pending rows per year - MH, RV, Total - that no rule can pick from; the table's total is read by code instead)
+    have = lambda key: {r["year"] for r in rows_db if r.get("item_key") == key and r.get("state") == "value" and r.get("model") != "keyword-search" and r.get("approval_status") == "approved"}   # noqa: E731
     unenc_value = any(r.get("item_key") in ("unencumbered_noi_share", "unencumbered_assets_share") and r.get("state") == "value" and r.get("model") != "keyword-search" for r in rows_db)
     texts = reports(sec, ticker, n)
     rows = build_rows(ticker, texts, unenc_value, have("same_property_noi_growth"), have("occupancy"), {k: have(k) for k in ("largest_tenant_share", "top10_tenants_share")})

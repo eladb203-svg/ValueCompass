@@ -22,7 +22,7 @@ ASSET_WORDS = {
     "communication towers": ("tower", "wireless", "broadcast"),
     "data centers": ("data center", "data centre", "colocation", "interconnection"),
     "self-storage": ("self-storage", "self storage", "storage facilit"),
-    "residential": ("apartment", "multifamily", "multi-family", "single-family", "single family", "residential", "manufactured home", "student housing"),
+    "residential": ("apartment", "multifamily", "multi-family", "single-family", "single family", "residential", "manufactured home", "manufactured housing", "student housing"),
     "healthcare": ("healthcare", "senior housing", "medical office", "skilled nursing", "life science"),
     "office": ("office",),
     "industrial": ("industrial", "logistics", "warehouse", "distribution center"),

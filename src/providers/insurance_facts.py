@@ -30,7 +30,7 @@ INS_FIELDS: dict = {
     "premiums": ("flow", "USD", ["PremiumsEarnedNet", "PremiumsEarnedNetPropertyAndCasualty"]),
     "policy_fees": ("flow", "USD", ["InsuranceCommissionsAndFees"]),
     "nii": ("flow", "USD", ["NetInvestmentIncome", "InvestmentIncomeNet"]),
-    "gains_realized": ("flow", "USD", ["RealizedInvestmentGainsLosses", "GainLossOnInvestments", "DebtAndEquitySecuritiesGainLoss"]),
+    "gains_realized": ("flow", "USD", ["RealizedInvestmentGainsLosses", "GainLossOnInvestments", "DebtAndEquitySecuritiesGainLoss", "DebtAndEquitySecuritiesRealizedGainLoss"]),
     "mrb_change": ("flow", "USD", ["MarketRiskBenefitChangeInFairValueGainLoss"]),
     "benefits": ("flow", "USD", ["PolicyholderBenefitsAndClaimsIncurredNet"]),
     "total_expenses": ("flow", "USD", ["BenefitsLossesAndExpenses"]),
@@ -93,6 +93,7 @@ INS_FIELDS: dict = {
     "_pretax_dom": ("flow", "USD", ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic"]),
     "_pretax_for": ("flow", "USD", ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign"]),
 }
+BASIS_CHECKED = ("premiums", "benefits", "nii", "revenue_total", "total_expenses")
 PER_SHARE = ("eps", "dps")
 SHARE_COUNTS = ("shares_dil", "shares_basic", "shares_out")
 ZERO_IF_ABSENT_FLOW = ("buybacks", "dividends", "acquisitions", "goodwill_impairment")
@@ -345,6 +346,11 @@ def build_insurance_series(sec: SecClient, ticker: str, splits: list, n_years: i
     if cover:
         flags.append("shares_out_cover_page")
         problems.append("shares_out: balance-sheet tag missing, cover-page count used in " + ", ".join(cover))
+    from . import series_basis as SB
+    for fld in BASIS_CHECKED:                                                       # K6d-2 fixes: a restated definition (LDTI) must not be connected to the older years as if it were one series
+        brk = SB.basis_break(facts, INS_FIELDS[fld][2], INS_FIELDS[fld][1])
+        if brk and fld in f:
+            SB.drop_older(f, log, labels, ends, fld, brk, problems, flags)
     from .xbrl_wide import fill as wide_fill
     wide_conflicts = wide_fill(sec, cik, ticker, f, log, labels, ends, problems, split_factor)       # K6d-2 fixes: per-class / close-named company elements for the years still missing
     for c in wide_conflicts:

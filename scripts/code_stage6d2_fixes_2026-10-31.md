@@ -460,3 +460,46 @@ Preflight `acceptance_preflight_9.txt`; log `acceptance_run_10.log`; calls EWBC 
 - **SUI:** same-property NOI growth ("Same Property NOI growth" is named in the text; the table is not in a form the steps read), occupancy, largest tenant, unencumbered: not classified further.
 SBUX and ADI: no open item. EWBC LCR is real (not reported); the OE-proxy and economic-value items of SUI are genuine by rule.
 Batch 9 was not run (batch 8 not clean). Open: EWBC tags, LNC life-insurer chains, SUI same-property table, the 14 "model said insufficient" answers, CLX B3.1-Q4/B3.2-Q4.
+
+## 15. Banks, life insurers, SUI, batch 8 (new) (2026-11-01 / 02)
+
+### 15.1 EWBC and the banks (tag chains)
+The ACL and loan tags were already in the chain. The missing item was the TOTAL nonaccrual for 2023-2025: the standard nonaccrual tag has no undimensioned value, `FinancingReceivableNonaccrualNoAllowance` is only the part without an allowance (93.4 m of 165.8 m) and was NOT used as the total. The total sits in the 10-K inline XBRL as the loans before allowance with the member `NonperformingFinancingReceivableMember` of the past-due axis (165,842 thousand, equal to "Total nonaccrual loans" in the text). `xbrl_wide.member_search` (all four providers; tag text `DERIVED ... at the member ... (the total only exists as a member)`) fills the years still missing.
+EWBC before 96.63 / 97.62 (coverage 90% / 79%), after 96.97 / 95.98 (98% / 94%); B 3.6.3, B 3.6.4, G 3.3.2, G 3.3.3 now scored. The other banks (BOKF, CFG, FHN, FITB, HBAN, JPM, RF, WAL, ZION) were reloaded: only EWBC received a value (the "before" snapshot of the banks was lost because TBNK has no score run and stopped the script; the others are reported as unchanged because no wide-search note appeared for them). Banks after: BOKF 81.77/90.46, CFG 68.55/64.62, FHN 76.08/77.54, FITB 85.33/78.29, HBAN 80.39/83.31, JPM 94.04/87.03, RF 87.00/87.40, WAL 80.59/86.35, ZION 79.68/79.51.
+
+### 15.2 LNC and the continuity of insurer series
+- Premiums use one tag in all years; the jump 2020 -> 2021 (5.4 -> 11.7 bn) is a change of definition (LDTI restatement): in the overlap years the later filing differs from the original by 2.08x (2021) and 1.92x (2022), not a constant ratio, so the years cannot be connected. `series_basis.basis_break`: when a later filing restates a year by more than 15% and the year before it is not shown on the new basis, the older years are set missing with the reason (LNC premiums and total expenses: 2016-2020; also found: AFG 2019 (nii, revenue, expenses), THG 2016). Scores of AFG, THG, ACGL, CB, ORI, RLI and SIGI did not change.
+- Realized gains: `DebtAndEquitySecuritiesRealizedGainLoss` (all years) added to the chain. Net investment income and benefits incurred exist in XBRL for all years (nothing to complete).
+- Credit quality from the text ("Total investment grade ... % of total"): a derivation hint on `inv_ig_share` (EXT-INS-INV version 7); not yet exercised against the model.
+LNC before: Buffett none (coverage 32%), Graham 67.21 (70%). After: Buffett 51.23 (75%), Graham 62.60 (80%).
+
+### 15.3 Life insurers (partial support, no sub-profile)
+What does not fit a life insurer in the INSURANCE criteria (stays Missing, no score when coverage is low), as input for the methodology work:
+- B 3.5.1, B 3.5.2, B 3.5.4 (cost of float): a property-casualty concept; for LNC "fewer than 3 years", the float components changed.
+- B 3.6.1 and G 3.2.1 (regulatory capital ratio): no numeric group ratio in the report (UNM: "regulatory basis not usable for a multiple").
+- G 3.2.2 and G 3.7.3 (balance-sheet categories, credit-quality table): the categories are those of a property-casualty balance sheet; a life insurer's investment table has other lines (policy loans, limited partnerships).
+- B 3.2.x (operating margin / ROE), B 3.5.3, B 3.8.5 (net margin) and the reserve-deviation items (B 3.6.2, G 3.3.1) depend on definitions that changed with LDTI (the basis break); their meaning for a life insurer needs checking.
+- Not applicable by the matrix already: gross margin, cash-flow coverage (G 3.5.4), B 3.8.4.
+**UNM (an ordinary load outside the gate, after the failed network attempt):** complete, 16 calls, Buffett 79.62 (90%), Graham 88.89 (82%). Open: G 3.7.3, G 3.2.2 (categories), B 3.6.1 / G 3.2.1 (capital ratio); G 3.7.2 closed. A second life insurer therefore scores with 82-90% coverage; its gaps are the same family as LNC's.
+
+### 15.4 SUI
+The same-property NOI row with the segments side by side ("Real Property NOI $ 686.9 $ 276.8 $ 963.7 $ 630.9 $ 280.9 $ 911.8") is read: the last column of each half is the total and the segment columns must add up to it; 2025: +5.69% (the report states 5.7%). Two bugs found on the way: a pattern that matched but failed its check stopped the table from being tried; and model rows (three per year - MH, RV, Total - all pending) counted as an answer, so the code never read the table (a model answer counts now only when approved). Years 2021-2024 use other column layouts: only one year is read, so B 3.4.2 and G 3.7.2 stay Missing (a layout family, open). Occupancy: "Same Property adjusted blended occupancy ... to 99.1%" is read (G 3.7.1 4.0/4.0). Manufactured housing is a residential asset type (the largest-tenant criterion is not applicable). Unencumbered (G 3.3.2): covenants only, no figure: real.
+
+### 15.5 TBNK and housekeeping
+- **TBNK** (id 2, exchange TEST) is "Test Bank Co", a synthetic fixture company of the first ETL stage (2026-10-19): 37 facts, 2 extraction items, no filing periods, no score, no queue. It is not an SEC company, so it has no score and cannot be loaded. It stays; reloads and "before" snapshots skip the TEST exchange from now on.
+- My bank reload loop ran `load TBNK`, which created a duplicate company row TBNK/US (id 120, `unsupported`) and one log row (id 211). Deleted with the owner's approval after checking every child table (`valuations` is linked by run_id and the company had no score runs): `data_update_log` id 211, then `companies` id 120. TBNK id 2 remains.
+- UNM id 106 had stayed `failed` from the network outage of the first batch-8 attempt; it was loaded on its own (15.3).
+
+### 15.6 Batch 8 (new): WTFC bank, KNSL P&C insurer, WY timber REIT, KR (January year end), KLAC (June)
+Preflight `acceptance_preflight_10.txt`; log `acceptance_run_11.log`; calls 20, 19, 23, 15, 16.
+| Company | Result | Buffett / Graham (coverage) |
+|---|---|---|
+| WTFC | complete | 87.70 / 93.94 (90% / 83%) |
+| KNSL | complete | 97.88 / 97.16 (90% / 75%) |
+| WY | complete | 42.32 / 57.13 (79% / 68%) |
+| KR | complete | 73.33 / 42.46 (100% / 100%) |
+| KLAC | complete | 95.60 / 91.56 (100% / 100%) |
+
+**(a) 5 of 5 without contact**; no failure, retry or network wait. The heartbeat shows one gap of 41,530 s (the computer slept overnight between KNSL and WY despite the keep-awake request; the run resumed by itself).
+**Gate: not passed.** WTFC: the CET1 ratio of the company (10.3%) is in the capital table of the report after the minimum columns ("Common Equity Tier 1 Capital Ratio 4.50 7.00 N/A 10.3") and was not read: B 3.6.1 and G 3.2.1 are Missing - a core bank item present in the report. RWA not read either (G 3.7.3). WTFC LCR: real (not reported). KNSL: no numeric statutory capital ratio (real); the investment-grade share is not stated as a percentage ("rated A- or better" for the whole portfolio) - open, not verified. WY: same-property NOI, occupancy, largest tenant and unencumbered are missing; a timberland company has none of these measures - the engine does not yet mark them not applicable for this asset type (real by nature, open as a rule). KR, KLAC: no open item.
+Batch 9 was not run. Open: WTFC CET1 table (columns minimum / buffer / well-capitalized / actual), SUI layouts of 2021-2024, KNSL IG wording, WY asset type, EXT-INS-INV version 7 with the model.

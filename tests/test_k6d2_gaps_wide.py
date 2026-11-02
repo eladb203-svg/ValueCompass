@@ -211,7 +211,7 @@ def test_the_prompt_carries_the_hints_and_the_component_format_only_when_an_item
     assert "derivation hint:" in p and "bound=max" in p and "components" in p and "Never compute the final number" in p
     p2, _, _ = build_extraction_prompt(blocks["EXT-BANK-CAP"], {"company_name": "X", "ticker": "X", "fiscal_year": "FY2025"}, {"X-BANKCAP": "some text"})
     assert "derivation hint" not in p2.lower()
-    assert blocks["EXT-RE-OPS"]["version"] >= 2 and blocks["EXT-INS-INV"]["version"] >= 6                      # a changed prompt is a new version: stored answers of the old text are asked again
+    assert blocks["EXT-RE-OPS"]["version"] >= 2 and blocks["EXT-INS-INV"]["version"] >= 7                      # a changed prompt is a new version: stored answers of the old text are asked again
 
 
 def test_the_b14_gross_profit_item_has_a_hint():
@@ -327,3 +327,25 @@ def test_an_answer_given_without_sections_is_stale_once_the_sections_exist():
     assert assess.stale_insufficient(no_call, Co(True), skill) and assess.stale_insufficient(partly, Co(True), skill)
     assert not assess.stale_insufficient(no_call, Co(False), skill)                          # the sections are still missing: nothing new to ask with
     assert not assess.stale_insufficient(model_said, Co(True), skill) and not assess.stale_insufficient(answered, Co(True), skill)
+
+
+SUI = ("Same Property MH and RV portfolios Year Ended December 31, 2025 2024 Total Change % Change(2) MH(1) RV(1) Total Same Property Revenues Total Same Property operating revenues 928.4 520.1 1,448.5 866.1 519.9 1,386.0 "
+       "Same Property operating expenses(1)(3) 241.5 243.3 484.8 235.2 239.0 474.2 Real Property NOI $ 686.9 $ 276.8 $ 963.7 $ 630.9 $ 280.9 $ 911.8 $ 51.9 8.9 % (1.4) % 5.7 % "
+       "Increased Same Property adjusted blended occupancy for MH and RV by 40 basis points to 99.1% as compared to 98.7% in 2024.")
+
+
+def test_the_segment_columns_of_a_same_property_noi_row_give_the_total_growth():
+    g, quote, basis = KD.same_table(SUI)
+    assert abs(g - (963.7 / 911.8 - 1) * 100) < 1e-3 and 5.6 < g < 5.8 and "686.9" in quote and "adds up" not in basis and "add up" in basis
+    bad = SUI.replace("$ 963.7", "$ 999.9")                                           # the parts do not add up to the total: not read
+    assert KD.same_table(bad) is None or "segments" not in KD.same_table(bad)[2]
+
+
+def test_the_same_property_occupancy_sentence_is_read():
+    rows = KD.occupancy_rows({2025: ("acc", SUI)})
+    assert rows and rows[0][2] == 99.1 and rows[0][4] == "Same Property occupancy sentence"
+
+
+def test_manufactured_housing_is_a_residential_asset_type():
+    from src.pipeline import auto_config
+    assert "manufactured housing" in auto_config.ASSET_WORDS["residential"]
