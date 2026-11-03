@@ -585,3 +585,26 @@ Preflight `acceptance_preflight_12.txt` (all new, at least 5 annual reports unde
 
 ### 17.7 Open (background)
 The values listed as present-but-unread: AIZ investment-grade share, SLG undrawn capacity and largest tenant, VTR occupancy between segments, MKL credit-quality table, EPR facility amount, ONB RWA; EXT-INS-INV version 8 against the model; `v_stocks` / `v_stock_page` text for `insufficient_history` (security branch); the REIT calibration list of Buffett 3.4.1 (SUI, REXR, VTR).
+
+## 18. Before the calibration: KLAC, EPR, price distribution, the 43 companies without a snapshot (2026-11-03)
+
+### 18.1 KLAC price 157.91 - correct, not a bug
+KLA Corporation split 10-for-1 on 2026-06-12 (Yahoo `splits`: 10.0). Price 157.91 on 2026-10-30 (previous close 167.43), market cap about 203 bn, 1.30 bn shares, currency USD: all consistent. The facts agree with it: FY2026 EPS 3.66 (post-split), diluted shares 1.32 bn, net income 4.83 bn; earlier per-share figures are restated by the split factor (EPS FY2025 3.04). Ticker, units and split are right. (Its price score was empty on 2.11 only because the snapshot was `is_stale` at 21:05; after the refresh below the price score is 0.0 for both models: price 156.26 against a Buffett fair value 75.65 and a Graham fair value 33.40.)
+
+### 18.2 EPR: Graham price score 3.10 without a Graham quality score - consistent with the rulebook
+Coverage 55%: M5 gives no quality score below 60% ("missing data"). A.5 and RP1a say that quality coverage below 80% does not block the price score and removes only the buy price (M7): so the Graham price score (NAV 62.54 against price 59.71 -> 3.10; 3.18 at 59.33 after the refresh) is shown, the buy price is "not applicable" and the Buffett price is "cannot be valued" (no Buffett fair value: undrawn facilities and maturities missing, M6 / RP1a). It matches. Note H-01: the code still hides the Graham price of BANK and INSURANCE (rule A.5 says it should be shown, labelled).
+
+### 18.3 Price refresh and distribution (input for the calibration)
+One Yahoo request for the last price of all 115 companies with a score run (no AI): 113 prices written to `market_snapshot` and in place to the price part of the latest run; EQR and AVB have no price (delisted / merged). One move checked against the price file: INTC 104.7 (9.10) -> 60.8 is a real fall on 3.11 (no split). Script `scripts/k18_price_report.py`, file `scripts/state/price_report_2026-11-03.csv`.
+Price score (0-10) by profile and model: number of companies with 0 / above 0 to 5 / above 5 to 10 / no score (reason):
+| Profile | Buffett 0 / 0-5 / 5-10 / none | Graham 0 / 0-5 / 5-10 / none |
+|---|---|---|
+| BANK (22) | 5 / 11 / 5 / 1 cannot be valued | 8 / 13 / 0 / 1 |
+| INSURANCE (23) | 12 / 7 / 4 / 0 | 16 / 4 / 2 / 1 |
+| STANDARD (29) | 14 / 7 / 5 / 3 | 18 / 4 / 2 / 5 |
+| TECH_ASSET_LIGHT (17) | 15 / 1 / 1 / 0 | 12 / 2 / 0 / 3 |
+| INCOME_REAL_ESTATE (24) | 6 / 1 / 2 / 15 (14 cannot be valued, 1 cannot be priced) | 10 / 3 / 1 / 10 (8, 1, 1 blocked) |
+Total: Buffett 52 at zero, 27 in 0-5, 17 in 5-10, 19 without a score; Graham 64, 26, 5 and 20. Price / fair value: most companies are above 1.2 (Buffett: BANK 6, INSURANCE 15, STANDARD 14, TECH 15 of their groups; Graham even more), i.e. the discount is negative and the score is 0. Full per-company list in the csv.
+
+### 18.4 The 44 companies with a price score and no `market_snapshot` row
+They are the K5-era companies (ORCL, AVGO, CRM, UBER, MCD, HD, NUE, DOW, KHC, ADBE, INTU, UNH, ELV, CI, HUM, CNC, MOH, BAC, C, WFC, USB, PNC, TFC, MTB, KEY, GS, TRV, PGR, ALL, WRB, CINF, RNR, MET, PRU, AFL, AIG, HIG, PLD, SPG, FRT, BXP, ARE, PSA, EQIX): `processing_state` empty and loaded before the queue existed. Their price came from the price FILE of the earlier stage (`scripts/cache/prices/<T>.csv`, last close 2026-10-08 / 09, for example ORCL 141.40 on 2026-10-09, equal to `score_runs.price`), written into the run when the score was made. The daily price job (`active_companies`) skips them: it takes only companies with a CIK and a processing state of the loaded group. So their price score was a month old and never refreshed. The refresh of 18.3 gave them a snapshot row (114 rows now) and a current price. Recommendation (not done): give these companies a processing state, so that the daily job keeps their price fresh.
