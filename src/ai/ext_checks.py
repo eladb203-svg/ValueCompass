@@ -346,6 +346,8 @@ def control_loans_sum(rows: list) -> dict:
     return ctl("loans_sum", "fail" if bad else "pass", "; ".join(bad or out), ["loan_line", "total_loans"])
 
 
+# categories that a company may keep OUTSIDE its total investments (MKL: "equity method investments, which are included in other assets"): the control may leave them out when the others add up to the total exactly
+OPTIONAL_INV = ("inv_equity_method", "inv_other")
 INV_PARTS = ("inv_cash", "inv_short_term", "inv_fixed_maturities", "inv_equity", "inv_illiquid_loans", "inv_real_estate", "inv_equity_method", "inv_other")
 
 
@@ -367,14 +369,15 @@ def control_inv_sum(rows: list) -> dict:
         marked = "INCLUDES_CASH" in str(t.get("basis") or "")
         modes = (True,) if marked else (False, True)
         best = None
-        pools = [cand[k] or [None] for k in INV_PARTS]
+        pools = [(cand[k] + [None]) if k in OPTIONAL_INV and cand[k] else (cand[k] or [None]) for k in INV_PARTS]
         for combo in itertools.islice(itertools.product(*pools), 5000):
             for with_cash in modes:
                 s_ = sum((x["value_full"] for k, x in zip(INV_PARTS, combo) if x is not None and (with_cash or k != "inv_cash")), 0.0)
                 diff = abs(s_ - t["value_full"]) / abs(t["value_full"]) if t["value_full"] else 1.0
-                if best is None or diff < best[0]:
-                    best = (diff, s_, combo, with_cash)
-        diff, s_, combo, with_cash = best
+                n_used = sum(1 for x in combo if x is not None)
+                if best is None or (round(diff, 4), -n_used) < (round(best[0], 4), -best[4]):                   # equally good: the combination with more rows (a category is left out only when it makes the sum better)
+                    best = (diff, s_, combo, with_cash, n_used)
+        diff, s_, combo, with_cash, _n = best
         (out if diff <= 0.02 else bad).append(f"{y}: categories {s_:,.0f} ({'with' if with_cash else 'without'} cash) vs total {t['value_full']:,.0f} ({diff:.2%})")
         if diff <= 0.02:
             used = {id(x) for x in combo if x is not None}

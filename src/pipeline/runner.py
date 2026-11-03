@@ -248,6 +248,11 @@ class Pipeline:
         self._provisional = bool(res.router_needs)
         if not self.dry_run:
             self._write_profile(cid, final, rr, fs, resolved)
+            try:
+                from src.ai import gap_review as GR
+                GR.record_suspects(self.client, cid, res.dq)                  # a figure held back by a control is wrong for the administrator, missing for the user
+            except Exception as e:   # noqa: BLE001
+                res.warnings.append(f"data_gap_review: suspects not recorded ({type(e).__name__}: {e})")
             if raw.get("wide_conflicts"):                # K6d-2 fixes: two candidates of the wide XBRL search that disagree leave the year missing and go to the review list
                 try:
                     from src.ai import gap_review as GR

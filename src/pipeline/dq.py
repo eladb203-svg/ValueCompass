@@ -145,6 +145,28 @@ def check_restatement(facts: list, previous: dict, results: list) -> list:
     return out
 
 
+MAGNITUDE_KEYS = ("revenue", "total_assets", "total_liabilities", "equity", "deposits", "loans")
+MAGNITUDE_RATIO, NEIGHBOUR_RATIO = 20.0, 2.5
+
+
+def check_suspect_magnitude(facts: list, results: list) -> list:
+    """K6d-2 fixes (decision 2026-11-02): a monetary figure that is more than 20x (or less than 1/20) of BOTH neighbouring years while the neighbours are within 2.5x of each other is suspect (a wrong unit,
+    scale or source): it is held back - not in the calculation, shown as missing - and the administrator sees it as wrong with the reason. A year at the edge of the series has one neighbour and is not judged."""
+    by: dict = {}
+    for f in facts:
+        if f is not None and f.item_key in MAGNITUDE_KEYS and f.value:
+            by.setdefault(f.item_key, {})[f.fiscal_year] = f
+    drop = set()
+    for key, years in by.items():
+        ys = sorted(years)
+        for i in range(1, len(ys) - 1):
+            a, b, c = years[ys[i - 1]].value, years[ys[i]].value, years[ys[i + 1]].value
+            if a and c and a > 0 and b > 0 and c > 0 and max(a, c) / min(a, c) <= NEIGHBOUR_RATIO and (b / max(a, c) >= MAGNITUDE_RATIO or b / min(a, c) <= 1 / MAGNITUDE_RATIO):
+                drop.add((key, ys[i]))
+                results.append(DqResult("suspect_magnitude", "held", ys[i], key, f"{b:,.0f} against {a:,.0f} and {c:,.0f} in the neighbouring years: more than {MAGNITUDE_RATIO:.0f}x apart"))
+    return [f for f in facts if (f.item_key, f.fiscal_year) not in drop]
+
+
 def check_year_coverage(facts: list, results: list, engine: str = "general") -> None:
     """Fewer than 3 years for a 5-year criterion, or fewer than 5 for a 10-year one: noted for the log (the engine marks the criterion missing, R5)."""
     for key in COVERAGE_KEYS.get(engine, COVERAGE_KEYS["general"]):
@@ -188,6 +210,7 @@ def run_checks(facts: list, previous: Optional[dict] = None, currency: Optional[
     out = check_share_scale(out, results)
     out = check_signs(out, results)
     out = check_balance_identity(out, results, nci)
+    out = check_suspect_magnitude(out, results)
     out = check_restatement(out, previous or {}, results)
     check_year_coverage(out, results, engine)
     return out, results

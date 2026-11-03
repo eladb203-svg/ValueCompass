@@ -407,3 +407,116 @@ def test_operating_reit_wording_is_read():
     assert occ and occ[0][2] == 83.4 and occ[0][4] == "SHOP occupancy sentence"
     hotel = "Comparable hotels occupancy was 71.2% for the year."
     assert KD.occupancy_rows({2025: ("acc", hotel)})[0][2] == 71.2
+
+
+def test_equity_method_investments_outside_the_total_are_left_out_of_the_sum():
+    def row(k, v, basis=None):
+        return {"item_key": k, "year": 2025, "value_full": v, "state": "value", "basis": basis}
+    base = [row("inv_fixed_maturities", 17_797_986e3), row("inv_equity", 13_004_312e3), row("inv_short_term", 2_033_662e3), row("inv_total", 32_835_960e3)]
+    mkl = base + [row("inv_equity_method", 737_600e3)]                        # MKL: the equity-method line is in other assets, not in Total Investments
+    c = X.control_inv_sum(mkl)
+    assert c["result"] == "pass" and ("inv_equity_method", 2025, 737_600e3) in [tuple(x) for x in c["rejected"]]
+    afg = [row("inv_fixed_maturities", 80e9), row("inv_equity_method", 2.4e9), row("inv_total", 82.4e9)]       # AFG: the equity-method line belongs to the total: kept
+    c2 = X.control_inv_sum(afg)
+    assert c2["result"] == "pass" and c2["rejected"] == []
+
+
+def test_the_pages_of_the_parent_company_alone_are_never_a_source():
+    from src.ai import parent_only as PO
+    cons = "CONSOLIDATED BALANCE SHEETS ASSETS Total Investments 32,835,960 Total assets 60,000,000 "
+    ref = "See Schedule II included under Item 8 for condensed financial information of our holding company. "
+    sched = ("SCHEDULE II CONDENSED FINANCIAL INFORMATION OF REGISTRANT PARENT COMPANY ONLY The following parent company only condensed financial information reflects the financial position. "
+             "Condensed Balance Sheets ASSETS Investments in subsidiaries 23,313,057 Total Investments 4,100,000 Total assets 23,313,057 SCHEDULE III Supplementary Insurance Information Premiums 1")
+    text = ref + cons + sched
+    spans = PO.parent_spans(text)
+    assert len(spans) == 1 and text[spans[0][0]:].startswith("SCHEDULE II CONDENSED")                      # the reference "See Schedule II" is not the schedule
+    out = PO.remove(text)
+    assert "23,313,057" not in out and "32,835,960" in out and "SCHEDULE III" in out
+    assert PO.in_parent(text, "Total Investments 4,100,000") and not PO.in_parent(text, "Total Investments 32,835,960")
+    assert PO.parent_spans("A bank without any such schedule. Total assets 1,000") == []
+
+
+def fill_db():
+    c = gap_db()
+    for co in c.tables["companies"]:
+        co["exchange"] = "US"
+    c.tables["extraction_items"] = [{"id": 1, "company_id": 1, "item_key": "cet1_ratio_standardized", "period": "FY2025", "value": 7.0, "value_state": "value", "document_ref": "doc", "approval_status": "approved",
+                                      "approval_source": "ai_controls", "model": "gemini"}]
+    c.tables["data_gap_review"] = [{"id": 1, "company_id": 1, "item_key": "B 3.7.3", "family": "largest_tenant", "state": "open", "reason": "x", "priority": 3}]
+    return c
+
+
+def test_a_figure_entered_by_the_administrator_is_a_human_review_row_with_audit_and_the_gap_closes():
+    from src.ai import gap_fill as GF
+    c = fill_db()
+    called = []
+
+    def rescore(cid):
+        called.append(cid)
+        c.tables["score_details"] = [r for r in c.tables["score_details"] if not (r["run_id"] == 10 and r["criterion_key"] == "3.7")]      # the new score no longer lists the item
+
+    out = GF.fill(c, "REXR", "cet1_ratio_standardized", 2025, 10.3, "Common Equity Tier 1 Capital Ratio 4.50 7.00 N/A 10.3", "https://example.org/10k", by="elad", rescore=rescore)
+    rows = c.tables["extraction_items"]
+    human = [r for r in rows if r.get("approval_source") == "human_review"]
+    assert len(human) == 1 and human[0]["value"] == 10.3 and human[0]["period"] == "FY2025" and "Common Equity Tier 1" in human[0]["exact_quote"] and "elad" in human[0]["note"]
+    old = next(r for r in rows if r["id"] == 1)
+    assert old["approval_status"] == "rejected" and "replaced by a figure entered by elad" in old["note"] and out["rejected"] == 1      # one value is read for the item and the year
+    log = c.tables["data_update_log"][-1]
+    d = log["source_details"][0]
+    assert log["update_scope"] == "gaps_fill" and d["who"] == "elad" and d["before"][0]["value"] == 7.0 and d["after"] == 10.3 and d["quote"] and d["source_url"] and d["when"]
+    assert called == [1] and "B 3.7.3" in out["closed"] and next(r for r in c.tables["data_gap_review"] if r["item_key"] == "B 3.7.3")["state"] == "fixed"
+
+
+def test_a_figure_without_a_quote_is_refused():
+    import pytest
+    from src.ai import gap_fill as GF
+    with pytest.raises(ValueError):
+        GF.fill(fill_db(), "REXR", "cet1_ratio_standardized", 2025, 10.3, "", by="elad")
+
+
+def test_a_core_gap_is_an_alert_and_a_top_priority_row_and_a_suspect_figure_is_wrong_for_the_administrator():
+    c = FakeClient()
+    c.tables["companies"] = [{"id": 1, "symbol": "X", "exchange": "US", "profile": "STANDARD"}]
+    c.tables["dictionary_items"] = [{"id": i, "item_key": k} for i, k in enumerate(["revenue", "net_income", "equity"], 1)]
+    c.tables["financial_facts"] = [{"company_id": 1, "fiscal_year": 2025, "item_id": 1}, {"company_id": 1, "fiscal_year": 2025, "item_id": 2}]       # no equity, cfo ...
+    alerts = []
+    out = GR.record_core(c, 1, "STANDARD", alert=lambda label, reason, detail: alerts.append(reason))
+    keys = {r["item_key"]: r for r in c.tables["data_gap_review"]}
+    assert "CORE equity FY2025" in keys and keys["CORE equity FY2025"]["priority"] == 1 and keys["CORE equity FY2025"]["family"] == "core_missing" and out["new"] >= 1 and any("equity" in a for a in alerts)
+    n = len(alerts)
+    GR.record_core(c, 1, "STANDARD", alert=lambda *a: alerts.append(a))
+    assert len(alerts) == n                                                                                    # the same gap alerts once
+    GR.record_suspects(c, 1, [("suspect_magnitude", "held", 2023, "revenue", "50,000,000 against 5,000 and 6,000")])
+    s = next(r for r in c.tables["data_gap_review"] if r["family"] == "suspect_data")
+    assert s["priority"] == 1 and s["reason"].startswith("wrong (suspect_magnitude)") and s["item_key"] == "SUSPECT revenue FY2023"
+
+
+def test_a_figure_far_from_both_neighbours_is_held_back_as_suspect():
+    from src.etl.facts import Fact
+    from src.pipeline import dq as D
+
+    def f(y, v):
+        return Fact("X", y, "revenue", v, "found", "xbrl", tag="Revenues")
+
+    res: list = []
+    out = D.check_suspect_magnitude([f(2022, 5e9), f(2023, 5e12), f(2024, 6e9), f(2025, 6.5e9)], res)
+    assert [x.fiscal_year for x in out] == [2022, 2024, 2025] and res[0].check == "suspect_magnitude" and res[0].outcome == "held"
+    res2: list = []
+    assert len(D.check_suspect_magnitude([f(2022, 5e9), f(2023, 2e10), f(2024, 6e9)], res2)) == 3 and not res2                     # 4x is a normal swing
+    assert len(D.check_suspect_magnitude([f(2022, 1e6), f(2023, 5e9)], [])) == 2                                                   # an edge year is not judged
+
+
+VTR_TXT = ("See Non-GAAP Financial Measures-NOI for additional disclosure regarding same-store NOI for each of our reportable segments. "
+           "Same-Store NOI-SHOP Resident fees and services $ 3,096,685 $ 2,861,461 $ 235,224 8.2 % Less: Property-level operating expenses (2,218,687) (2,100,930) (117,757) (5.6) NOI $ 877,998 $ 760,531 $ 117,467 15.4 % "
+           "Same-Store NOI-OM&R Rental income $ 834,413 $ 812,667 $ 21,746 2.7 % Less: Property-level operating expenses (279,807) (270,216) (9,591) (3.5) NOI $ 554,606 $ 542,451 $ 12,155 2.2 % "
+           "Same-Store NOI-NNN Rental income $ 482,055 $ 455,785 $ 26,270 5.8 % Less: Property-level operating expenses (11,801) (11,463) (338) (2.9) NOI $ 470,254 $ 444,322 $ 25,932 5.8 %")
+
+
+def test_same_store_noi_of_the_segments_is_summed_when_the_report_says_it_gives_it_for_each_segment():
+    r = KD.same_noi_rows({2025: ("acc", VTR_TXT)})
+    assert len(r) == 1 and abs(r[0][2] - ((877998 + 554606 + 470254) / (760531 + 542451 + 444322) - 1) * 100) < 1e-4 and 8.8 < r[0][2] < 9.0       # +8.9%
+    assert "SHOP" in r[0][3] and "OM&R" in r[0][3] and "NNN" in r[0][3] and "877,998" in r[0][3] and "sum of the same-store NOI of the reportable segments" in r[0][4]
+    no_def = VTR_TXT.replace("for each of our reportable segments", "for our company")              # without the statement that the segments are the whole pool: not summed
+    assert KD.same_noi_rows({2025: ("acc", no_def)}) == []
+    one = VTR_TXT[:VTR_TXT.index("Same-Store NOI-OM&R")]                                                # a single segment is not the pool
+    assert KD.same_noi_rows({2025: ("acc", one)}) == []

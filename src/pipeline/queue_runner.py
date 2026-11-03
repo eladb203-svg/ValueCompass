@@ -444,7 +444,10 @@ class QueueRunner:
         """K6d-2 fixes: the criteria that stay Missing after this score go to the review list (``data_gap_review``); no model call, and a failure here never fails the score."""
         try:
             from src.ai import gap_review as GR
-            return GR.refresh(self.client, company_id)
+            out = GR.refresh(self.client, company_id)
+            co = self.companies.get_by_id(company_id) or {}
+            out["core"] = GR.record_core(self.client, company_id, co.get("profile"), alert=self.alert)          # a core figure that is missing: an administrator alert and a top-priority row
+            return out
         except Exception as e:   # noqa: BLE001
             return {"error": f"{type(e).__name__}: {e}"}
 

@@ -55,7 +55,10 @@ class Report:
 
     def section(self, sid: str):
         if sid not in self._text_cache:
-            self._text_cache[sid] = ext_section(self.filing.text, sid)
+            if "_consolidated" not in self._text_cache:
+                from .parent_only import remove
+                self._text_cache["_consolidated"] = remove(self.filing.text)        # K6d-2 fixes: the pages of the parent company alone (Schedule II) are never a source
+            self._text_cache[sid] = ext_section(self._text_cache["_consolidated"], sid)
         return self._text_cache[sid]
 
 
@@ -200,7 +203,7 @@ def apply_controls(block: dict, rows: list, engine_ctl: Optional[dict] = None) -
         r["control_detail"] = ctrl["detail"] if ctrl else ""
         r["approval_status"], r["approval_reason"] = decide(block, r, ctrl)
         if ctrl and (r["item_key"], r["year"], r.get("value_full")) in set(map(tuple, ctrl.get("rejected") or [])) and r["state"] == "value":
-            r["approval_status"], r["approval_reason"] = "rejected", "inv_sum: a second value of the same category and year; the other one makes the categories add up to the total"
+            r["approval_status"], r["approval_reason"] = "rejected", "inv_sum: a second value of the same category and year, or a category outside the total investments (for example equity-method investments held in other assets); the other rows add up to the total"
         if name == "neighbours_3x" and ctrl and r["item_key"] in ctrl.get("years", {}) and r["year"] in ctrl["years"][r["item_key"]] and r["approval_status"] == "approved":
             r["approval_status"], r["approval_reason"] = "pending", "value beyond 3x of both neighbouring years"
     return ctrl

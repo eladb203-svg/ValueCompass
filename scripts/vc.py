@@ -354,6 +354,19 @@ def gaps_command(a) -> int:
     from src.ai import gap_review as GR
     from src.db import get_supabase_client
     client = get_supabase_client()
+    if a.arg == "fill":
+        from src.ai import gap_fill as GF
+        if a.arg2 is None or len(a.rest) != 3 or not a.quote:
+            print("usage: vc.py gaps fill <ticker> <item> <fiscal_year> <value> --quote \"...\" [--source-url URL] [--by NAME]")
+            return 2
+        runner = make_runner(0)
+
+        def rescore(cid):
+            runner.enqueue(cid, "score", None, "first", 1)
+            print_report(runner.run(20, only={a.arg2.upper()}))
+        out = GF.fill(client, a.arg2, a.rest[0], int(a.rest[1]), float(a.rest[2]), a.quote, a.source_url or "", a.by, rescore=rescore)
+        print("filled:", out)
+        return 0
     if a.refresh:
         cos = client.table("companies").select("id,symbol").execute().data
         want = {t.upper() for t in a.ticker} if a.ticker else None
@@ -381,6 +394,10 @@ def main(argv=None) -> int:
     ap.add_argument("command", choices=("load", "audit", "status", "score", "ai-queue", "queue", "texts", "glossary", "profile", "render", "terms", "scheduler", "cleanup", "approvals", "gaps"))
     ap.add_argument("arg", nargs="?", help="ticker, or the sub-command of queue / texts / glossary")
     ap.add_argument("arg2", nargs="?", help="id of a text / number of a proposal / ticker for queue status")
+    ap.add_argument("rest", nargs="*", help="gaps fill: <item> <fiscal_year> <value>")
+    ap.add_argument("--quote", help="gaps fill: the words of the report that contain the figure")
+    ap.add_argument("--source-url")
+    ap.add_argument("--by", help="gaps fill: who enters the figure (default: the user of the computer)")
     ap.add_argument("--job", choices=JOBS, default="initial_import")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--no-score", action="store_true", help="load: stop at data_loaded (no first score, nothing queued)")

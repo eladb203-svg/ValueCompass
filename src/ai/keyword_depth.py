@@ -68,6 +68,10 @@ STATED_GROWTH = (
     r"[Ss]ame[- ]store (?:SHOP |cash |total )?(?:NOI|net operating income)[^.%$]{0,50}?(grew|growth|increased|increase|rose|decreased|decrease|declined|decline|fell)[^.%$]{0,25}?(\d{1,2}(?:\.\d)?)\s?%",
     r"[Cc]omparable (?:hotel )?(?:hotels? )?(?:EBITDA|NOI|net operating income)[^.%$]{0,50}?(grew|growth|increased|increase|rose|decreased|decrease|declined|decline|fell)[^.%$]{0,25}?(\d{1,2}(?:\.\d)?)\s?%",
 )
+# same-store NOI presented per reportable segment, no total row (VTR): "Same-Store NOI-SHOP Resident fees and services $ 3,096,685 $ 2,861,461 ... NOI $ 877,998 $ 760,531"
+SEGMENT_SAME_NOI = r"Same-Store NOI-([A-Za-z&][A-Za-z&\- ]{1,60}?):?\s+(?:Resident fees and services|Rental income|Total revenues?|Revenues?)[^$]{0,20}\$\s?[\d,]+\s+\$\s?[\d,]+[^N]{0,260}?\bNOI\s+\$\s?([\d,]+)\s+\$\s?([\d,]+)"
+# the report says that the same-store NOI is given for EACH of its reportable segments: together the segments are the whole same-store pool
+SEGMENT_DEFINITION = r"same-store (?:NOI|net operating income)[^.]{0,120}each of our reportable (?:business )?segments"
 UNENC = r"unencumbered (?:asset|property) value[^$]{0,120}\$\s?([\d,\.]+)[^$]{0,200}?total (?:asset|property) value[^$]{0,120}\$\s?([\d,\.]+)"
 
 
@@ -114,6 +118,10 @@ def same_noi_rows(texts: dict) -> list:
             if t:
                 out.append((y, texts[y][0], t[0], t[1], t[2]))
             else:
+                seg = segment_sum(texts[y][1])
+                if seg:
+                    out.append((y, texts[y][0], seg[0], seg[1], seg[2]))
+                    continue
                 for p in STATED_GROWTH:
                     m = re.search(p, texts[y][1])
                     if m and 0 < _num(m.group(2)) <= 50:
@@ -157,6 +165,25 @@ def same_table(text: str) -> Optional[tuple]:
             return (round((cur / prior - 1) * 100, 4), quote,
                     f"same-property NOI derived: NOI = revenues - property expenses = {rc:,.0f} - {ec:,.0f} = {cur:,.0f} and {rp:,.0f} - {ep:,.0f} = {prior:,.0f}; growth = current / prior - 1 (CL22)")
     return None
+
+
+def segment_sum(text: str) -> Optional[tuple]:
+    """Same-store NOI of the whole pool = the sum of the same-store NOI of the reportable segments, when the report presents it per segment (at least two) and says that it does so for each of its
+    reportable segments -> (growth in percent, quote with every segment row, basis) or None. The first table of each segment is the current year against the prior year."""
+    if not re.search(SEGMENT_DEFINITION, text, re.I):
+        return None
+    segs: dict = {}
+    for m in re.finditer(SEGMENT_SAME_NOI, text):
+        if m.group(1) not in segs:
+            segs[m.group(1)] = (_num(m.group(2)), _num(m.group(3)), text[m.start():m.end()])
+    if len(segs) < 2:
+        return None
+    cur, prior = sum(v[0] for v in segs.values()), sum(v[1] for v in segs.values())
+    if prior <= 0 or cur <= 0 or abs(cur / prior - 1) > 0.5:
+        return None
+    parts = " + ".join(f"{k} {v[0]:,.0f}/{v[1]:,.0f}" for k, v in segs.items())
+    return (round((cur / prior - 1) * 100, 4), " || ".join(v[2] for v in segs.values()),
+            f"same-property NOI derived as the sum of the same-store NOI of the reportable segments ({parts}); the report gives it for each of its reportable segments; growth = current / prior - 1 (CL22)")
 
 
 def tenant_rows(texts: dict) -> list:
@@ -234,7 +261,13 @@ def run(client, item_store, sec, ticker: str, n: int = 5) -> dict:
     """The step: search, write the rows, return a summary for the task result. Idempotent."""
     rows_db = item_store.rows_for(ticker)
     # a model answer counts only when the engine can use it: approved (SUI: three pending rows per year - MH, RV, Total - that no rule can pick from; the table's total is read by code instead)
-    have = lambda key: {r["year"] for r in rows_db if r.get("item_key") == key and r.get("state") == "value" and r.get("model") != "keyword-search" and r.get("approval_status") == "approved"}   # noqa: E731
+    def have(key):
+        """The years for which the model gave ONE approved value (several approved rows for a year - one per segment, VTR - are no usable answer: the engine takes a single value per year)."""
+        n: dict = {}
+        for r in rows_db:
+            if r.get("item_key") == key and r.get("state") == "value" and r.get("model") != "keyword-search" and r.get("approval_status") == "approved":
+                n[r["year"]] = n.get(r["year"], 0) + 1
+        return {y for y, k in n.items() if k == 1}
     unenc_value = any(r.get("item_key") in ("unencumbered_noi_share", "unencumbered_assets_share") and r.get("state") == "value" and r.get("model") != "keyword-search" for r in rows_db)
     texts = reports(sec, ticker, n)
     rows = build_rows(ticker, texts, unenc_value, have("same_property_noi_growth"), have("occupancy"), {k: have(k) for k in ("largest_tenant_share", "top10_tenants_share")})

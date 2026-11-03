@@ -26,7 +26,8 @@ class Company:
 
     def sections(self) -> dict:
         if self._sections is None:
-            self._sections = split_sections(self.filing.text)
+            from .parent_only import remove
+            self._sections = split_sections(remove(self.filing.text))              # K6d-2 fixes: the pages of the parent company alone are never a source
         return self._sections
 
 

@@ -15,6 +15,7 @@ from typing import Optional
 ROOT = Path(__file__).resolve().parents[2]
 FILINGS = ROOT / "scripts" / "cache" / "filings"
 PASSAGE = 300
+SPECIAL_FAMILIES = ("core_missing", "suspect_data", "wide_xbrl_conflict")
 
 # (pattern of the engine's note, family, keywords of the item in the report, genuine by the rulebook)
 FAMILIES = (
@@ -40,6 +41,70 @@ FAMILIES = (
     (r"fewer than|need first|first or last|first-|last-|transitions|valid P/E|valid \(non-acquisition\)|computable for fewer", "short_history", r"", True),
     (r"AI: insufficient evidence", "ai_insufficient", r"", False),
 )
+
+
+# the figures without which a company has no sound score: a missing one is an alert to the administrator and a top-priority row (decision 2026-11-02)
+CORE_KEYS = {"general": ("revenue", "net_income", "eps_diluted", "equity", "cfo", "capex", "shares_diluted_weighted"),
+             "bank": ("net_income", "equity", "loans", "deposits", "eps_diluted"),
+             "insurance": ("premiums_earned", "net_income", "equity", "eps_diluted"),
+             "realestate": ("revenue", "net_income", "eps_diluted", "total_assets")}          # the REIT dictionary has no equity item (NOI and FFO are computed by the engine from these and the property lines)
+ENGINE_OF_PROFILE = {"BANK": "bank", "INSURANCE": "insurance", "INCOME_REAL_ESTATE": "realestate"}
+
+
+def core_missing(client, company_id: int, profile: Optional[str]) -> list:
+    """[(item key, fiscal year)] - the core figures of the profile that the latest loaded year does not have (a bank also needs its CET1 ratio, approved, for that year)."""
+    engine = ENGINE_OF_PROFILE.get(profile or "", "general")
+    facts = client.table("financial_facts").select("fiscal_year,item_id").eq("company_id", company_id).execute().data
+    if not facts:
+        return []
+    ids = {r["id"]: r["item_key"] for r in client.table("dictionary_items").select("id,item_key").execute().data}
+    latest = max(f["fiscal_year"] for f in facts)
+    have = {ids.get(f["item_id"]) for f in facts if f["fiscal_year"] == latest}
+    out = [(k, latest) for k in CORE_KEYS[engine] if k not in have]
+    if engine == "bank":
+        cet1 = [r for r in client.table("extraction_items").select("item_key,period,value,approval_status").eq("company_id", company_id).execute().data
+                if (r["item_key"] or "").split("|")[0] in ("cet1_ratio_standardized", "cet1_ratio_advanced") and r.get("approval_status") == "approved" and r.get("value") is not None and r.get("period") == f"FY{latest}"]
+        if not cet1:
+            out.append(("cet1_ratio", latest))
+    return out
+
+
+def record_core(client, company_id: int, profile: Optional[str], alert=None, now: Optional[datetime] = None) -> dict:
+    """Rows of the family ``core_missing`` (priority 1) for the core figures that are missing; closed (fixed) when the figure exists. ``alert(label, reason, detail)`` is called once for a NEW core gap
+    (the administrator alert - an e-mail when Resend is connected)."""
+    now = now or datetime.now(timezone.utc)
+    missing = core_missing(client, company_id, profile)
+    existing = {r["item_key"]: r for r in client.table("data_gap_review").select("*").eq("company_id", company_id).eq("family", "core_missing").execute().data}
+    new = 0
+    seen = set()
+    for key, fy in missing:
+        ik = f"CORE {key} FY{fy}"
+        seen.add(ik)
+        if ik in existing and existing[ik]["state"] == "open":
+            continue
+        client.table("data_gap_review").upsert({"company_id": company_id, "item_key": ik, "fiscal_year": fy, "reason": f"core figure {key} is missing for FY{fy}", "family": "core_missing", "state": "open",
+                                                "priority": 1, "last_seen": now.isoformat(), "closed_at": None}, on_conflict="company_id,item_key").execute()
+        new += 1
+        if alert:
+            alert(f"company {company_id}", f"core figure {key} missing for FY{fy}", {"company_id": company_id, "item": key, "fiscal_year": fy})
+    for ik, old in existing.items():
+        if ik not in seen and old["state"] == "open":
+            client.table("data_gap_review").update({"state": "fixed", "closed_at": now.isoformat(), "last_seen": now.isoformat()}).eq("company_id", company_id).eq("item_key", ik).execute()
+    return {"core_missing": len(missing), "new": new}
+
+
+def record_suspects(client, company_id: int, dq_results: list, now: Optional[datetime] = None) -> int:
+    """A figure that failed a control is held back (suspect): it is not in the calculation and the user sees it as missing; the administrator sees it as WRONG with the reason (family suspect_data, priority 1)."""
+    now = now or datetime.now(timezone.utc)
+    n = 0
+    for r in dq_results:
+        check, outcome, fy, item, detail = r if isinstance(r, (tuple, list)) else (r.check, r.outcome, r.fiscal_year, r.item_key, r.detail)
+        if outcome != "held" or not str(check).startswith("suspect"):
+            continue
+        client.table("data_gap_review").upsert({"company_id": company_id, "item_key": f"SUSPECT {item} FY{fy}", "fiscal_year": fy, "reason": f"wrong ({check}): {detail}"[:500], "family": "suspect_data", "state": "open",
+                                                "priority": 1, "last_seen": now.isoformat(), "closed_at": None}, on_conflict="company_id,item_key").execute()
+        n += 1
+    return n
 
 
 def family_of(note: str) -> tuple:
@@ -104,7 +169,7 @@ def refresh(client, company_id: int, filings_dir: Path = FILINGS, now: Optional[
             text = text_of(path)
         except Exception:  # noqa: BLE001 - the passage is a help for the reviewer, never a reason to stop
             text = ""
-    existing = {r["item_key"]: r for r in client.table("data_gap_review").select("*").eq("company_id", company_id).execute().data}
+    existing = {r["item_key"]: r for r in client.table("data_gap_review").select("*").eq("company_id", company_id).execute().data if r["family"] not in SPECIAL_FAMILIES}      # core, suspect and conflict rows have their own lifecycle
     counts = {"added": 0, "updated": 0, "closed": 0, "open": 0, "genuine": 0}
     seen = set()
     for m in missing:
