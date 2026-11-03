@@ -139,8 +139,13 @@ class JobRunner:
 
     # ------------------------------------------------------------ prices
     def active_companies(self) -> list:
+        """The companies whose price the daily jobs keep fresh (K6d-2 fixes, decided 2026-11-03): every active company that has a CURRENT SCORE (a row in ``company_score_summary`` with a run) or a supported
+        registration (a CIK and a loaded processing state) - not by ``processing_state`` alone: the companies of the first stages have a score and an empty state. An unsupported company and a company of
+        another exchange (the TEST fixture) are not part of it."""
         rows = self.client.table("companies").select("id,symbol,exchange,processing_state,is_active,cik").eq("exchange", "US").execute().data
-        return [r for r in rows if r.get("is_active", True) and r.get("cik") and r.get("processing_state") in LOADED_STATES]
+        scored = {r["company_id"] for r in self.client.table("company_score_summary").select("company_id,latest_run_id").execute().data if r.get("latest_run_id")}
+        return [r for r in rows if r.get("is_active", True) and r.get("processing_state") not in ("unsupported",)
+                and (r["id"] in scored or (r.get("cik") and r.get("processing_state") in LOADED_STATES))]
 
     def apply_prices(self, companies: list, prices: dict) -> Outcome:
         """Each fetched price -> ``market_snapshot`` and, in place, the price part of the latest run (never a new run)."""

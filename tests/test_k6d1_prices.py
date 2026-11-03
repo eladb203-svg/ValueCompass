@@ -261,3 +261,21 @@ def test_a_price_is_stale_when_its_date_is_before_the_last_trading_day():
     assert dq.price_freshness(thanks, datetime(2026, 11, 26, 20, tzinfo=timezone.utc))[0] is False       # Thursday is a holiday: Wednesday stays the last trading day
     assert dq.price_freshness(thanks, datetime(2026, 11, 27, 19, tzinfo=timezone.utc))[0] is True        # Friday (half day, closed 18:00 UTC): the price of Wednesday is old
     assert dq.price_freshness(None)[0] is True
+
+
+def test_the_daily_price_jobs_take_every_company_with_a_current_score_or_a_supported_registration():
+    from fakedb import FakeClient
+    from src.sched.jobs import JobRunner
+    from src.sched.schedule import DEFAULT_PATH, Config
+    c = FakeClient()
+    c.tables["companies"] = [
+        {"id": 1, "symbol": "OLD", "exchange": "US", "processing_state": None, "cik": None},                       # a first-stage company: a score, no state, no CIK
+        {"id": 2, "symbol": "NEW", "exchange": "US", "processing_state": "complete", "cik": "0000000002"},        # a loaded registration
+        {"id": 3, "symbol": "NOSC", "exchange": "US", "processing_state": "data_loaded", "cik": None},            # loaded but no CIK and no score: not a price job
+        {"id": 4, "symbol": "UNS", "exchange": "US", "processing_state": "unsupported", "cik": "0000000004"},     # unsupported: never
+        {"id": 5, "symbol": "TBNK", "exchange": "TEST", "processing_state": None, "cik": None},                   # another exchange
+        {"id": 6, "symbol": "OFF", "exchange": "US", "processing_state": None, "cik": None, "is_active": False},
+    ]
+    c.tables["company_score_summary"] = [{"company_id": 1, "latest_run_id": 10}, {"company_id": 4, "latest_run_id": 11}, {"company_id": 5, "latest_run_id": 12}, {"company_id": 6, "latest_run_id": 13}]
+    jr = JobRunner(c, Config.load(DEFAULT_PATH))
+    assert sorted(x["symbol"] for x in jr.active_companies()) == ["NEW", "OLD"]
