@@ -212,3 +212,13 @@ def test_only_scoring_ai_tasks_put_the_company_in_ai_in_progress_and_the_last_on
     r.run()
     assert seen[0] == ("assess", "ai_in_progress")
     assert seen[1:] == [("score", "final"), ("analysis", None), ("background", seen[3][1])] and seen[3][1] != "ai_in_progress"      # the final score and D2 were queued by the assess task, and run before the background
+
+
+def test_a_queue_of_more_than_1000_rows_is_read_page_by_page():
+    # calibration stage 2026-11-04: the API returns 1000 rows per request; the newest tasks of a longer queue were invisible to the runner
+    q = repo()
+    for i in range(1, 1006):
+        q.enqueue(i, "ai_assess", 2025, None, 3)
+    assert len(q.runnable()) == 1005
+    assert sum(q.counts().values()) == 1005
+    assert len(q.list()) == 1005

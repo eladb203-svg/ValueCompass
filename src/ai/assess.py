@@ -65,7 +65,7 @@ def stale_insufficient(row: dict, co: Company, skill: dict) -> bool:
     return any(sid in secs and secs[sid].found for sid in (missing or need[:1]))
 
 
-def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, force: bool = False, variant: str = "3.1", thinking_budget=None) -> dict:
+def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, force: bool = False, variant: str = "3.1", thinking_budget=None, extra_note: str = "") -> dict:
     """One skill for one company-year. Returns the stored row. An existing row (same company, year, question, prompt version) is returned without a call unless ``force``."""
     model = client.model if client is not None else ""
     pv = prompt_version_of(skill, variant)
@@ -88,7 +88,7 @@ def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, 
         return store.put(row)
     ctx = {"company_name": co.name, "ticker": co.ticker, "fiscal_year": f"FY{co.fiscal_year}", "profile": co.profile, "accession": co.filing.accession,
            "code_facts": co.code_facts.get(skill["skill_id"])}
-    prompt, text_sent, sent = build_prompt(skill, ctx, sections, variant)
+    prompt, text_sent, sent = build_prompt(skill, ctx, sections, variant, note=extra_note)         # extra_note: the calibration experiment of a sharpened instruction (never used by the pipeline)
     facts_text = ctx.get("code_facts")
     last = None
     finishes = []
@@ -98,7 +98,7 @@ def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, 
     while True:
         attempt += 1
         if retry_note:
-            prompt, text_sent, sent = build_prompt(skill, ctx, sections, variant, note=retry_note)
+            prompt, text_sent, sent = build_prompt(skill, ctx, sections, variant, note=(extra_note + " " + retry_note).strip())
         t0 = time.monotonic()
         rep = client.generate(prompt, seed_offset=attempt - 1, thinking_budget=thinking_budget) if thinking_budget is not None else client.generate(prompt, seed_offset=attempt - 1)
         stats.calls += 1

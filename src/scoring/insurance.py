@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
@@ -19,7 +20,7 @@ from .common import L, growth_item, miss, tail, thresholded, zero
 from .ai_items import ai_item
 from .coverage import (ModelResult, ai_pending, evaluate_criterion, evaluate_model, not_applicable, scored)
 from .interpolate import describe, interpolate
-from .metrics import clean, count_scaled, median, rose, safe_div, smoothed_growth
+from .metrics import clean, count_scaled, median, rose, safe_div, smoothed_growth, smoothed_growth_w
 
 log = logging.getLogger("valuecompass.insurance")
 
@@ -446,6 +447,12 @@ def resolve_latest(ii, d) -> dict:
         for tag in ("basis=ACL", "basis=CAL", "basis=SCR", "basis=SMR", "basis=OTHER"):
             if tag in (r["note"] or ""):
                 basis = tag.split("=")[1]
+    from . import calibration
+    if basis is None and r and calibration.flag("reg_basis_from_text"):
+        # calibration: a figure extracted by the AI carries its basis in words ("... NAIC Company Action Level formula"), not in the tag of the hand-made table: read the words
+        low = nt.lower()
+        basis = ("CAL" if "company action level" in low else "ACL" if ("authorized control level" in low or re.search(r"\bacl\b", low)) else
+                 "SCR" if ("solvency capital requirement" in low or re.search(r"\bscr\b", low)) else "SMR" if ("solvency margin" in low or re.search(r"\bsmr\b", low)) else None)
     out["reg_basis"] = basis
     if out["reg_ratio"] is None or basis in (None, "OTHER"):
         out["reg_multiple"] = None
@@ -603,7 +610,22 @@ def b34(ii, d):
     return items
 
 
+def life_dominant(ii) -> bool:
+    """Calibration (parameter ``life_dominant_na``): an insurer whose business is mainly life, savings and annuities reports no loss ratio or combined ratio. Today measured by the line of business of the
+    insurer (SIC 6311 = life; the golden set by hand); a premium-share test (long-duration life and health premiums above ``life_dominant_share`` of the premiums) needs an extracted premium split and is not built."""
+    return LINE_OF_BUSINESS.get(getattr(ii, "ticker", None)) == "life"
+
+
 def b35(ii, d):
+    items = _b35(ii, d)
+    from . import calibration
+    if calibration.flag("life_dominant_na") and life_dominant(ii):
+        items = [not_applicable(x.id, x.name, x.max_pts, note="life insurer: no loss ratio or combined ratio is reported, the cost of float is not applicable", flags=["life_dominant_na"])
+                 if (x.state == "missing" and x.id in ("1", "2", "4")) else x for x in items]
+    return items
+
+
+def _b35(ii, d):
     items = []
     cr, cost, yl = L(d["cost_ratio"]), L(d["cost_of_float"]), L(d["gov_yield_yr"])
     gap = L(d["cost_gap"])
@@ -710,10 +732,11 @@ def b38(ii, d):
     items.append(miss("1", "Consistency of revenue growth", 3, "fewer than 3 transitions", a1) if cnt is None else
                  thresholded("1", "Consistency of revenue growth", 3, cnt, a1, "", "operating revenue rises (of 4)", {"operating_revenue": rev},
                              ["partial_window"] if part else []))
-    items.append(growth_item("2", "EPS growth", 3, smoothed_growth(L(ii.series("eps"))), [(0, 0), (0.10, 3)], "smoothed EPS growth"))
+    items.append(growth_item("2", "EPS growth", 3, smoothed_growth_w(L(ii.series("eps")), ii.series("eps")), [(0, 0), (0.10, 3)], "smoothed EPS growth"))
     tb = L(d["tbvps_adj"])  # adjusted book value per share growth, smoothed (R14); adjusted equity per share incl. intangibles per spec 3.8.3
-    bv = L([None if (a is None or s is None or not s) else a / s for a, s in zip(d["adjusted_equity"], ii.series("shares_out"))])
-    items.append(growth_item("3", "Adjusted book value per share growth", 3, smoothed_growth(bv), [(0, 0), (0.10, 3)], "smoothed adjusted BVPS growth"))
+    bv_full = [None if (a is None or s is None or not s) else a / s for a, s in zip(d["adjusted_equity"], ii.series("shares_out"))]
+    bv = L(bv_full)
+    items.append(growth_item("3", "Adjusted book value per share growth", 3, smoothed_growth_w(bv, bv_full), [(0, 0), (0.10, 3)], "smoothed adjusted BVPS growth"))
     items.append(not_applicable("4", "Growth without excessive debt", 2, note="leverage is measured in Buffett 3.6 (matrix)"))
     a5 = [(0.01, 2), (0.05, 0)]
     nm = L(d["net_margin"])

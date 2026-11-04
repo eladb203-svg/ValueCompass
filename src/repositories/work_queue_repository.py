@@ -60,12 +60,25 @@ class WorkQueueRepository:
                "last_error": None, "next_run_at": self._now().isoformat()}
         return self.client.table("work_queue").insert(row).execute().data[0], "queued"
 
+    def _all(self, company_id: Optional[int] = None) -> list:
+        """Every row of the queue (or of one company), page by page: the API returns at most 1000 rows per request, and the queue passed 1000 rows (calibration stage, 2026-11-04: the newest tasks were invisible to the runner)."""
+        out, start = [], 0
+        while True:
+            q = self.client.table("work_queue").select("*")
+            if company_id is not None:
+                q = q.eq("company_id", company_id)
+            page = q.order("id").range(start, start + 999).execute().data
+            out += page
+            if len(page) < 1000:
+                return out
+            start += 1000
+
     def runnable(self, sticky: Optional[dict] = None) -> list:
         """The tasks that may run now, in the order they should run: company after company until it is finished (K6d-2 fixes, decided 2026-10-29). The company's turn is set by the best
         priority among its open tasks and then by its arrival (its oldest open task); inside the company the tasks follow the job order. Tasks of different companies are not mixed.
         ``sticky``: a dict the caller keeps for the length of a run, so that the turn of a company does not change while its own tasks finish."""
         now = self._now().isoformat()
-        allrows = self.client.table("work_queue").select("*").execute().data
+        allrows = self._all()
         group: dict = {}
         for r in allrows:
             if r["state"] in OPEN:
@@ -81,7 +94,7 @@ class WorkQueueRepository:
     def next_wait(self, labels_of: Optional[set] = None) -> Optional[datetime]:
         """The earliest time a queued task that is only waiting for its retry time becomes runnable (None when there is none). ``labels_of``: company ids to look at."""
         now = self._now().isoformat()
-        times = [r["next_run_at"] for r in self.client.table("work_queue").select("*").execute().data
+        times = [r["next_run_at"] for r in self._all()
                  if r["state"] in ("queued", "deferred_network") and r["next_run_at"] > now and str(r.get("last_error") or "").startswith(NETWORK_MARK) and (labels_of is None or r["company_id"] in labels_of)]
         return datetime.fromisoformat(min(times)) if times else None
 
@@ -155,14 +168,11 @@ class WorkQueueRepository:
                                                        "updated_at": self._now().isoformat()}).eq("id", task["id"]).execute().data[0]
 
     def counts(self, company_id: Optional[int] = None) -> dict:
-        q = self.client.table("work_queue").select("job_type,state,priority,company_id")
-        rows = q.eq("company_id", company_id).execute().data if company_id is not None else q.execute().data
+        rows = self._all(company_id)
         out: dict = {}
         for r in rows:
             out[r["state"]] = out.get(r["state"], 0) + 1
         return out
 
     def list(self, company_id: Optional[int] = None) -> list:
-        q = self.client.table("work_queue").select("*")
-        rows = q.eq("company_id", company_id).execute().data if company_id is not None else q.execute().data
-        return sorted(rows, key=lambda r: r["id"])
+        return sorted(self._all(company_id), key=lambda r: r["id"])

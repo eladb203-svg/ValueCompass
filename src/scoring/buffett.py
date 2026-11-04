@@ -8,7 +8,7 @@ from .ai_items import ai_item
 from .coverage import (ModelResult, ai_pending, evaluate_criterion, evaluate_model, not_applicable,
                        scored)
 from .interpolate import describe, interpolate
-from .metrics import (effective_tax_rate, INF, clean, clip, count_scaled, fell_more_than, median, rose, smoothed_growth,
+from .metrics import (effective_tax_rate, INF, clean, clip, count_scaled, fell_more_than, median, rose, smoothed_growth, smoothed_growth_w, growth10,
                       cagr, safe_div)
 
 MODEL = "buffett_quality"
@@ -102,7 +102,13 @@ def c33(inp, d):
                              {"eps": eps}, ["partial_window"] if part else []))
     a3 = [(0, 0), (0.05, 3)]
     g = cagr(rev[0], rev[-1], 4)
-    if rev[0] is None or rev[-1] is None:
+    from . import calibration
+    gw = growth10(inp.series("revenue")) if calibration.flag("growth_window_10y") else None
+    if gw is not None and gw["kind"] != "insufficient":              # calibration: growth over up to 10 years (first-3 against last-3 averages)
+        g = gw["value"] if gw["kind"] == "growth" else None
+        items.append(thresholded("3", "Revenue growth", 3, g, a3, "", f"revenue CAGR over {gw['window_years']} years (3-year averages at the ends)", {"revenue": rev}) if g is not None else
+                     zero("3", "Revenue growth", 3, None, a3, "", "revenue CAGR", {"revenue": rev}, ["revenue_nonpositive"]))
+    elif rev[0] is None or rev[-1] is None:
         items.append(miss("3", "Revenue growth", 3, "first or last revenue of the 5-year window missing", a3))
     elif g is None:
         items.append(zero("3", "Revenue growth", 3, None, a3, "", "revenue CAGR", {"revenue": rev},
@@ -358,8 +364,8 @@ def c38(inp, d):
                  thresholded("1", "Consistency of revenue growth", 3, cnt, a1, "", "revenue rises (of 4)",
                              {"revenue": rev}, ["partial_window"] if part else []))
     a = [(0, 0), (0.10, 3)]
-    items.append(growth_item("2", "EPS growth", 3, smoothed_growth(L(inp.series("eps"))), a, "smoothed EPS growth"))
-    items.append(growth_item("3", "FCF growth", 3, smoothed_growth(L(d["fcf"])), a, "smoothed FCF growth"))
+    items.append(growth_item("2", "EPS growth", 3, smoothed_growth_w(L(inp.series("eps")), inp.series("eps")), a, "smoothed EPS growth"))
+    items.append(growth_item("3", "FCF growth", 3, smoothed_growth_w(L(d["fcf"]), d["fcf"]), a, "smoothed FCF growth"))
     # 4 growth without excessive debt
     a4 = [(0.5, 2), (2.0, 0)]
     nd = d["nd_ebitda"]

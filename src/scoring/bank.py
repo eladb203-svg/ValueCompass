@@ -18,7 +18,7 @@ from .common import L, growth_item, miss, tail, thresholded, zero
 from .ai_items import ai_item
 from .coverage import (ModelResult, ai_pending, evaluate_criterion, evaluate_model, not_applicable, scored)
 from .interpolate import describe, interpolate
-from .metrics import clean, count_scaled, fell_more_than, median, mean, rose, safe_div, smoothed_growth, INF
+from .metrics import clean, count_scaled, fell_more_than, median, mean, rose, safe_div, smoothed_growth, smoothed_growth_w, INF
 
 CATEGORIES = ("residential_mortgage", "commercial_real_estate", "commercial_industrial", "consumer", "other")
 R_, CRE, CI, CONS, OTH = CATEGORIES
@@ -581,7 +581,7 @@ def b38(bi, d):
     items.append(miss("1", "Consistency of revenue growth", 3, "fewer than 3 transitions", a1) if cnt is None else
                  thresholded("1", "Consistency of revenue growth", 3, cnt, a1, "", "bank revenue rises (of 4)", {"revenue": rev},
                              ["partial_window"] if part else []))
-    items.append(growth_item("2", "EPS growth", 3, smoothed_growth(L(bi.series("eps"))), [(0, 0), (0.10, 3)], "smoothed EPS growth"))
+    items.append(growth_item("2", "EPS growth", 3, smoothed_growth_w(L(bi.series("eps")), bi.series("eps")), [(0, 0), (0.10, 3)], "smoothed EPS growth"))
     a3 = [(0, 3), (1, 2), (2, 1), (3, 0)]
     tb = L(d["tbvps"])
     fl = [None if (a is None or b is None) else b < a for a, b in zip(tb[:-1], tb[1:])]

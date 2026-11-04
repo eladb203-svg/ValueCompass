@@ -141,6 +141,15 @@ class FinancialRepository:
             self.client.table("financial_facts").upsert(todo[i:i + BATCH], on_conflict="company_id,fiscal_year,item_id").execute()
         return stats
 
+    def drop_facts(self, company_id: int, keys: list) -> int:
+        """Remove the stored facts (fiscal year, item key) that a control has just held back as suspect (rule M10: a suspect figure is not in the calculation - a value stored by an earlier load must not stay). -> rows removed."""
+        self._load_items()
+        n = 0
+        for fy, key in keys:
+            if key in self._ids:
+                n += len(self.client.table("financial_facts").delete().eq("company_id", company_id).eq("fiscal_year", fy).eq("item_id", self._ids[key]).execute().data)
+        return n
+
     def upsert_filing_periods(self, company_id: int, periods: list, dry_run: bool = False) -> dict:
         """``periods``: dicts with fiscal_year, accession, form, fiscal_year_end (iso), reporting_currency, calculation_version (+ optional filed_at). Idempotent."""
         old = {r["fiscal_year"]: r for r in self._select_all("filing_periods", "*", {"company_id": company_id})}

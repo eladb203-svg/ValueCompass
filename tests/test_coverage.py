@@ -126,3 +126,10 @@ def test_d14_pending_ai_criteria_widen_the_range_but_not_the_score():
     m = evaluate_model("m", [ai, good])
     assert m.score == pytest.approx(90.0)
     assert m.min_score == pytest.approx(81.0) and m.max_score == pytest.approx(91.0)
+
+
+def test_m10_a_held_back_figure_is_missing_and_lowers_coverage():
+    # rule M10 (calibration stage 2026-11-04): a figure held back as suspect is not in the calculation (state missing); the coverage falls against the same criterion with the figure
+    with_value = evaluate_model("m", [evaluate_criterion("c1", "c1", [scored("1", "a", 5, 5), scored("2", "b", 5, 5)]), evaluate_criterion("c2", "c2", [scored("1", "a", 10, 10)])])
+    held = evaluate_model("m", [evaluate_criterion("c1", "c1", [scored("1", "a", 5, 5), missing("2", "b", 5)]), evaluate_criterion("c2", "c2", [scored("1", "a", 10, 10)])])
+    assert held.coverage < with_value.coverage

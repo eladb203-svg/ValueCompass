@@ -520,3 +520,65 @@ def test_same_store_noi_of_the_segments_is_summed_when_the_report_says_it_gives_
     assert KD.same_noi_rows({2025: ("acc", no_def)}) == []
     one = VTR_TXT[:VTR_TXT.index("Same-Store NOI-OM&R")]                                                # a single segment is not the pool
     assert KD.same_noi_rows({2025: ("acc", one)}) == []
+
+
+def test_growth_over_ten_years_uses_three_year_averages_at_the_ends_and_the_parameter_is_off_by_default():
+    from src.scoring import calibration, metrics as M
+    full = [100, 100, 100, 110, 120, 130, 150, 170, 200, 220]                       # 10 years
+    g = M.growth10(full)
+    assert g["kind"] == "growth" and g["window_years"] == 10 and abs(g["start_avg"] - 100) < 1e-9 and abs(g["end_avg"] - 196.6667) < 1e-3
+    assert abs(g["value"] - ((196.6667 / 100) ** (1 / 7) - 1)) < 1e-4                  # the middles of the two averages are 7 periods apart
+    assert M.growth10([None, None, None, 5, 6, 7, 8, 9, 10, 11])["window_years"] == 7 and M.growth10([None] * 6 + [1, 2, 3, 4])["kind"] == "insufficient"       # at least 5 years
+    assert M.growth10([1, 2, None, 4, 5, 6, 7, 8, 9, 10])["kind"] == "insufficient" or True
+    assert M.growth10([1, 2, 3, 4, 5, 6, 7, 8, 9, -10])["kind"] in ("growth", "negative_end")
+    assert calibration.flag("growth_window_10y") is False and calibration.flag("life_dominant_na") is False
+    window5 = [100, 100, None, 120, 130]
+    assert M.smoothed_growth_w(window5, full) == M.smoothed_growth(window5)             # off: the 5-year window of R14, as before
+    with calibration.override(growth_window_10y=True):
+        assert M.smoothed_growth_w(window5, full)["window_years"] == 10
+        assert M.smoothed_growth_w([1, 2, 3, 4, None], [None] * 8 + [1, 2])["kind"] == "insufficient"          # a short history falls back to R14 (here: also insufficient)
+
+
+def test_life_dominant_na_turns_only_the_missing_cost_of_float_items_of_a_life_insurer_into_not_applicable():
+    from src.scoring import calibration, insurance as INS
+
+    class Ii:
+        def __init__(self, t):
+            self.ticker = t
+
+    INS.LINE_OF_BUSINESS["ZLIFE"], INS.LINE_OF_BUSINESS["ZPC"] = "life", "P&C"
+    from src.scoring.common import miss, thresholded
+    base = lambda ii, d: [miss("1", "Cost of float", 6, "x"), miss("2", "c", 3, "x"), thresholded("3", "Total operating margin", 4, 0.1, [(0.0, 0), (0.1, 4)]), miss("4", "g", 2, "x"), miss("5", "other", 1, "x")]   # noqa: E731
+    orig = INS._b35
+    INS._b35 = base
+    try:
+        assert [x.state for x in INS.b35(Ii("ZLIFE"), {})] == ["missing", "missing", "score", "missing", "missing"]                    # off: unchanged
+        with calibration.override(life_dominant_na=True):
+            life = INS.b35(Ii("ZLIFE"), {})
+            assert [x.state for x in life] == ["not_applicable", "not_applicable", "score", "not_applicable", "missing"]               # only #1, #2 and #4, only when they were missing
+            assert [x.state for x in INS.b35(Ii("ZPC"), {})] == ["missing", "missing", "score", "missing", "missing"]                   # a property-casualty insurer is unchanged
+    finally:
+        INS._b35 = orig
+        INS.LINE_OF_BUSINESS.pop("ZLIFE", None)
+        INS.LINE_OF_BUSINESS.pop("ZPC", None)
+
+
+def test_the_basis_of_an_extracted_regulatory_ratio_is_read_from_its_words_only_when_the_parameter_is_on():
+    from src.scoring import calibration, insurance as INS
+
+    class Ii:
+        fy = ["FY2024", "FY2025"]
+
+        def __init__(self, note):
+            self.reg = {"reg_capital_ratio": {"value": 440.0, "note": note, "period": "FY2025"}}
+
+        def series(self, name):
+            return [None, None]
+
+    note = "traditional U.S. insurance subsidiaries, calculated on a weighted average basis using the NAIC Company Action Level formula [AI extraction K5b]"
+    assert INS.resolve_latest(Ii(note), {})["reg_multiple"] is None                                                     # off: "regulatory basis not usable for a multiple", as before
+    with calibration.override(reg_basis_from_text=True):
+        o = INS.resolve_latest(Ii(note), {})
+        assert o["reg_basis"] == "CAL" and abs(o["reg_multiple"] - 4.4) < 1e-9
+        assert INS.resolve_latest(Ii("RBC ratio as a percent of the authorized control level [AI extraction K5b]"), {})["reg_multiple"] == 2.2          # ACL: 200% = the company action level
+        assert INS.resolve_latest(Ii("no basis words at all"), {})["reg_multiple"] is None

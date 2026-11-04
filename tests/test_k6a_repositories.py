@@ -219,3 +219,11 @@ def test_approve_all_flag_works_on_test_and_is_refused_on_prod(monkeypatch):
     monkeypatch.setenv("VC_DB_TARGET", "prod")
     with pytest.raises(ValueError):
         sink2.write(fs)
+
+
+def test_a_suspect_figure_stored_by_an_earlier_load_leaves_the_calculation():
+    c = client()
+    repo = FinancialRepository(c)
+    repo.upsert_facts(1, facts())
+    assert repo.drop_facts(1, [(2025, "revenue"), (2030, "revenue"), (2025, "no_such_item")]) == 1                  # only the stored (year, item) goes; an unknown item or year is ignored
+    assert [(d["fiscal_year"], d["item_key"]) for d in repo.get_history(1) if d["item_key"] == "revenue"] == [(2024, "revenue")]

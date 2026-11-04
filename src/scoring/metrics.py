@@ -112,6 +112,35 @@ def smoothed_growth(vals5: Sequence[Num]) -> dict:
     return {"kind": kind, "value": val, "start_avg": s, "end_avg": e}
 
 
+def growth10(full: Sequence[Num], max_years: int = 10, min_years: int = 5) -> dict:
+    """Calibration (parameter ``growth_window_10y``, off by default): growth over up to 10 years where they exist (at least 5): CAGR from the average of the FIRST 3 years of the window to the average of the
+    LAST 3 (t-9..t-7 against t-2..t for 10 years; the periods are the distance between the two middles = window length - 3). The window starts at the first year with a value; the ends need all 3 values.
+    Same kinds as ``smoothed_growth``; ``insufficient`` when the history is shorter than ``min_years`` or an end is incomplete."""
+    v = list(full)[-max_years:]
+    i = next((k for k, x in enumerate(v) if x is not None), None)
+    w = [] if i is None else v[i:]
+    if len(w) < min_years or any(x is None for x in w[:3]) or any(x is None for x in w[-3:]):
+        return {"kind": "insufficient", "value": None, "start_avg": None, "end_avg": None, "window_years": len(w)}
+    s, e = sum(w[:3]) / 3, sum(w[-3:]) / 3
+    if e <= 0:
+        kind, val = "negative_end", None
+    elif s <= 0:
+        kind, val = "turnaround", None
+    else:
+        kind, val = "growth", (e / s) ** (1 / (len(w) - 3)) - 1
+    return {"kind": kind, "value": val, "start_avg": s, "end_avg": e, "window_years": len(w)}
+
+
+def smoothed_growth_w(window5: Sequence[Num], full: Sequence[Num]) -> dict:
+    """``smoothed_growth`` of the 5-year window (R14), or - with the parameter ``growth_window_10y`` on and a long enough history - the growth over up to 10 years."""
+    from . import calibration
+    if calibration.flag("growth_window_10y"):
+        g = growth10(full)
+        if g["kind"] != "insufficient":
+            return g
+    return smoothed_growth(window5)
+
+
 def three_vs_three_growth(vals: Sequence[Num]) -> dict:
     """Graham 3.6: avg of first 3 vs avg of last 3, annualized over n-3 periods."""
     v = clean(vals)

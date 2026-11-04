@@ -139,6 +139,8 @@ class Query:
             out.sort(key=lambda r: (r.get(self._order[0]) is None, r.get(self._order[0])), reverse=self._order[1])
         if self._range:
             out = out[self._range[0]:self._range[1] + 1]
+        else:
+            out = out[:1000]                      # the real API returns at most 1000 rows per request unless a range is given
         if self._limit:
             out = out[:self._limit]
         return Result(out)

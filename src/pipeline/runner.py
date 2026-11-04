@@ -245,6 +245,8 @@ class Pipeline:
                 self.client.table("financial_facts").delete().eq("company_id", cid).execute()
             res.periods = self.financial.upsert_filing_periods(cid, period_rows, dry_run=self.dry_run)
             res.facts = self.financial.upsert_facts(cid, facts, dry_run=self.dry_run)
+            if not self.dry_run:
+                self.financial.drop_facts(cid, [(r[2], r[3]) for r in res.dq if str(r[0]).startswith("suspect") and r[1] == "held"])       # M10: a suspect figure stored by an earlier load leaves the calculation too
         self._provisional = bool(res.router_needs)
         if not self.dry_run:
             self._write_profile(cid, final, rr, fs, resolved)
