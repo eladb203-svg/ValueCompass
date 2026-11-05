@@ -197,3 +197,107 @@ the fake database of the tests now also caps an un-ranged read at 1000 rows like
 
 ### Stage data kept (created by this stage, not deleted)
 Companies MAC, BDN, PK, DHC, HPP in the test database (data, scores, AI answers, queue rows); `scripts/state/cal_ai_experiment.jsonl` is a file, not a table. Nothing in production.
+
+
+---
+
+# Part 2 - owner decisions of 2026-11-04 (what was done after the first report)
+
+Test database only; nothing in production; golden, rulebooks and branch `security` untouched. Tests: 1001 passed.
+
+## 2.1 Parameters switched on (decision 1)
+`life_dominant_na` and `reg_basis_from_text` are now `true` in `config/calibration.yaml`; `growth_window_10y` stays `false`. All 115 companies rescored with no model calls. Only two companies moved:
+
+| Company | Buffett before | after | Coverage before | after |
+|---|---|---|---|---|
+| LNC | 51.23 | 52.56 | 75% | 90% |
+| UNM | 79.62 | 81.30 | 90% | 100% |
+
+The price-scale change and the sharpened "no evidence" instruction were not adopted (decision 2).
+
+## 2.2 M10 - suspect rows close themselves (decision 3)
+`gap_review.close_suspects`: a `suspect_data` row is closed (`fixed`) when the figure is no longer held back by the pipeline (called from the runner after `record_suspects`) or exists in `financial_facts` (entered by `gaps fill`; also called from `refresh`). Unit test `test_m10_a_suspect_row_is_closed_when_the_figure_is_not_held_back_any_more_or_is_entered_by_hand`.
+
+## 2.3 The 44 companies with `ai_pending` (decision 5)
+Reason, one for all 44: they were created on 2026-10-25 as K5 companies and **no AI question was ever asked for them** (no row in `ai_assessments`, no `ai_assess` task in the queue). It is not a missing approval rule and not an experiment leftover. Separately, 537 extraction rows wait for manual approval (mostly REIT FFO/NAV); `approvals recheck` with the existing rules would approve only 2 (BDN, rule `b11_xbrl`) - not applied.
+Proposal (nothing was approved or enqueued): enqueue `ai_assess` for the 44 at low priority, spread over about 3 days (about 20 calls each, about 900 attempts, against the shared 450/day cap); the answers then go through the existing approval rules, and what no rule covers stays for manual review.
+
+## 2.4 REIT AI wording (decision 4) - NOT ADOPTED, the previous version stays active
+Experiment: questions B3.2-Q4, B3.2-Q5, B3.7-Q5, B3.8-Q6 re-asked with the reworded 2/1/0 levels (profile INCOME_REAL_ESTATE only, version "<v>-reit", answers in `scripts/state/cal_reit_reask.jsonl`, not in the database). Questions 3.1.x were not changed (the first analysis found no REIT bias there). Scoring: `scripts/cal_reit_score.py`, full dump in `scripts/state/cal_reit_score.txt`.
+Limits of the run: the 150-attempt cap was reached before every REIT was done; PK failed at setup (`KeyError: 'inputs'`), HPP has no Buffett score, one call failed on a network error (KIM B3.7-Q5). Fifteen REITs have a before/after comparison (12 strong, 3 weak: BDN, DHC, MAC).
+
+(a) Distribution (17/17 on the nine AI items): before 12 of 15, after 6 of 15 (strong 11 -> 6 of 12; weak 1 -> 0 of 3). New answers: 63 x 2, 20 x 1, 5 insufficient evidence (earlier answers of the same questions: 53 x 2, 5 x 1, 2 x 0, rest missing).
+(b) Quotes: 4 quotes are not found word for word in the report (BXP 3.8.6, HPP 3.8.6 twice, REXR 3.2.4 - all became "insufficient evidence", so they do not enter the score). The remaining quotes of the 63 answers of 2 were found verbatim; I read the reasoning and quote for the weak REITs and a sample of the others and they support the level (e.g. MAC 3.2.4: same-property NOI +1.8% and "seventeenth consecutive quarter of positive base rent leasing spreads"). **I did not read all 63 individually**; the full list is in the dump for the owner.
+(c) Separation: strong REITs Buffett 76.6 -> 75.9 (-0.7), weak 61.0 -> 60.2 (-0.8): the gap is unchanged. Per weak REIT: BDN 48.9 -> 48.9, DHC 56.3 -> 56.1, **MAC 78.0 -> 75.7 (still above the strong mean)**, HPP none, PK not measured.
+Decision by the owner's rule: the separation does not improve, so the reworded version is not adopted; `scoring.yaml` was not changed.
+
+## 2.5 `growth_window_10y` - analysis before a decision (decision 6; the parameter stays off)
+Method: `scripts/cal_growth_movers.py` records, for the 44 companies that move by more than 2 Buffett points, the series behind each growth call (5-year window vs the 10-year first-3 against last-3); `scripts/cal_growth_table.py` holds the classification; series in `scripts/state/cal_growth_classify.txt`. Sub-items that move: 3.3.3 (revenue), 3.8.2 (EPS), 3.8.3 (FCF / book value per share). Years are oldest first, so the ten years are FY2016-FY2025 and the 5-year window FY2021-FY2025.
+**Limit:** the causes (events, years) come from the series themselves and from my general knowledge of the companies. I did **not** check each event against a quote from the filings, so class (b) rows are "event named, quote pending".
+Classes: (a) the 5-year window is distorted by an abnormal period (COVID, the 2021-22 peak, the rate cycle, impairments); (b) material business change (merger/split/sale), where 5 years is right; (c) old years with wrong or inconsistent data.
+
+By class and profile (n / up / down / mean change in Buffett points):
+
+| Class | BANK | INCOME_REAL_ESTATE | INSURANCE | STANDARD | TECH | All |
+|---|---|---|---|---|---|---|
+| (a) abnormal period | 7 / 6 / 1 / +2.2 | 9 / 3 / 6 / -2.3 | 6 / 5 / 1 / +2.8 | 10 / 9 / 1 / +4.2 | 2 / 2 / 0 / +3.0 | 34 / 25 / 9 / +1.7 |
+| (b) material change | 3 / 3 / 0 / +2.8 | 2 / 1 / 1 / +0.7 | 2 / 2 / 0 / +2.9 | 3 / 3 / 0 / +4.2 | - | 10 / 9 / 1 / +2.8 |
+| (c) data bug | 0 | 0 | 0 | 0 | 0 | 0 |
+| All | 10 / 9 / 1 / +2.4 | 11 / 4 / 7 / -1.8 | 8 / 7 / 1 / +2.8 | 13 / 12 / 1 / +4.2 | 2 / 2 / 0 / +3.0 | 44 / 34 / 10 / +2.0 |
+
+(c): no wrong values found. Only data gaps (AMT and LNC first-year revenue missing, EXR three early EPS years missing, MAA nine years only), which shorten the 10-year window but do not distort it.
+
+Findings:
+- In class (a) the 10 years reflect the business better: in 25 of 34 cases the 5-year window starts on a peak (2021-22 demand, steel, chips, investment banking, low rates) or ends on a trough, and the 5-year growth is then understated. For REITs it is the opposite: the 5-year window starts in the COVID trough (HST, VTR, SLG, EPR, OHI), so the 5-year growth is a rebound that is overstated and the 10 years lower it (6 of 9 down).
+- In class (b) the 10 years are inflated by acquisitions (CI revenue 27.6% a year, CNC, TFC, FHN, RNR, MOH, EXR): 9 of 10 go up, but because of purchased growth, so 5 years is right there. DLR and ONB are the exceptions where the window itself begins at the merger.
+- Because of (b), 10 years without an exception would reward serial acquirers.
+
+**Recommendation: 10 years with an exception for material business change.** Concretely: use 10 years unless a year-on-year revenue jump above about 1.5x (or a fall below about 0.6x) falls inside the ten years; in that case use the years after the break (at least 5). On the 44 companies this would send the 10 class (b) companies back to the shorter window. It is not enabled and is not coded: a decision on the exception rule, and checking the (b) events against filings, come first. As the first report found, 10 years does **not** close the REIT gap (REIT mean 76.3 -> 75.7, gap 0.5 -> 2.6), so it should be decided as a general rule and not as a REIT fix.
+
+### Classification of the 44 companies
+| Ticker | Profile | Class | Buffett off -> on | Delta | Sub-items moved (points) | Cause (years / event) |
+|---|---|---|---|---|---|---|
+| BOKF | BANK | a | 81.8 -> 84.2 | +2.4 | 3.3.3 +0.54, 3.8.2 +1.85 | Rate cycle: FY21-22 earnings on the low-rate/reserve-release peak; 10y growth 7.5%. |
+| C | BANK | a | 57.1 -> 59.2 | +2.1 | 3.3.3 -1.56, 3.8.2 +3.0 | FY17 tax-reform charge and FY22 peak; 5y EPS start avg 4.7+10.1 vs end 7.0 - rate cycle and one-offs. |
+| GS | BANK | a | 66.1 -> 72.9 | +6.8 | 3.3.3 +3.0, 3.8.2 +2.74 | FY21 record IB year (EPS 59) opens the 5y window; 10y first-3 vs last-3 smooths it. |
+| RF | BANK | a | 87.0 -> 89.9 | +2.9 | 3.3.3 +0.12, 3.8.2 +2.78 | FY21-22 low-rate/reserve-release peak (EPS 2.49/2.28). |
+| WAL | BANK | a | 80.6 -> 83.6 | +3.0 | 3.8.2 +3.0 | FY21 revenue/EPS peak at 5y start; rate cycle. |
+| WFC | BANK | a | 76.5 -> 72.9 | -3.6 | 3.3.3 -0.84, 3.8.2 -1.75 | FY20 EPS 0.43 and FY22 litigation/reserve charges; 5y 11.7% is rebound from a conduct-penalty year. |
+| ZION | BANK | a | 79.7 -> 81.8 | +2.1 | 3.3.3 -0.44, 3.8.2 +2.54 | Rate cycle: FY21-22 low-rate peak at the start of the 5y window. |
+| AMT | INCOME_REAL_ESTATE | a | 76.2 -> 84.0 | +7.8 | 3.3.3 +1.03, 3.8.2 +3.0, 3.8.3 +2.61 | EPS FY21-22 start vs FY16-18 base; 5y EPS growth -4% only because FY24 EPS dip (7.4) from a one-off impairment year. |
+| EPR | INCOME_REAL_ESTATE | a | 82.0 -> 79.1 | -2.9 | 3.3.3 -0.81, 3.8.2 -0.84, 3.8.3 -0.84 | COVID FY20 (EPS 0.58) sits at the start of the 5y window region; 10y shows the true slower trend. |
+| EQR | INCOME_REAL_ESTATE | a | 85.7 -> 79.6 | -6.1 | 3.3.3 -1.44, 3.8.2 -0.93, 3.8.3 -2.02 | EPS FY21-22 (2.5-3.0) start from gain-on-sale distorted years; 10y gives 2.9%. |
+| HST | INCOME_REAL_ESTATE | a | 91.2 -> 84.0 | -7.1 | 3.3.3 -2.61, 3.8.2 -1.73, 3.8.3 -1.73 | COVID FY20 revenue 1.6bn (from 5.4bn) just before the 5y window: 5y 'recovery growth' 20% is a rebound, 10y 0.7% is the real trend. |
+| MAA | INCOME_REAL_ESTATE | a | 73.0 -> 76.0 | +3.0 | 3.8.2 +1.27, 3.8.3 +1.27 | FY21-22 start vs FY25 trough; only 9 years of data. |
+| OHI | INCOME_REAL_ESTATE | a | 73.4 -> 70.4 | -3.0 | 3.3.3 -0.24, 3.8.2 -1.14, 3.8.3 -1.14 | COVID years FY20-22 (EPS 1.96-1.99); 5y start low in 5y/10y differs by base. |
+| PSA | INCOME_REAL_ESTATE | a | 76.7 -> 79.2 | +2.6 | 3.8.2 +1.12, 3.8.3 +0.88 | Acquisition of Simply Self Storage (2023) is small; EPS FY21-22 step-up; cycle. |
+| SLG | INCOME_REAL_ESTATE | a | 57.8 -> 48.5 | -9.3 | 3.3.3 -2.33, 3.8.2 -2.8, 3.8.3 -2.8 | COVID/office downturn plus FY22-23 impairments (EPS 2.5, -1.1); 5y 21% is the rebound from FY23. |
+| VTR | INCOME_REAL_ESTATE | a | 89.0 -> 83.0 | -6.0 | 3.8.2 -3.0, 3.8.3 -3.0 | COVID FY20-21 dip (EPS 2.1-2.2) at the start of the 5y window: rebound growth 14%, 10y -2.6%. |
+| AFL | INSURANCE | a | 80.4 -> 82.5 | +2.1 | 3.8.2 +0.58, 3.8.3 +0.82 | 5y window starts FY21-22 on a 2021 EPS peak; 10y steady 9-10% EPS growth. |
+| ALL | INSURANCE | a | 66.0 -> 68.2 | +2.1 | 3.8.2 +1.5, 3.8.3 -0.33 | EPS FY20-22 swings (5.0, -5.1, -1.2) from the 2022 catastrophe/inflation year; 5y start sits in the trough/peak pair. |
+| LNC | INSURANCE | a | 51.2 -> 48.0 | -3.3 | 3.3.3 +0.56, 3.8.3 -2.61 | Annuity/derivative-mark volatility (EPS 19.96 .. -4.92); FY25 recovery. Revenue FY16 missing (data gap, not a wrong value). |
+| ORI | INSURANCE | a | 77.4 -> 84.7 | +7.3 | 3.3.3 +2.63, 3.8.2 +2.87, 3.8.3 +0.53 | FY21 peak EPS (5.05) at the start of the 5y window; 10y 9.6%. |
+| RLI | INSURANCE | a | 87.6 -> 91.4 | +3.8 | 3.8.2 +3.0 | FY21 special dividend/investment-gain year (EPS 6.37) in the 5y window start. |
+| SIGI | INSURANCE | a | 82.3 -> 87.0 | +4.8 | 3.8.2 +2.31, 3.8.3 +1.4 | FY21-22 EPS spike vs trough; growth is smooth over 10y. |
+| ELV | STANDARD | a | 88.0 -> 94.3 | +6.3 | 3.8.2 +2.67, 3.8.3 +2.27 | EPS 5y flat (FY21-22 peak vs FY24-25 fall on Medicaid cost trend); 10y trend is a smooth 10%. FCF FY21 9.7bn is a one-off timing peak. |
+| HD | STANDARD | a | 83.9 -> 90.5 | +6.6 | 3.3.3 +1.7, 3.8.2 +2.84, 3.8.3 +0.83 | FY21-22 pandemic-demand peak at the start of the 5y window; 10y 9.5% vs 5y -3%. |
+| KHC | STANDARD | a | 38.7 -> 40.9 | +2.2 | 3.8.3 +1.71 | Impairment years (FY18 EPS -8.4, FY25 -4.9) drive the series; no sustainable base in either window (no growth rate in either). |
+| KR | STANDARD | a | 73.3 -> 76.8 | +3.5 | 3.3.3 +0.8, 3.8.2 +0.14, 3.8.3 +2.53 | FY17 and FY21-22 one-off gains (FCF 1.2bn / 3.9bn); EPS FY25 1.54 from impairment. 5y start/end ratios are dominated by single years. |
+| NKE | STANDARD | a | 80.7 -> 84.4 | +3.7 | 3.3.3 +2.37, 3.8.2 +1.13, 3.8.3 +0.23 | FY21 post-COVID rebound opens the 5y window; FY24-25 downturn at the end. 10y smooths the cycle. |
+| NUE | STANDARD | a | 64.4 -> 74.8 | +10.4 | 3.3.3 +3.0, 3.8.2 +3.0, 3.8.3 +2.48 | FY21-22 steel-price super-cycle (EPS 23-29) opens the 5y window; 10y 13.5%. |
+| PG | STANDARD | a | 91.5 -> 94.7 | +3.2 | 3.3.3 +0.91, 3.8.2 +1.44, 3.8.3 +0.85 | FY17-19 impairment/divestiture one-offs (Gillette impairment FY19, brand sale FY17) depress the 10y base; effect small (3.9% vs 8.7%). |
+| SJM | STANDARD | a | 41.1 -> 37.5 | -3.6 | 3.3.3 -0.68, 3.8.3 -2.88 | Impairment years FY19-24 (EPS -11.6, -0.9); FCF dip FY22-24. (Hostess 2023 acquisition adds a small b.) |
+| TGT | STANDARD | a | 75.7 -> 78.2 | +2.4 | 3.3.3 +3.0, 3.8.2 +2.29, 3.8.3 -2.85 | FY21 pandemic peak opens the 5y window; FY23 loss year (-1.5bn FCF/ -.). 10y 7.6% vs 5y -5.4%. |
+| UNH | STANDARD | a | 73.2 -> 80.0 | +6.8 | 3.8.2 +2.48, 3.8.3 +2.82 | FY24-25 Optum/medical-cost year hits the end of both windows; difference is the early years (EPS 7->14 ramp) vs 2021-22. (Change Healthcare 2022 acquisition is small vs revenue.) |
+| ADI | TECH_ASSET_LIGHT | a | 78.2 -> 81.5 | +3.3 | 3.8.2 +2.17, 3.8.3 +1.12 | FY21-22 start of window is the post-COVID chip peak; EPS/FCF 5y start avg high vs 10y start (FY16-18) low base; FY24 dip is the cycle. (Acquisition of Maxim 2021 also lifts revenue: partial b.) |
+| TXN | TECH_ASSET_LIGHT | a | 72.4 -> 75.1 | +2.7 | 3.3.3 +1.23, 3.8.2 +1.47 | FY21-22 cycle peak opens the 5y window; FY24-25 FCF collapse from the capex programme (an investment cycle, not a data issue). |
+| FHN | BANK | b | 76.1 -> 79.1 | +3.1 | 3.3.3 +1.36, 3.8.2 +1.7 | IBERIABANK acquisition (Jul 2020): revenue 1.9bn->3.2bn; 10y 12% is partly M&A. |
+| ONB | BANK | b | 77.6 -> 79.6 | +2.1 | 3.8.2 +1.78 | First Midwest merger (Apr 2022): revenue 0.81bn->1.7bn. The 5y window starts at the merger year. |
+| TFC | BANK | b | 65.8 -> 69.2 | +3.3 | 3.3.3 +3.0 | BB&T/SunTrust merger (Dec 2019): revenue 12.6->22.7bn; FY23 revenue 13.3bn = securities-repositioning loss. |
+| DLR | INCOME_REAL_ESTATE | b | 88.5 -> 85.5 | -3.0 | 3.8.2 -1.27, 3.8.3 -1.27 | Interxion acquisition (2020) lifts revenue 3.2->3.9bn; EPS 10y 4.2% vs 5y 8.4% - 5y reflects the larger company. |
+| EXR | INCOME_REAL_ESTATE | b | 70.1 -> 74.4 | +4.3 | 3.8.2 +2.14, 3.8.3 +2.14 | Life Storage merger (Jul 2023): revenue 1.9->2.6->3.3bn. EPS series has 3 missing early years (data gap, not a wrong value). |
+| AIG | INSURANCE | b | 28.4 -> 31.8 | +3.4 | 3.8.2 +1.5, 3.8.3 +0.13 | Corebridge deconsolidation FY22-24: revenue 49.9bn->29.2bn; EPS series FY16-22 swings (-6.5 .. +13) from hurricane/reserve losses. 10y mixes a different, larger company. |
+| RNR | INSURANCE | b | 74.2 -> 76.4 | +2.3 | 3.8.2 +1.5, 3.8.3 -0.0 | Validus (Nov 2018) and Tokio Millennium Re (2019) acquisitions; revenue 1.6bn->11.7bn. EPS swings from catastrophe years. |
+| CI | STANDARD | b | 71.7 -> 75.9 | +4.2 | 3.8.2 +3.0, 3.8.3 +0.3 | Express Scripts acquisition (Dec 2018): revenue 48.7bn -> 153.6bn in one year; 10y revenue CAGR 27.6% is M&A, not organic. 5y window (FY21+) excludes it. |
+| CNC | STANDARD | b | 49.6 -> 53.5 | +3.8 | 3.8.3 +3.0 | Health Net (2016) and WellCare (Jan 2020) acquisitions; revenue 60bn->111bn. FY25 EPS -13.5 is a one-off loss year in the 5y end. |
+| MOH | STANDARD | b | 84.4 -> 89.1 | +4.7 | 3.8.2 +1.27, 3.8.3 +2.38 | Acquisitions: Magellan Complete Care (2022), ConnectiCare (2022); revenue 17.8->45bn. FY25 FCF/EPS fall is a one-off year. EPS 10y 52.9% is from a near-zero FY17-18 base. |

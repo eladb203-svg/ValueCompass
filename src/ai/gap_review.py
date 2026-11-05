@@ -107,6 +107,38 @@ def record_suspects(client, company_id: int, dq_results: list, now: Optional[dat
     return n
 
 
+def close_suspects(client, company_id: int, held_now: Optional[set] = None, now: Optional[datetime] = None) -> int:
+    """Rule M10, the end of the life of a suspect figure (calibration stage, owner decision 2026-11-04): a ``suspect_data`` row is closed (``fixed``) when the figure is no longer held back.
+    Two ways in: (1) a load (``held_now`` = the set of (item, fiscal year) the controls hold back in THIS load): an open row whose figure is not in the set is closed - the pipeline was fixed or the source corrected;
+    (2) ``held_now`` is None (``gaps fill`` / ``refresh``): an open row whose figure is now stored in ``financial_facts`` is closed - a held figure is never stored, so a stored one was entered by hand or accepted. -> number of rows closed."""
+    now = now or datetime.now(timezone.utc)
+    rows = [r for r in client.table("data_gap_review").select("*").eq("company_id", company_id).eq("family", "suspect_data").execute().data if r["state"] != "fixed"]
+    if not rows:
+        return 0
+    repo = None
+    n = 0
+    for r in rows:
+        m = re.match(r"SUSPECT (\S+) FY(\d+)$", r["item_key"] or "")
+        if not m:
+            continue
+        item, fy = m.group(1), int(m.group(2))
+        if held_now is not None:
+            fixed = (item, fy) not in held_now
+        else:
+            if repo is None:
+                from src.repositories.financial_repository import FinancialRepository
+                repo = FinancialRepository(client)
+            try:
+                item_id = repo.item_id(item)
+            except KeyError:
+                continue
+            fixed = bool(client.table("financial_facts").select("item_id").eq("company_id", company_id).eq("fiscal_year", fy).eq("item_id", item_id).limit(1).execute().data)
+        if fixed:
+            client.table("data_gap_review").update({"state": "fixed", "closed_at": now.isoformat(), "last_seen": now.isoformat()}).eq("company_id", company_id).eq("item_key", r["item_key"]).execute()
+            n += 1
+    return n
+
+
 def family_of(note: str) -> tuple:
     """-> (family, keyword regex, genuine by the rulebook) of the engine's note."""
     for pat, fam, kw, genuine in FAMILIES:
@@ -191,6 +223,7 @@ def refresh(client, company_id: int, filings_dir: Path = FILINGS, now: Optional[
         if key not in seen and old["state"] != "fixed":
             client.table("data_gap_review").update({"state": "fixed", "closed_at": now.isoformat(), "last_seen": now.isoformat()}).eq("company_id", company_id).eq("item_key", key).execute()
             counts["closed"] += 1
+    counts["suspects_closed"] = close_suspects(client, company_id, now=now)               # M10: a suspect figure that is stored now (entered by `gaps fill`) is not wrong any more
     return counts
 
 

@@ -531,7 +531,7 @@ def test_growth_over_ten_years_uses_three_year_averages_at_the_ends_and_the_para
     assert M.growth10([None, None, None, 5, 6, 7, 8, 9, 10, 11])["window_years"] == 7 and M.growth10([None] * 6 + [1, 2, 3, 4])["kind"] == "insufficient"       # at least 5 years
     assert M.growth10([1, 2, None, 4, 5, 6, 7, 8, 9, 10])["kind"] == "insufficient" or True
     assert M.growth10([1, 2, 3, 4, 5, 6, 7, 8, 9, -10])["kind"] in ("growth", "negative_end")
-    assert calibration.flag("growth_window_10y") is False and calibration.flag("life_dominant_na") is False
+    assert calibration.flag("growth_window_10y") is False        # still off; life_dominant_na and reg_basis_from_text were switched on by the owner on 2026-11-04
     window5 = [100, 100, None, 120, 130]
     assert M.smoothed_growth_w(window5, full) == M.smoothed_growth(window5)             # off: the 5-year window of R14, as before
     with calibration.override(growth_window_10y=True):
@@ -552,7 +552,8 @@ def test_life_dominant_na_turns_only_the_missing_cost_of_float_items_of_a_life_i
     orig = INS._b35
     INS._b35 = base
     try:
-        assert [x.state for x in INS.b35(Ii("ZLIFE"), {})] == ["missing", "missing", "score", "missing", "missing"]                    # off: unchanged
+        with calibration.override(life_dominant_na=False):
+            assert [x.state for x in INS.b35(Ii("ZLIFE"), {})] == ["missing", "missing", "score", "missing", "missing"]                # off: unchanged
         with calibration.override(life_dominant_na=True):
             life = INS.b35(Ii("ZLIFE"), {})
             assert [x.state for x in life] == ["not_applicable", "not_applicable", "score", "not_applicable", "missing"]               # only #1, #2 and #4, only when they were missing
@@ -576,9 +577,32 @@ def test_the_basis_of_an_extracted_regulatory_ratio_is_read_from_its_words_only_
             return [None, None]
 
     note = "traditional U.S. insurance subsidiaries, calculated on a weighted average basis using the NAIC Company Action Level formula [AI extraction K5b]"
-    assert INS.resolve_latest(Ii(note), {})["reg_multiple"] is None                                                     # off: "regulatory basis not usable for a multiple", as before
+    with calibration.override(reg_basis_from_text=False):
+        assert INS.resolve_latest(Ii(note), {})["reg_multiple"] is None                                                 # off: "regulatory basis not usable for a multiple", as before
     with calibration.override(reg_basis_from_text=True):
         o = INS.resolve_latest(Ii(note), {})
         assert o["reg_basis"] == "CAL" and abs(o["reg_multiple"] - 4.4) < 1e-9
         assert INS.resolve_latest(Ii("RBC ratio as a percent of the authorized control level [AI extraction K5b]"), {})["reg_multiple"] == 2.2          # ACL: 200% = the company action level
         assert INS.resolve_latest(Ii("no basis words at all"), {})["reg_multiple"] is None
+
+
+def test_m10_a_suspect_row_is_closed_when_the_figure_is_not_held_back_any_more_or_is_entered_by_hand():
+    c = FakeClient()
+    c.tables["companies"] = [{"id": 1, "symbol": "X", "exchange": "US", "profile": "STANDARD"}]
+    c.tables["dictionary_items"] = [{"id": 1, "item_key": "revenue"}, {"id": 2, "item_key": "total_assets"}]
+    held = ("suspect_magnitude", "held", 2023, "revenue", "50,000,000 against 5,000 and 6,000")
+    GR.record_suspects(c, 1, [held, ("suspect_magnitude", "held", 2022, "total_assets", "x")])
+    rows = lambda: {r["item_key"]: r["state"] for r in c.tables["data_gap_review"] if r["family"] == "suspect_data"}   # noqa: E731
+    assert rows() == {"SUSPECT revenue FY2023": "open", "SUSPECT total_assets FY2022": "open"}
+    # (1) a later load: revenue FY2023 is still held back, total_assets FY2022 is not any more (the pipeline was fixed) -> only that row closes
+    assert GR.close_suspects(c, 1, {("revenue", 2023)}) == 1
+    assert rows() == {"SUSPECT revenue FY2023": "open", "SUSPECT total_assets FY2022": "fixed"}
+    assert next(r for r in c.tables["data_gap_review"] if r["item_key"] == "SUSPECT total_assets FY2022")["closed_at"]
+    assert GR.close_suspects(c, 1, {("revenue", 2023)}) == 0                                                      # nothing more to close
+    # (2) gaps fill / refresh: a held figure is never stored, so a stored one was entered by hand -> the row closes
+    assert GR.close_suspects(c, 1) == 0
+    c.tables["financial_facts"] = [{"company_id": 1, "fiscal_year": 2023, "item_id": 1, "value": 5500.0}]
+    assert GR.close_suspects(c, 1) == 1 and rows()["SUSPECT revenue FY2023"] == "fixed"
+    GR.record_suspects(c, 1, [held])                                                                              # held again by a later load: the row opens again
+    assert rows()["SUSPECT revenue FY2023"] == "open"
+

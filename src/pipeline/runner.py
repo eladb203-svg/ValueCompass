@@ -253,6 +253,7 @@ class Pipeline:
             try:
                 from src.ai import gap_review as GR
                 GR.record_suspects(self.client, cid, res.dq)                  # a figure held back by a control is wrong for the administrator, missing for the user
+                GR.close_suspects(self.client, cid, {(r[3], r[2]) for r in res.dq if str(r[0]).startswith("suspect") and r[1] == "held"})       # M10: a figure no longer held back closes its row
             except Exception as e:   # noqa: BLE001
                 res.warnings.append(f"data_gap_review: suspects not recorded ({type(e).__name__}: {e})")
             if raw.get("wide_conflicts"):                # K6d-2 fixes: two candidates of the wide XBRL search that disagree leave the year missing and go to the review list

@@ -1,3 +1,4 @@
+# 2026-11-04 owner decision: life_dominant_na and reg_basis_from_text are ON; growth_window_10y stays OFF.
 # Calibration parameters (K6d-2, stage "calibration after the gate", 2026-11-03). Every parameter is OFF by default; an owner decision turns it on. Nothing here is part of the rulebook.
 # The value can be overridden for a measurement by the environment variable VC_CAL_<NAME> (1 / 0) - the measurement scripts use it, a deployment does not.
 
@@ -7,9 +8,9 @@ growth_window_10y: false
 
 # Insurers: the regulatory capital ratio extracted by the AI carries its basis in words ("... calculated using the NAIC Company Action Level formula"), not in the tag of the hand-made table; with the
 # parameter on the words give the basis (CAL / ACL / SCR / SMR) and the ratio becomes usable for Buffett 3.6.1 and Graham 3.2.1 (UNM: 440% of the company action level = 4.4x).
-reg_basis_from_text: false
+reg_basis_from_text: true
 
 # Insurers whose business is mainly life, savings and annuities report no loss ratio or combined ratio: the cost-of-float items (Buffett 3.5 #1, #2, #4) are "not applicable" instead of "missing".
 # Definition (measurable): the share of the premiums that is long-duration life and health premiums (or: the report has no loss and loss-adjustment-expense line) is more than 50% of the total premiums.
-life_dominant_na: false
+life_dominant_na: true
 life_dominant_share: 0.5
