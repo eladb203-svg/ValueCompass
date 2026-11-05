@@ -301,3 +301,56 @@ Findings:
 | CI | STANDARD | b | 71.7 -> 75.9 | +4.2 | 3.8.2 +3.0, 3.8.3 +0.3 | Express Scripts acquisition (Dec 2018): revenue 48.7bn -> 153.6bn in one year; 10y revenue CAGR 27.6% is M&A, not organic. 5y window (FY21+) excludes it. |
 | CNC | STANDARD | b | 49.6 -> 53.5 | +3.8 | 3.8.3 +3.0 | Health Net (2016) and WellCare (Jan 2020) acquisitions; revenue 60bn->111bn. FY25 EPS -13.5 is a one-off loss year in the 5y end. |
 | MOH | STANDARD | b | 84.4 -> 89.1 | +4.7 | 3.8.2 +1.27, 3.8.3 +2.38 | Acquisitions: Magellan Complete Care (2022), ConnectiCare (2022); revenue 17.8->45bn. FY25 FCF/EPS fall is a one-off year. EPS 10y 52.9% is from a near-zero FY17-18 base. |
+
+
+---
+
+# Part 3 - owner decisions of 2026-11-05
+
+Test database only; no model calls in this part; no parameter was changed (`growth_window_10y` stays off); the REIT skill version was not changed. Scripts: `cal_break_rule.py`, `cal_mac_items.py`, `cal_pending44.py`; data in `scripts/state/`.
+
+## 3.1 `growth_window_10y` with a material-change exception - measured, NOT enabled
+Rule as decided: a year is a break when business-acquisition payments (`PaymentsToAcquireBusinesses...`) plus shares issued for acquisitions (`StockIssuedDuringPeriodValueAcquisitions`) exceed 25% of total assets, or discontinued-operations revenue (`DisposalGroupIncludingDiscontinuedOperationRevenue`) exceeds 25% of revenue. Measured on the cached SEC company facts (10-K values, FY2016 on) of all 122 US companies in the test database; the wider `BusinessCombinationConsiderationTransferred1` was tried as well.
+
+| Result | Companies |
+|---|---|
+| Class (b) caught (10 companies) | **CI** (2018, 32.4%), **DLR** (2017, 27.7% - a different deal from the 2020 one I named) = 2 of 10 |
+| Class (b) missed | CNC 22.7%, MOH 7.9%, TFC 5.8%, ONB 5.2%, FHN 5.2%, RNR 5.0%, EXR 1.6%, AIG 1.2% = 8 of 10 |
+| Class (a) caught | **ADI** (2017, 45.6%) and **AMT** (2021, 27.6%). Both are real large acquisitions (Linear Technology; CoreSite and Telxius), so they were probably mis-classified by me as (a) rather than wrongly caught - but by the rule as written they are catches of (a) companies |
+| Other companies caught (not in the 44) | ADBE 2018, AVGO 2024, CRM 2019 and 2021, EQIX 2016, GIS 2018, HRL 2021, INTU 2021 and 2022, KLAC 2019, O 2021, PANW 2026 (real deals) |
+| Discontinued-operations test | 0 hits in all 122 companies (the revenue tag is almost never reported; AIG's Corebridge deconsolidation does not appear as a discontinued operation in XBRL) |
+
+Why it does not fit: share-exchange bank and insurer mergers are 5-6% of total assets (TFC, ONB, FHN, RNR) and CNC is 22.7%, below 25%. Lowering the bar does not help, because the (a) companies reach 8-22% on ordinary acquisitions (SJM 21.6%, HD 18.4%, PSA 11.0%, NUE 10.9%, EPR 10.6%, UNH 8.7%, VTR 6.2%). **No single threshold on this evidence separates (b) from (a).** Per the decision ("if there are wrong catches, report and do not enable") the parameter stays off and no rescoring was done. Two possible next steps for the owner: (1) a threshold relative to equity or revenue instead of assets; (2) a manual list of material events per company (as the first report classified them), which is not XBRL based.
+
+## 3.2 REIT wording - the 63 answers of 2 checked: NOT adopted
+Each answer of 2 was graded against its quote (no model calls). Yes = the quote shows the fact the level asks for; partial = on topic but single-year, qualitative, a definition, or only part of the level; no = the quote does not support 2 or points the other way. Quotes that were not found verbatim are not in this list (those answers became "insufficient evidence").
+
+| Yes | Partial | No | Total |
+|---|---|---|---|
+| 35 (56%) | 22 (35%) | 6 (10%) | 63 |
+
+The six "no": ARE 3.8.6 (same-property NOI -3.5% GAAP basis, +0.9% cash - not growth); DLR 3.2.4 (the quote is about how square footage is computed); EPR 3.8.6 (strategy statements, no growth figure); EXR 3.8.6 (same-store rental revenue +0.1%); **MAC 3.2.5** (the quote is the generic "Regional Retail Centers have generally provided owners with relatively stable income"; the occupancy figures in the reasoning are not quoted); PSA 3.8.6 (the quoted growth is from acquired and newly developed facilities, which the level excludes).
+Typical "partial": 3.7.5 answers whose quote is a definition or disclaimer (BXP, HPP, HST, OHI, EXR), and 3.2.4/3.2.5 answers with a single-date occupancy (EPR, EXR, DLR, EQIX). In 3.7.5 the "no restatements / no disputes" part can only be shown by absence, and no quote covers it. EPR's 3.7.5 is level 2 although the company's own objective, quoted in its 3.8.6, is to grow FFOAA/AFFO, which is the heavy-reliance wording of level 1.
+Criterion: at least 90% yes and no "no". Result: 56% yes and six "no". **Not adopted; the previous version stays active; no rescoring.** The grading is mine and strict; the full list with quotes is `scripts/state/cal_reit_score.txt`, so each grade can be audited.
+
+## 3.3 Why MAC scores 78.0 (75.7 with the new wording), coverage 71%
+`scripts/cal_mac_items.py` lists every Buffett quality item of MAC against the mean of the 24 strong REITs (`scripts/state/cal_mac_items.json`). MAC 78.0, coverage 71%; strong REITs 76.3, coverage 86%.
+What raises it (points, MAC against strong mean): growth block 3.8.1 3.0 (2.5), 3.8.2 2.5 (1.4), 3.8.3 2.5 (1.5), 3.8.5 2.0 (1.1); 3.1.1-3.1.5 all 2 (the same for every REIT); 3.2.4 = 2 (1.9); 3.3.1-3.3.4 full or near full. The AI answers are not the reason: removing the unsupported 2 of 3.2.5 would change one point only.
+What is missing (state `missing`: it neither helps nor hurts, it only lowers coverage): **3.6.1 net debt / EBITDAre, 3.6.2 fixed-charge coverage, 3.8.4 growth without excessive debt**, also 3.6.3 economic LTV, 3.4.1-3.4.3 and 3.7.4. The first three exist for 21 of 24 strong REITs and are missing only for MAC, BDN and HPP. They are exactly the leverage tests where a heavily indebted REIT loses points (strong mean 3.4, 3.4 and 1.6).
+Cause (verified): for MAC the financial facts have no `interest_expense` and no depreciation line (`re_depreciation`) for FY2025. The SEC company facts of MAC contain no 10-K value of `InterestExpense` / `InterestExpenseOther` for the year (`InterestCostsCapitalized` and `DepreciationDepletionAndAmortization` exist), and the provider's tag list finds nothing, so EBITDAre cannot be computed. It is a data-tag gap, not a scoring rule.
+Visible weaknesses: 3.2.2a 0.0 (strong 0.44), 3.7.2 dilution 0.0 (0.84), 3.5.1 owner-earnings-per-share growth 1.6 (4.7). They are outweighed by the growth block and by the unscored leverage block.
+Consequence: MAC's 78 is a score on 71% of the criteria without its leverage block; it should not be read as "strong". Options (not done): (a) a rule that a REIT without 3.6.1 and 3.6.2 gets no overall grade (the coverage-under-80% review rule proposed in 1d); (b) fill the gap with an extraction item for interest expense (MAC probably reports it under a company-specific tag), subject to the usual approval.
+
+## 3.4 The 44 companies with `ai_pending` - causes by group
+All 44 have **no row at all in `ai_assessments`** and **no `ai_assess` task** in the queue; all were created on 2026-10-25 (the K5 batch), which created the facts and scores but never queued the AI questions. It is not a missing approval rule. Groups (`scripts/cal_pending44.py`):
+
+| Group | Companies | Count |
+|---|---|---|
+| BANK | BAC C WFC USB PNC TFC MTB KEY FLG GS | 10 |
+| INSURANCE | TRV WRB RNR MET PRU AFL AIG HIG; ALL CINF (also pending extraction rows) | 8 + 2 |
+| STANDARD | MCD HD NUE DOW KHC UNH ELV CI HUM CNC MOH | 11 |
+| TECH_ASSET_LIGHT | ORCL AVGO CRM ADBE INTU | 5 |
+| INCOME_REAL_ESTATE | SPG FRT ARE; PLD BXP EQR PSA EQIX (also pending extraction rows) | 3 + 5 |
+
+The pending extraction rows (REIT and insurer FFO/NAV items) are a separate matter: they wait for the existing approval rules and do not block the AI questions.
+How to close (nothing was queued or approved): enqueue `ai_assess` for the 44 at low priority, one task per company from the list above, about 20 calls per company, about 900 attempts, so two to three days under the shared 450/day cap. The answers then go through the existing approval rules, and an answer that no rule approves waits for manual approval as for the other companies. No answer is approved without an existing rule.
