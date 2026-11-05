@@ -42,7 +42,8 @@ RE_FIELDS: dict = {
     "net_income": ("flow", "USD", ["NetIncomeLoss", "NetIncomeLossAvailableToCommonStockholdersBasic", "ProfitLoss"]),
     "pref_div": ("flow", "USD", ["PreferredStockDividendsIncomeStatementImpact", "DividendsPreferredStock", "DividendsPreferredStockCash",
                                  "PreferredStockDividendsAndOtherAdjustments"]),
-    "interest_expense": ("flow", "USD", ["InterestExpense", "InterestExpenseDebt", "InterestExpenseNonoperating", "InterestExpenseOperating", "InterestExpenseBorrowings"]),
+    "interest_expense": ("flow", "USD", ["InterestExpense", "InterestExpenseDebt", "InterestExpenseNonoperating", "InterestExpenseOperating", "InterestExpenseBorrowings",
+                                                       "InterestExpenseOther", "InterestAndDebtExpense", "InterestExpenseLongTermDebt"]),
     "interest_capitalized": ("flow", "USD", ["InterestCostsCapitalized", "InterestPaidCapitalized", "InterestCostsCapitalizedAdjustment"]),
     "income_tax": ("flow", "USD", ["IncomeTaxExpenseBenefit"]),
     "da_total": ("flow", "USD", ["DepreciationAndAmortization", "DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet", "Depreciation",
@@ -289,6 +290,34 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
                 log["gains_sale"][lab] = {"tag": fact.tag, "value": fact.val, "filed": str(fact.filed)}
         if got:
             problems.append(f"gains_sale: company-extension element {names[:2]} used in {len(got)} years (found in the inline XBRL)")
+    # Calibration (owner decision 2026-11-05): a company that tags only the NET interest line (MAC from FY2023: InterestIncomeExpenseNet, negative = expense) - the sign-flipped net line stands in, flagged
+    if any(v is None and f["net_income"][i] is not None for i, v in enumerate(f["interest_expense"])):
+        net_ser = annual_series(facts, "InterestIncomeExpenseNet", "USD", "flow")
+        used = []
+        for i, (end, lab) in enumerate(zip(ends, labels)):
+            fact = _match(net_ser, end)
+            if f["interest_expense"][i] is None and fact is not None and fact.val < 0:
+                f["interest_expense"][i] = -fact.val
+                log["interest_expense"][lab] = {"tag": "DERIVED: -InterestIncomeExpenseNet (net interest line; no gross interest expense is tagged this year)", "value": -fact.val, "filed": str(fact.filed)}
+                used.append(lab)
+        if used:
+            problems.append("interest_expense: only the net interest line is tagged, used (sign reversed) in " + ", ".join(used))
+    # Calibration (owner decision 2026-11-05): interest expense in a company-extension element (MAC reports it only in its own namespace) - found in the inline XBRL of the 10-K, as for the gains on sale
+    if any(v is None and f["net_income"][i] is not None for i, v in enumerate(f["interest_expense"])):
+        miss_ends = [e for e, v in zip(ends, f["interest_expense"]) if v is None]
+        try:
+            names = ix.discover_extension_elements(sec, cik, r"^Interest(Expense|AndDebtExpense|AndOtherDebtExpense)(?!.*(Income|Receivable|Capitaliz|Paid|Accrued|Payable|Rate|Swap|Hedg|Gain|Loss|Lease|Deferred|Amortiz))")
+            got = ix.extension_series(sec, cik, names, "flow", miss_ends) if names else {}
+        except Exception as exc:  # noqa: BLE001
+            got, names = {}, []
+            problems.append(f"interest_expense: extension element search failed ({type(exc).__name__}: {exc})")
+        for i, (end, lab) in enumerate(zip(ends, labels)):
+            fact = got.get(end)
+            if fact is not None and f["interest_expense"][i] is None:
+                f["interest_expense"][i] = fact.val
+                log["interest_expense"][lab] = {"tag": fact.tag, "value": fact.val, "filed": str(fact.filed)}
+        if got:
+            problems.append(f"interest_expense: company-extension element {names[:2]} used in {len(got)} years (found in the inline XBRL)")
     if ticker not in NOI_COMPONENTS:                # the hand-made set keeps its rental line as it was prepared
         for i, lab in enumerate(labels):
             fin = f["_financing_lease_income"][i]

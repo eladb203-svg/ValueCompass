@@ -47,7 +47,8 @@ FAMILIES = (
 CORE_KEYS = {"general": ("revenue", "net_income", "eps_diluted", "equity", "cfo", "capex", "shares_diluted_weighted"),
              "bank": ("net_income", "equity", "loans", "deposits", "eps_diluted"),
              "insurance": ("premiums_earned", "net_income", "equity", "eps_diluted"),
-             "realestate": ("revenue", "net_income", "eps_diluted", "total_assets")}          # the REIT dictionary has no equity item (NOI and FFO are computed by the engine from these and the property lines)
+             "realestate": ("revenue", "net_income", "eps_diluted", "total_assets",
+                             "interest_expense", "da", "financial_debt", "cash")}          # the REIT dictionary has no equity item (NOI and FFO are computed by the engine from these and the property lines); decision 2026-11-05: the leverage components (interest, D&A -> EBITDAre; debt and cash -> net debt) are core, without them 3.6.1 / 3.6.2 / 3.8.4 are silently missing (MAC)
 ENGINE_OF_PROFILE = {"BANK": "bank", "INSURANCE": "insurance", "INCOME_REAL_ESTATE": "realestate"}
 
 

@@ -354,3 +354,62 @@ All 44 have **no row at all in `ai_assessments`** and **no `ai_assess` task** in
 
 The pending extraction rows (REIT and insurer FFO/NAV items) are a separate matter: they wait for the existing approval rules and do not block the AI questions.
 How to close (nothing was queued or approved): enqueue `ai_assess` for the 44 at low priority, one task per company from the list above, about 20 calls per company, about 900 attempts, so two to three days under the shared 450/day cap. The answers then go through the existing approval rules, and an answer that no rule approves waits for manual approval as for the other companies. No answer is approved without an existing rule.
+
+
+---
+
+# Part 4 - owner decisions of 2026-11-05 (second set)
+
+Test database only. No model calls. Scripts: `cal_break_equity.py`, `cal_reit_old.py`, `cal_interest_tags.py`, `cal_reload3.py`, `cal_enqueue_reits.py`. Tests: 1003 passed.
+
+## 4.1 Growth exception - acquisitions over opening equity: measured, NOT enabled
+Measure: (cash paid for businesses + shares issued for acquisitions) in a fiscal year divided by `StockholdersEquity` at the previous fiscal year end; the highest year since FY2016 per company (`scripts/state/cal_break_equity.json`).
+
+| Class (b), 10 companies | max ratio (year) | Class (a), highest of 34 | max ratio (year) |
+|---|---|---|---|
+| CI | 362% (2018) | HD | 1690% (2025) |
+| CNC | 144% (2016) | KHC | 735% (2016) |
+| DLR | 116% (2017) | AMT | 472% (2021) |
+| FHN | 89% (2017) | ADI | 187% (2017) |
+| ONB | 81% (2022) | SJM | 60% (2024) |
+| RNR | 46% (2023) | WAL | 30% (2021) |
+| MOH | 38% (2020) | NUE | 25% (2022) |
+| AIG | 9% (2018) | BOKF | 25% (2018) |
+| EXR | 6% (2022) | PSA | 22% (2023) |
+| TFC | n/a (no equity or deal data in the cached facts) | 24 others | below 16%, 9 without data |
+
+Threshold scan (b caught of 10 / a caught of 34): 10%: 7 / 12; 20%: 7 / 9; 25%: 7 / 8; 30%: 7 / 6; 40%: 6 / 5; 50%: 5 / 5.
+Reading: **no threshold separates the classes as labelled.** The equity measure catches 7 of 10 (b) companies at 25% (assets: 2 of 10), but it also catches (a) companies at every level. The five (a) companies above 40% (HD, KHC, AMT, ADI, SJM) are all large real acquisitions (SRS Distribution, Heinz, CoreSite/Telxius, Linear Technology, Hostess), so the labels, not the measure, are the likely problem (ADI and AMT were already caught by the assets test; HD and SJM sit just under its 25% bar). If those five were class (b), a 25-40% threshold would catch 11-12 of 15 (b) and leave only WAL, NUE, BOKF, PSA (small deals) among (a). The still missing (b) companies are AIG (deconsolidation, not an acquisition), EXR (the Life Storage deal is not in the stock-issued tag) and TFC (no data). A break in the last four years also leaves fewer than five years after it, so the 5-year window would apply anyway (HD 2025). Not enabled; the decision on re-labelling those five companies is the owner's.
+
+## 4.2 REIT answers of 2 - old wording graded the same way, against the new wording
+The 55 answers of 2 that the stored (old wording) answers give for the same 15 REITs (AMT AVB BDN DHC DLR EPR EXR HST KIM MAA MAC O OHI REXR SLG), graded by the same method as in 3.2 (yes / partial / no against the quote; the full list with the quotes is `scripts/state/cal_reit_old.txt`). All quotes were found verbatim in the reports.
+
+| | Answers of 2 | Yes | Partial | No |
+|---|---|---|---|---|
+| Old wording | 55 | 4 (7%) | 10 (18%) | 41 (75%) |
+| New wording (same 15 REITs) | 40 | 23 (58%) | 13 (32%) | 4 (10%) |
+
+By question (yes / partial / no): old 3.2.4 2/3/9, 3.2.5 0/5/8, 3.7.5 0/0/15, 3.8.6 2/2/9; new 3.2.4 9/3/1, 3.2.5 2/3/1, 3.7.5 8/4/0, 3.8.6 4/3/2.
+Why the old answers fail: for 3.7.5 all 15 rest on the sentence that disclosure controls and internal control are effective (the quote the new wording forbids); for 3.2.4 and 3.2.5 most rest on size ("largest", "leading", counts of properties); for 3.8.6 most rest on strategy statements and beliefs, not on a growth figure. The new wording removes 15 of the 55 answers of 2 (they become 1 or "insufficient evidence"), and the answers that stay are mostly backed by a figure. The new wording is clearly better than the old one on this measure, but it is still below the rule set on 5 November (at least 90% yes and no "no": 58% and four "no" on these 15, 56% and six "no" on all 63), so **it stays not adopted** and the previous version stays active. The four "no" on the 15: DLR 3.2.4, EPR 3.8.6, EXR 3.8.6, MAC 3.2.5.
+
+## 4.3 Interest expense search and the REIT leverage components
+Provider (`src/providers/realestate_facts.py`):
+- the tag chain of `interest_expense` now also tries `InterestExpenseOther`, `InterestAndDebtExpense` and `InterestExpenseLongTermDebt`;
+- when a year is still missing, the sign-reversed net line `InterestIncomeExpenseNet` stands in (a negative net line = expense), written to the tag log as DERIVED and listed in the company problems;
+- then a search of the company-extension elements in the inline XBRL (as for gains on sale; it found nothing for MAC, BDN or HPP).
+Wide search of every namespace in the cached facts for the three companies: MAC has no gross `InterestExpense` after FY2022 (FY2017-FY2022 yes) but tags `InterestIncomeExpenseNet` for FY2021-FY2025 with the same values as `InterestExpense` in the years both exist; BDN tags `InterestExpenseOther` (not on the old list); HPP tags `InterestExpenseNonoperating` (already found). `InterestCostsIncurred` (HPP) was not used: it includes the capitalized interest.
+
+Before / after, the three stage companies reloaded in the test database (`repair`, no model calls):
+
+| | Interest FY2025 before -> after | Buffett quality before | after | Coverage | 3.6.1 / 3.6.2 / 3.8.4 after (points) |
+|---|---|---|---|---|---|
+| MAC | none -> 283.5M (net line) | 78.0 | **75.0** | 71% -> 81% | 2.31 / 1.76 / 2.0 |
+| BDN | none -> 135.0M (`InterestExpenseOther`) | 48.9 | **42.8** | 71% -> 81% | 0 / 0 / 0 |
+| HPP | 172.2M (unchanged) | none | none | 56% | 3.6.1 and 3.8.4 still missing: the debt total (`LongTermDebt` and the generic parts) is not found, 3.6.2 = 0 |
+
+MAC now sits 1.3 below the strong REIT mean (76.3, which was measured before the change) instead of 1.7 above it, and BDN drops 6 points: the leverage block was what hid both. HPP is blocked by the missing debt total, not by interest; that is a separate gap (not changed). The other REITs were not reloaded, so their data and scores are as before; the new tags will apply to them at their next reload (`InterestExpenseOther` may change some).
+
+Core data (`src/ai/gap_review.py`): the REIT `CORE_KEYS` now include `interest_expense`, `da`, `financial_debt` and `cash`. A REIT missing any of them gets a `core_missing` row at priority 1 with the alert to the administrator at its next gap refresh. Tests: a REIT without interest expense is a core gap; the provider keeps the new tags and the net-line fallback.
+
+## 4.4 `ai_assess` for the 8 REITs
+Queued at the lowest priority (`bulk`, 4), one task per company, only for the eight REITs among the 44 K5 companies; no other company, nothing run. Task ids 1118-1125: SPG 11 skills, FRT 11, ARE 11, PLD 11, BXP 11, EQR 11, PSA 12, EQIX 12 (FY2025), about 90 questions in all. They run when the queue runner is started (one model-calling process, the shared 450/day cap, the stage cap not touched here); the answers go through the existing approval rules, with no automatic approval. The remaining 36 companies are not queued.

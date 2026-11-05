@@ -606,3 +606,21 @@ def test_m10_a_suspect_row_is_closed_when_the_figure_is_not_held_back_any_more_o
     GR.record_suspects(c, 1, [held])                                                                              # held again by a later load: the row opens again
     assert rows()["SUSPECT revenue FY2023"] == "open"
 
+
+
+def test_a_reit_without_interest_expense_is_a_core_gap_because_ebitdare_and_the_leverage_items_depend_on_it():
+    c = FakeClient()
+    keys = ["revenue", "net_income", "eps_diluted", "total_assets", "da", "financial_debt", "cash"]                # everything but interest_expense
+    c.tables["companies"] = [{"id": 1, "symbol": "MAC", "exchange": "US", "profile": "INCOME_REAL_ESTATE"}]
+    c.tables["dictionary_items"] = [{"id": i, "item_key": k} for i, k in enumerate(keys + ["interest_expense"], 1)]
+    c.tables["financial_facts"] = [{"company_id": 1, "fiscal_year": 2025, "item_id": i} for i in range(1, len(keys) + 1)]
+    assert GR.core_missing(c, 1, "INCOME_REAL_ESTATE") == [("interest_expense", 2025)]
+
+
+def test_net_interest_line_stands_in_for_a_missing_gross_interest_expense_with_the_sign_reversed():
+    import json
+    from pathlib import Path
+    from src.providers import realestate_facts as R
+    assert "InterestExpenseOther" in R.RE_FIELDS["interest_expense"][2] and "InterestAndDebtExpense" in R.RE_FIELDS["interest_expense"][2]
+    src = Path(R.__file__).read_text(encoding="utf-8")
+    assert "InterestIncomeExpenseNet" in src and "-fact.val" in src                                                  # the net-line fallback (MAC FY2023-FY2025) exists in the provider
