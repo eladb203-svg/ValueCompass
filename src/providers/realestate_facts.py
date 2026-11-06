@@ -388,6 +388,20 @@ def build_realestate_series(sec: SecClient, ticker: str, splits: list, n_years: 
                     f["debt_total"][i] = sum(v for _, v in parts)
                     log["debt_total"][lab] = {"tag": "SUM: " + " + ".join(t for t, _ in parts), "value": f["debt_total"][i]}
     fill_generic_debt()
+    if ticker not in DEBT_PARTS and any(v is None for v in f["debt_total"]):             # owner decision 2026-11-05: debt reported only by debt type (HPP) - the total member of the type axis
+        miss_ends = [e for e, v in zip(ends, f["debt_total"]) if v is None]
+        try:
+            got_t = ix.type_axis_total_series(sec, cik, "LongTermDebt", miss_ends)
+        except Exception as exc:  # noqa: BLE001
+            got_t = {}
+            problems.append(f"debt_total: debt-type-axis search failed ({type(exc).__name__}: {exc})")
+        for i, (end, lab) in enumerate(zip(ends, labels)):
+            fact = got_t.get(end)
+            if fact is not None and f["debt_total"][i] is None:
+                f["debt_total"][i] = fact.val
+                log["debt_total"][lab] = {"tag": fact.tag, "value": fact.val, "filed": str(fact.filed)}
+        if got_t:
+            problems.append(f"debt_total: only reported by debt type, the total member used in {len(got_t)} year(s) (inline XBRL)")
     # plausibility of the total debt: a year whose tagged total implies an interest rate above 9% is a component, not the total -> missing (flagged)
     bad = []
     for i, lab in enumerate(labels):

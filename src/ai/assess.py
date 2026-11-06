@@ -46,9 +46,11 @@ def _row(co: Company, skill: dict, model: str) -> dict:
             "accession": co.filing.accession, "model": model, "approval_status": "approved"}
 
 
-def prompt_version_of(skill: dict, variant: str = "3.1") -> str:
-    """The stored prompt version: the skill version, plus `.1` for the candidate template with `facts_check` (K5a-3)."""
-    return str(skill["version"]) + (".1" if variant == "3.1" else "")
+def prompt_version_of(skill: dict, variant: str = "3.1", profile: str = None) -> str:
+    """The stored prompt version: the skill version, plus `.1` for the candidate template with `facts_check` (K5a-3). A skill may carry ``profile_versions`` ({profile: version}): the profile's own version
+    replaces the skill version for that profile only (owner decision 2026-11-05: the reworded REIT levels, profile INCOME_REAL_ESTATE), so the answers of the other profiles stay valid and are not asked again."""
+    version = (skill.get("profile_versions") or {}).get(profile) or skill["version"]
+    return str(version) + (".1" if variant == "3.1" else "")
 
 
 def stale_insufficient(row: dict, co: Company, skill: dict) -> bool:
@@ -68,7 +70,7 @@ def stale_insufficient(row: dict, co: Company, skill: dict) -> bool:
 def ask(co: Company, skill: dict, client, store: AssessmentStore, stats: Stats, force: bool = False, variant: str = "3.1", thinking_budget=None, extra_note: str = "") -> dict:
     """One skill for one company-year. Returns the stored row. An existing row (same company, year, question, prompt version) is returned without a call unless ``force``."""
     model = client.model if client is not None else ""
-    pv = prompt_version_of(skill, variant)
+    pv = prompt_version_of(skill, variant, co.profile)
     ex = None if force else store.get(co.ticker, co.fiscal_year, skill["skill_id"], pv)
     if ex is not None and stale_insufficient(ex, co, skill):
         ex = None                                                  # K6d-2 fixes: "insufficient evidence" because sections were missing, and they are found now (a companion document was downloaded): asked again

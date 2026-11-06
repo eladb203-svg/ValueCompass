@@ -531,11 +531,12 @@ def test_growth_over_ten_years_uses_three_year_averages_at_the_ends_and_the_para
     assert M.growth10([None, None, None, 5, 6, 7, 8, 9, 10, 11])["window_years"] == 7 and M.growth10([None] * 6 + [1, 2, 3, 4])["kind"] == "insufficient"       # at least 5 years
     assert M.growth10([1, 2, None, 4, 5, 6, 7, 8, 9, 10])["kind"] == "insufficient" or True
     assert M.growth10([1, 2, 3, 4, 5, 6, 7, 8, 9, -10])["kind"] in ("growth", "negative_end")
-    assert calibration.flag("growth_window_10y") is False        # still off; life_dominant_na and reg_basis_from_text were switched on by the owner on 2026-11-04
+    assert calibration.flag("growth_window_10y") is True         # switched on by the owner on 2026-11-05 (with the acquisition break)
     window5 = [100, 100, None, 120, 130]
-    assert M.smoothed_growth_w(window5, full) == M.smoothed_growth(window5)             # off: the 5-year window of R14, as before
+    with calibration.override(growth_window_10y=False):
+        assert M.smoothed_growth_w(window5, full) == M.smoothed_growth(window5)         # off: the 5-year window of R14, as before
+    assert M.smoothed_growth_w(window5, full)["window_years"] == 10
     with calibration.override(growth_window_10y=True):
-        assert M.smoothed_growth_w(window5, full)["window_years"] == 10
         assert M.smoothed_growth_w([1, 2, 3, 4, None], [None] * 8 + [1, 2])["kind"] == "insufficient"          # a short history falls back to R14 (here: also insufficient)
 
 

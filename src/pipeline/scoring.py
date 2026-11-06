@@ -178,8 +178,11 @@ def score_company(ticker: str, profile: str, sink, ai_store, item_store, results
         auto = derive_auto(engine, ticker, item_store)
         if auto is not None:
             AUTO[ticker] = auto
+        from src.scoring import breaks as BRK, calibration as CAL
+        ya = BRK.years_after_break(ticker, float(CAL.value("growth_break_equity_pct", 0.40))) if CAL.flag("growth_window_10y") else None
         try:
-            log = run_runner(engine, ticker, tmp / "raw")
+            with BRK.scoring_window(ya):
+                log = run_runner(engine, ticker, tmp / "raw")
         finally:
             AUTO.pop(ticker, None)
         _paths()

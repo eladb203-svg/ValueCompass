@@ -117,6 +117,10 @@ def growth10(full: Sequence[Num], max_years: int = 10, min_years: int = 5) -> di
     LAST 3 (t-9..t-7 against t-2..t for 10 years; the periods are the distance between the two middles = window length - 3). The window starts at the first year with a value; the ends need all 3 values.
     Same kinds as ``smoothed_growth``; ``insufficient`` when the history is shorter than ``min_years`` or an end is incomplete."""
     v = list(full)[-max_years:]
+    from . import breaks
+    ya = breaks.years_after()                                    # material-change exception: only the years after the break year (fewer than min_years -> insufficient -> the 5-year window)
+    if ya is not None and ya < len(v):
+        v = v[-ya:] if ya > 0 else []
     i = next((k for k, x in enumerate(v) if x is not None), None)
     w = [] if i is None else v[i:]
     if len(w) < min_years or any(x is None for x in w[:3]) or any(x is None for x in w[-3:]):

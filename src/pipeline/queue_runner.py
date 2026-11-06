@@ -526,6 +526,19 @@ class QueueRunner:
                     if i["state"] == "ai_pending":
                         want.add(PENDING_TO_SKILL[(kind, c["id"], i["id"])])
         have = {r["question_id"] for r in self.ai_store.rows(ticker) if r["fiscal_year"] == fy}
+        profile = res.get("profile")
+        if profile:                                    # a skill with its own version for the profile (REIT wording, 2026-11-05): only an answer of THAT version counts, an older answer is asked again
+            from src.ai.assess import prompt_version_of
+            from src.ai.prompt import scoring_skills
+            rows = [r for r in self.ai_store.rows(ticker) if r["fiscal_year"] == fy]
+            for q, sk in scoring_skills().items():
+                if (sk.get("profile_versions") or {}).get(profile):
+                    want.add(q)
+                    cur = prompt_version_of(sk, "3.1", profile)
+                    if any(r["question_id"] == q and str(r["prompt_version"]) == cur for r in rows):
+                        have.add(q)
+                    else:
+                        have.discard(q)
         return sorted(want - have)
 
     def missing_extraction(self, co: dict, res: dict, fy: int) -> list:

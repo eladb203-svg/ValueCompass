@@ -413,3 +413,59 @@ Core data (`src/ai/gap_review.py`): the REIT `CORE_KEYS` now include `interest_e
 
 ## 4.4 `ai_assess` for the 8 REITs
 Queued at the lowest priority (`bulk`, 4), one task per company, only for the eight REITs among the 44 K5 companies; no other company, nothing run. Task ids 1118-1125: SPG 11 skills, FRT 11, ARE 11, PLD 11, BXP 11, EQR 11, PSA 12, EQIX 12 (FY2025), about 90 questions in all. They run when the queue runner is started (one model-calling process, the shared 450/day cap, the stage cap not touched here); the answers go through the existing approval rules, with no automatic approval. The remaining 36 companies are not queued.
+
+
+---
+
+# Part 5 - owner decisions of 2026-11-05 (third set)
+
+Test database only. Model calls: 79 attempts in item 5 (cap 150), none elsewhere. Scripts: `cal_compare5.py`, `cal_rescore_all.py`, `cal_reit_adopt.py`, `cal_other_2s.py`, `cal_run8.py`; code: `src/scoring/breaks.py`, `src/providers/sec_ixbrl.py`. Data in `scripts/state/` (`cal5_*.json/txt`, `cal_other_2s.txt`, `cal_run8.log`).
+
+## 5.1 Growth: `growth_window_10y` ON with the acquisition exception
+Labels: HD, KHC, AMT, ADI, SJM re-labelled (b) in `scripts/cal_growth_table.py` (now 15 companies of class (b)).
+Rule (`src/scoring/breaks.py`, parameter `growth_break_equity_pct` = 0.40 in `config/calibration.yaml`): a fiscal year is a break when cash paid for businesses plus shares issued for acquisitions is at least 40% of the equity at the end of the previous fiscal year. Growth is then measured on the years after the break, at least 5; with fewer than 5 years after the break (or no data) the 5-year window of R14 applies. Revenue 3.3.3 falls back to the endpoint CAGR as before. `growth_window_10y: true` is in the yaml; the default-off assertion in `tests/test_k6d2_gaps_wide.py` was changed.
+Measured (flag off against on, in memory, no writes; `scripts/state/cal5_compare.txt`): 82 companies moved, 41 by more than 2 points. Mean change by profile: INSURANCE +1.01 (23 companies), STANDARD +1.35 (30), BANK +1.11 (22), TECH_ASSET_LIGHT +0.52 (17), INCOME_REAL_ESTATE -1.41 (27). REIT mean 74.3 -> 72.9; all others 76.6 -> 77.6.
+Written to the database: the 56 moved companies present in the score table were rescored with no model calls (the other 26 are not in the table). Buffett quality, before (flag off) -> now in the database, companies that moved by more than 2 points (34). REIT rows also contain the effect of the new REIT wording (5.2) and of the MAC/BDN interest fix (Part 4), so they are not growth alone:
+
+| Ticker | Profile | Before | Now | | Ticker | Profile | Before | Now |
+|---|---|---|---|---|---|---|---|---|
+| MAC | REIT | 75.0 | 63.8 | | RLI | INSURANCE | 87.6 | 91.4 |
+| PLD | REIT | 71.0 | 82.0 | | NKE | STANDARD | 80.7 | 84.4 |
+| SLG | REIT | 57.8 | 48.5 | | KR | STANDARD | 73.3 | 76.8 |
+| HST | REIT | 91.2 | 83.0 | | PG | STANDARD | 91.5 | 94.7 |
+| PSA | REIT | 76.7 | 84.8 | | EQR | REIT | 85.7 | 82.7 |
+| UBER | TECH | 69.8 | 61.8 | | WAL | BANK | 80.6 | 83.6 |
+| ORI | INSURANCE | 77.4 | 84.7 | | EPR | REIT | 82.0 | 79.1 |
+| BXP | REIT | 56.0 | 62.9 | | RF | BANK | 87.0 | 89.9 |
+| SPG | REIT | 70.6 | 77.4 | | LNC | INSURANCE | 52.6 | 49.8 |
+| BDN | REIT | 42.8 | 48.9 | | ADI | TECH | 78.2 | 81.0 |
+| PK | STANDARD | 46.0 | 40.0 | | DHC | REIT | 56.3 | 53.5 |
+| VTR | REIT | 89.0 | 83.0 | | TXN | TECH | 72.4 | 75.1 |
+| FRT | REIT | 78.7 | 84.2 | | TGT | STANDARD | 75.7 | 78.2 |
+| EXR | REIT | 70.1 | 75.4 | | BOKF | BANK | 81.8 | 84.2 |
+| OHI | REIT | 73.4 | 68.2 | | DLR | REIT | 88.5 | 86.1 |
+| SIGI | INSURANCE | 82.3 | 87.0 | | ZION | BANK | 79.7 | 81.8 |
+| ARE | REIT | 77.7 | 81.9 | | PGR | INSURANCE | 93.6 | 91.6 |
+
+The full list (82, with every item that moved and the Graham score, which does not change) is in `cal5_compare.txt`. Remaining misses of the rule: AIG (deconsolidation, not an acquisition), EXR (the Life Storage deal is not in the stock-issued tag), TFC (no equity or deal data in the cached facts). The break needs the SEC facts cache; a company without them uses the plain 10-year window.
+
+## 5.2 REIT wording: adopted for INCOME_REAL_ESTATE
+The new wording is a per-profile version of the four questions (3.2.4, 3.2.5, 3.7.5, 3.8.6): `profile_versions` in `src/ai/skills/scoring.yaml` ("2-reit.1"), stored with the prompt version; other profiles keep their version. `missing_assessments` always asks the REIT questions and counts them as answered only with a row of the current version, so a REIT without the new answers gets them at its next load. 88 collected answers were stored for 23 REITs (`cal_reit_adopt.py`). Buffett quality of the 15 REITs, before -> after the new wording only (coverage unchanged except where noted): AMT 76.2 -> 76.2, AVB 66.8 -> 65.5, BDN 42.8 -> 42.8, DHC 56.3 -> 56.1, DLR 88.5 -> 88.5, EPR 82.0 -> 82.0, EXR 70.1 -> 71.1, HST 91.2 -> 90.1, KIM 66.3 -> 65.2, MAA 73.0 -> 70.7, MAC 75.0 -> 73.0, O 88.6 -> 88.6, OHI 73.4 -> 71.1, REXR 85.8 -> 85.7 (coverage 0.96 -> 0.86), SLG 57.8 -> 57.8. Eight more (ARE BXP EQIX EQR FRT PLD PSA, HPP) only had four new answers at that point; their final answers came with item 5.
+
+## 5.3 The answers of 2 in the other profiles, graded (no model calls)
+Sample of 15 (`cal_other_2s.py`, quotes in `scripts/state/cal_other_2s.txt`): STANDARD/TECH AMAT HRL PEP ADI MSFT; BANK BOKF EWBC FITB JPM RF; INSURANCE ACGL CB LNC ORI RLI. Same method as for the REITs (yes / partial / no against the quote). Two quotes were not found verbatim and are left out. Totals over the 54 graded answers of 2: **1 yes, 13 partial, 40 no**.
+
+| Question | Yes | Partial | No |
+|---|---|---|---|
+| 3.2.4 | 1 | 4 | 7 |
+| 3.2.5 | 0 | 5 | 7 |
+| **3.7.5** | **0** | **0** | **15** |
+| 3.8.6 | 0 | 4 | 11 |
+
+3.7.5: all 15 rest on the sentence that disclosure controls and internal control over reporting are effective, the same quote that failed for the REITs. 3.2.4 and 3.2.5: size and market position ("leader", "largest", counts of locations), not the durability the level asks for. 3.8.6: strategy statements and beliefs, not a growth figure. **The weakness found for the REITs is present, to the same degree, in the existing wording for every other profile.** Not changed: whether to give the other profiles their own wording (as for the REITs) is the owner's decision. Every other profile has 3.7.5 at level 2 on this evidence, which adds the same points to all of them.
+
+## 5.4 HPP: why the total debt was missing
+Cause: HPP does not report a total debt in `LongTermDebt` or the generic parts; the figure exists only as a series broken down on a type axis, so `debt_total` stayed empty and 3.6.1 and 3.8.4 had nothing. Fix: `type_axis_total_series` in `src/providers/sec_ixbrl.py` searches the filings for the same tag with a type-axis breakdown and sums the members for the needed year-ends (up to three filings back); it is called in `src/providers/realestate_facts.py` after `fill_generic_debt()`. Result for HPP (the reload ran in the test database): total debt none -> found, coverage 53% -> 61%, **Buffett quality none -> 33.8** (3.6.1 true zero, 3.6.2 0, 3.8.4 still missing). The leverage items score at the bottom, as for the other weak REITs.
+
+## 5.5 The 8 REIT tasks (new wording)
+Queue run after items 1-4 (tasks 1118-1125: SPG FRT ARE PLD BXP EQR PSA EQIX): all eight `ai_assess` done, none failed, **79 model attempts** (cap 150); EQR and PSA each had one network error and succeeded on the retry. Their score and analysis tasks ran after them. First attempt failed with `KeyError: None` for all eight because `companies.profile` was empty; it was filled from the score summary (INCOME_REAL_ESTATE) and the tasks were queued again. Buffett quality now (flag on, new wording): SPG 77.4, FRT 84.2, ARE 81.9, PLD 82.0, BXP 62.9, EQR 82.7, PSA 84.8, EQIX 94.8 (coverage 0.81-0.98). The answers went through the existing approval rules, with no extra approval.

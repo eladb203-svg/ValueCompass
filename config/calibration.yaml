@@ -1,10 +1,13 @@
-# 2026-11-04 owner decision: life_dominant_na and reg_basis_from_text are ON; growth_window_10y stays OFF.
+# 2026-11-04 owner decision: life_dominant_na and reg_basis_from_text are ON. 2026-11-05 owner decision: growth_window_10y is ON with the acquisition-break exception (growth_break_equity_pct).
 # Calibration parameters (K6d-2, stage "calibration after the gate", 2026-11-03). Every parameter is OFF by default; an owner decision turns it on. Nothing here is part of the rulebook.
 # The value can be overridden for a measurement by the environment variable VC_CAL_<NAME> (1 / 0) - the measurement scripts use it, a deployment does not.
 
 # Growth items of the Buffett quality score (3.3 revenue growth, 3.8 EPS growth and FCF / owner-earnings / book-value growth, all profiles): growth over up to 10 years where they exist (at least 5):
 # CAGR from the average of the first 3 years of the window to the average of the last 3 (t-9..t-7 against t-2..t for 10 years), instead of the 5-year window of R14.
-growth_window_10y: false
+growth_window_10y: true
+# Exception to the 10-year window: a fiscal year whose acquisitions (cash paid for businesses + shares issued for acquisitions) are at least this share of the equity at the start of the year is a break;
+# growth is then measured on the years after the break (at least 5, otherwise the 5-year window of R14). 2026-11-05.
+growth_break_equity_pct: 0.40
 
 # Insurers: the regulatory capital ratio extracted by the AI carries its basis in words ("... calculated using the NAIC Company Action Level formula"), not in the tag of the hand-made table; with the
 # parameter on the words give the basis (CAL / ACL / SCR / SMR) and the ratio becomes usable for Buffett 3.6.1 and Graham 3.2.1 (UNM: 440% of the company action level = 4.4x).

@@ -112,8 +112,10 @@ skills:
   - TXT-004
   when: always
   extra_output: null
+  profile_versions:
+    INCOME_REAL_ESTATE: '2-reit'
   profile_notes:
-    INCOME_REAL_ESTATE: Judge the durability of the location and asset advantage; do not treat a temporarily rising property market as a stable competitive position.
+    INCOME_REAL_ESTATE: 'For this profile the levels are the following; they REPLACE the scale above. 2 = the report shows at least one durability fact over several years (occupancy held through the cycle, same-property NOI growth, positive rent spreads on renewals, long weighted-average lease term, tenant retention); being the largest or among the largest is NOT by itself level 2. 1 = the position is plausible (size, location) but the report shows no multi-year durability fact, or the signals are mixed (occupancy or same-property NOI slipping, short leases, rents rising only with the market). 0 = occupancy, rents or same-property NOI are falling, or the report states weakening demand for the properties. A temporarily rising property market is not a stable competitive position. The quote must be the sentence of the report that shows the fact (a number or a multi-year trend), not a sentence that only describes the business, and not the statement that disclosure controls are effective.'
   points:
     mult: 1
   facts_from_code: revenue for each of the last 5 years and its CAGR; gross and operating margin, first 2 vs last 2 years; segment revenue trend when reported
@@ -131,8 +133,10 @@ skills:
   - TXT-003
   when: always
   extra_output: '"moat_source": "brand" | "switching_costs" | "scale" | "network_effect" | "regulation" | "data" | "infrastructure" | "location" | "none"'
+  profile_versions:
+    INCOME_REAL_ESTATE: '3-reit'
   profile_notes:
-    INCOME_REAL_ESTATE: A location or irreplaceable-asset advantage counts ("location"); a rising market does not.
+    INCOME_REAL_ESTATE: 'For this profile the levels are the following; they REPLACE the scale above. 2 = a location or irreplaceable-asset advantage (scarce sites, high barriers to entry, long leases to strong tenants) that is MEASURED in the report (occupancy, rent premium or retention over several years). 1 = a plausible advantage is stated (location, scale) without such a measured result. 0 = no identifiable advantage, or occupancy / rents / same-property NOI are deteriorating. A rising market and size alone do not count. The quote must be the sentence of the report that shows the fact (a number or a multi-year trend), not a sentence that only describes the business, and not the statement that disclosure controls are effective.'
   points:
     mult: 0.5
   id: A7
@@ -167,8 +171,10 @@ skills:
   - TXT-004
   when: always
   extra_output: null
+  profile_versions:
+    INCOME_REAL_ESTATE: '2-reit'
   profile_notes:
-    INCOME_REAL_ESTATE: Also consider equity issuance relative to value per share and the use of disposal proceeds.
+    INCOME_REAL_ESTATE: 'For this profile the levels are the following; they REPLACE the scale above. 2 = clear reporting: FFO / AFFO / NOI measures are reconciled to GAAP and are not the only headline of the management discussion, the strategy is consistent, no restatements or governance disputes. 1 = heavy reliance on adjusted measures (FFO, AFFO, core FFO, adjusted EBITDA) as the headline, or frequent strategy changes, or equity issued below net asset value, or disposal proceeds used to fund the dividend. 0 = restatements, governance problems, aggressive accounting. The sentence that disclosure controls are effective is not evidence for level 2. The quote must be the sentence of the report that shows the fact (a number or a multi-year trend), not a sentence that only describes the business, and not the statement that disclosure controls are effective.'
   points:
     mult: 1
   id: A9
@@ -185,8 +191,10 @@ skills:
   - TXT-004
   when: always
   extra_output: null
+  profile_versions:
+    INCOME_REAL_ESTATE: '2-reit'
   profile_notes:
-    INCOME_REAL_ESTATE: Distinguish organic growth (same-property NOI, rents) from acquisition-led and revaluation-led growth.
+    INCOME_REAL_ESTATE: 'For this profile the levels are the following; they REPLACE the scale above. 2 = growth shown by same-property NOI or rent growth over several years, not dependent on acquisitions, on development financed by new equity or debt, or on revaluation. 1 = growth partly depends on acquisitions or on externally financed development, or on a rising market. 0 = growth only from acquisitions, debt or revaluation, or same-property NOI is falling. The quote must be the sentence of the report that shows the fact (a number or a multi-year trend), not a sentence that only describes the business, and not the statement that disclosure controls are effective.'
   points:
     mult: 1
   facts_from_code: revenue and EPS for each of the last 5 years with CAGR; acquisitions per year

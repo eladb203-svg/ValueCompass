@@ -177,6 +177,49 @@ def instrument_sum_series(sec: SecClient, cik: str, local: str, needed_ends: lis
     return found
 
 
+def type_axis_total_series(sec: SecClient, cik: str, local: str, needed_ends: list, max_filings: int = 3) -> dict:
+    """Owner decision 2026-11-05 (HPP): {end: Fact} where the element is reported only with the debt-TYPE axis (``us-gaap:LongtermDebtTypeAxis``), never undimensioned (HPP: LongTermDebt by
+    ``hpp:UnsecuredAndSecuredDebtMember`` = the balance-sheet total). Facts of the balance-sheet date whose ONLY dimension is the debt-type axis: one member whose name says both secured and unsecured (or total / all debt)
+    is the total; else the secured and the unsecured members are added. Joint-venture-partner and similar members are not part of it. The tag says so."""
+    import re as _re
+    found: dict = {}
+    missing = set(needed_ends)
+    used = 0
+    for k in tenk_filings(sec, cik):
+        if not missing or used >= max_filings:
+            break
+        if all(abs((k["report_date"] - e).days) > 800 for e in missing):
+            continue
+        acc = k["accession"].replace("-", "")
+        raw = _get_raw(sec, f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}/{k['primary']}", f"{acc}_{k['primary']}")
+        used += 1
+        ctx = parse_contexts(raw)
+        by_end: dict = {}
+        for attrs, text in _NF.findall(raw):
+            if (_attr(attrs, "name") or "").split(":")[-1] != local:
+                continue
+            c = ctx.get(_attr(attrs, "contextRef") or "")
+            if not c or not c["instant"] or len(c["dims"]) != 1 or c["dims"][0][0].split(":")[-1].lower() != "longtermdebttypeaxis":
+                continue
+            v = parse_numeric(attrs, text)
+            if v is not None:
+                by_end.setdefault(c["end"], {})[c["dims"][0][1].split(":")[-1]] = v
+        for end, members in by_end.items():
+            m = next((e for e in missing if abs((e - end).days) <= 10), None)
+            if m is None or m in found:
+                continue
+            both = [n for n in members if _re.search(r"(Unsecured.*Secured|Secured.*Unsecured|TotalDebt|AllDebt|^Total)", n)]
+            if both:
+                val, how = members[both[0]], both[0]
+            elif "SecuredDebtMember" in members and "UnsecuredDebtMember" in members:
+                val, how = members["SecuredDebtMember"] + members["UnsecuredDebtMember"], "SecuredDebtMember + UnsecuredDebtMember"
+            else:
+                continue
+            found[m] = Fact(val=val, end=end, filed=k["filed"], form="10-K", accn=k["accession"], tag=f"ixbrl:{local} by LongtermDebtTypeAxis ({how})")
+        missing -= set(found)
+    return found
+
+
 def extension_series(sec: SecClient, cik: str, local_names: list, kind: str, needed_ends: list, max_filings: int = 6,
                      segment_sum: bool = False) -> dict:
     """{end: Fact} for the first element of ``local_names`` found per fiscal-year end, reading 10-K filings newest first
